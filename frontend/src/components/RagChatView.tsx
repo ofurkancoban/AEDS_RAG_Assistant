@@ -172,12 +172,6 @@ const WELCOME_MESSAGES = [
 
 Unlike your econometrics model, I do not overfit. Ask me about the curriculum, deadlines, exams, or thesis rules, and I will quote the official documents rather than improvise.`,
 
-  `**AEDS assistant, reporting for duty.**
-
-Harry Truman once asked for a one-handed economist, tired of hearing "on the other hand". Good news: I have exactly one hand, and it is pointing at the source document.
-
-Ask me about courses, deadlines, exams, or the thesis.`,
-
   `**Hello.**
 
 I have read every module handbook, exam regulation, and programme flyer so that you do not have to. None of it counts towards your 120 ECTS, which I consider a personal injustice.
