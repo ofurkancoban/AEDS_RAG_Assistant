@@ -1,0 +1,479 @@
+@import "tailwindcss";
+
+/* Ties Tailwind's dark: variant to the same [data-theme] attribute the CSS
+   custom properties below react to (ThemeToggle always stamps an explicit
+   "light" or "dark" onto <html> once it mounts) - so dark: utilities and the
+   var(--bg)/var(--text) etc custom properties never disagree with each other
+   or with a manual toggle that contradicts the OS preference. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* --- palette ---
+   Oxford blue and brass: the accent scale carries every interactive and
+   structural highlight in the app, brass is reserved for the few things that
+   should read as marked or privileged (admin badges, the user's own avatar,
+   the ends of the brand gradients).
+
+   These are declared here rather than spelled out as literal Tailwind colours
+   in the components, which is what they used to be: the palette lived in
+   roughly 340 hardcoded indigo/blue utility classes across twelve files, so
+   changing it meant touching all of them and getting one wrong meant a stray
+   colour nobody would notice until it shipped. Now `text-accent-500` and the
+   rest resolve from here, and a future repaint is this block alone.
+
+   Steps follow Tailwind's own convention (50 lightest, 950 darkest) so the
+   existing light/dark pairings in the components - `text-accent-600
+   dark:text-accent-300` and similar - keep meaning what they meant. */
+@theme {
+  --color-accent-50: #f2f6fa;
+  --color-accent-100: #e3ecf5;
+  --color-accent-200: #c6d8ea;
+  --color-accent-300: #9dbcd9;
+  --color-accent-400: #5b86b0;
+  --color-accent-500: #3d6b99;
+  --color-accent-600: #2b5580;
+  --color-accent-700: #1b3a5c;
+  --color-accent-800: #152d47;
+  --color-accent-900: #102135;
+  --color-accent-950: #0a1622;
+
+  --color-brass-50: #fbf7ef;
+  --color-brass-100: #f5ecd8;
+  --color-brass-200: #ead6ae;
+  --color-brass-300: #ddbc7c;
+  --color-brass-400: #d4a556;
+  --color-brass-500: #b8863b;
+  --color-brass-600: #9a6c2c;
+  --color-brass-700: #7a5322;
+  --color-brass-800: #5c3e1b;
+  --color-brass-900: #3f2b14;
+}
+
+:root {
+  color-scheme: light;
+
+  --bg: #f5f7fb;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #eef1f8;
+  --bg-inset: #e6eaf3;
+  --bg-muted: #eef1f8;
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.18);
+
+  --text: #0f172a;
+  --text-secondary: #3f4a63;
+  --text-muted: #7c869c;
+  --text-faint: #97a1b4;
+
+  --accent: #2b5580;
+  --accent-2: #b8863b;
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-well-bg: rgba(15, 23, 42, 0.04);
+  --glass-border: rgba(15, 23, 42, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+}
+
+/* Dark palette applies automatically by system preference, unless the
+   in-app toggle (ThemeToggle) has stamped an explicit data-theme choice
+   onto the root element, which always wins either direction. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #030712;
+    --bg-elevated: #0f172a;
+    --bg-subtle: #0b0f19;
+    --bg-inset: #1e293b;
+    --bg-muted: #111827;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.15);
+
+    --text: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+
+    --accent: #9dbcd9;
+    --accent-2: #d4a556;
+
+    --glass-bg: rgba(15, 23, 42, 0.45);
+    --glass-bg-strong: rgba(11, 15, 25, 0.65);
+    --glass-well-bg: rgba(255, 255, 255, 0.04);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-highlight: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #030712;
+  --bg-elevated: #0f172a;
+  --bg-subtle: #0b0f19;
+  --bg-inset: #1e293b;
+  --bg-muted: #111827;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+
+  --text: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  --accent: #9dbcd9;
+  --accent-2: #d4a556;
+
+  --glass-bg: rgba(15, 23, 42, 0.45);
+  --glass-bg-strong: rgba(11, 15, 25, 0.65);
+  --glass-well-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* --- glassmorphism surfaces ---
+   .glass: standard frosted card/panel (sidebars, content cards, modals).
+   .glass-strong: less see-through, for surfaces that need to stay readable
+   over busy content behind them (sticky header, chat input bar).
+   .glass-well: a sunken/inset well inside a glass panel (inputs, code
+   blocks) - no blur of its own since it never sits directly over the
+   page background, just a soft tint + border to read as "recessed".
+
+   Defined inside @layer components (below Tailwind's own @layer utilities,
+   see the layer order Tailwind declares) so a plain Tailwind utility placed
+   alongside one of these classes - border-dashed, focus:border-accent-500,
+   etc - still wins over the glass class's own border/background, instead of
+   losing to it the way an unlayered rule would regardless of state or
+   specificity. */
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .glass-well {
+    background: var(--glass-well-bg);
+    border: 1px solid var(--glass-border);
+  }
+
+  /* --- rendered markdown answers ---
+     Tailwind's preflight resets lists to `list-style: none` and strips
+     heading/paragraph margins, so ReactMarkdown output arrives structurally
+     correct but visually flat - a bulleted list renders as unindented,
+     bullet-less lines. These rules restore just the elements the assistant
+     actually emits. Written here rather than pulling in
+     @tailwindcss/typography: the plugin's opinionated font sizing fights the
+     surrounding text-xs/text-sm scale and would need config overrides to read
+     from this app's CSS custom properties anyway. */
+  .answer-prose > *:first-child {
+    margin-top: 0;
+  }
+
+  .answer-prose > *:last-child {
+    margin-bottom: 0;
+  }
+
+  .answer-prose p {
+    margin: 0.6em 0;
+  }
+
+  .answer-prose ul,
+  .answer-prose ol {
+    margin: 0.6em 0;
+    padding-left: 1.35em;
+  }
+
+  .answer-prose ul {
+    list-style-type: disc;
+  }
+
+  .answer-prose ol {
+    list-style-type: decimal;
+  }
+
+  .answer-prose li {
+    margin: 0.28em 0;
+    padding-left: 0.15em;
+  }
+
+  .answer-prose li::marker {
+    color: var(--accent);
+  }
+
+  /* Nested lists: a different marker makes the hierarchy readable without
+     relying on indentation alone at this small a font size. */
+  .answer-prose li > ul {
+    list-style-type: circle;
+    margin: 0.28em 0;
+  }
+
+  .answer-prose h1,
+  .answer-prose h2,
+  .answer-prose h3,
+  .answer-prose h4 {
+    margin: 1em 0 0.45em;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--text);
+  }
+
+  .answer-prose h1 { font-size: 1.15em; }
+  .answer-prose h2 { font-size: 1.08em; }
+  .answer-prose h3,
+  .answer-prose h4 { font-size: 1em; }
+
+  .answer-prose strong {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .answer-prose a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .answer-prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+    background: var(--glass-well-bg);
+    border: 1px solid var(--glass-border);
+  }
+
+  .answer-prose pre {
+    margin: 0.6em 0;
+    padding: 0.8em 1em;
+    border-radius: 12px;
+    overflow-x: auto;
+    background: var(--glass-well-bg);
+    border: 1px solid var(--glass-border);
+  }
+
+  .answer-prose pre code {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .answer-prose blockquote {
+    margin: 0.6em 0;
+    padding-left: 0.9em;
+    border-left: 3px solid var(--accent);
+    color: var(--text-secondary);
+  }
+
+  /* Tables can exceed the bubble width on narrow screens, so the table itself
+     scrolls rather than the page. */
+  .answer-prose table {
+    display: block;
+    overflow-x: auto;
+    width: 100%;
+    margin: 0.6em 0;
+    border-collapse: collapse;
+    font-size: 0.95em;
+  }
+
+  .answer-prose th,
+  .answer-prose td {
+    border: 1px solid var(--glass-border);
+    padding: 0.4em 0.6em;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .answer-prose th {
+    background: var(--glass-well-bg);
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .answer-prose hr {
+    margin: 1em 0;
+    border: 0;
+    border-top: 1px solid var(--glass-border);
+  }
+}
+
+/* --- waiting for an answer (see ThinkingIndicator.tsx) ---
+   One halo breathing out from behind the assistant's avatar, and a slow wave
+   across three dots. Both are symmetric and low-contrast on purpose: an
+   answer takes tens of seconds here, so whatever moves during that time is on
+   screen long enough for any jitter to become irritating. */
+
+@keyframes thinking-halo {
+  0% { transform: scale(0.9); opacity: 0.45; }
+  70% { transform: scale(1.45); opacity: 0; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+.thinking-halo {
+  animation: thinking-halo 2.4s cubic-bezier(0.25, 0.6, 0.35, 1) infinite;
+}
+
+@keyframes thinking-dot {
+  0%, 70%, 100% { opacity: 0.25; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-2px); }
+}
+
+.thinking-dot {
+  animation: thinking-dot 1.5s ease-in-out infinite;
+}
+
+/* Motion here is decorative - the text and the elapsed counter already say
+   the assistant is working - so it is dropped entirely rather than slowed. */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-halo {
+    animation: none;
+    opacity: 0.25;
+  }
+
+  .thinking-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* --- floating economics / data-science motifs --- */
+
+.floating-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.floating-item {
+  position: absolute;
+  display: inline-flex;
+  color: var(--accent);
+  opacity: 0.14;
+  will-change: transform;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.floating-item svg {
+  width: 1em;
+  height: 1em;
+  stroke-width: 1.3;
+}
+
+.floating-symbol {
+  font-family: ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1;
+  color: var(--accent-2);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .floating-item {
+    opacity: 0.2;
+  }
+}
+
+:root[data-theme="dark"] .floating-item {
+  opacity: 0.2;
+}
+
+/* The university wordmark, drifting with the motifs. Higher opacity than
+   they use because it is a raster of fine strokes rather than a single bold
+   glyph, and because part of it always sits behind the panels, which blur and
+   dim whatever is behind them. Its navy is close to accent-800: readable on
+   the light background, invisible on the dark one, so dark mode lifts it with
+   a filter rather than shipping a second asset. Declared after the
+   .floating-item rules above, which carry equal specificity and would
+   otherwise win on order. */
+.floating-logo {
+  opacity: 0.22;
+  height: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .floating-logo {
+    opacity: 0.28;
+    filter: brightness(3.6);
+  }
+}
+
+:root[data-theme="dark"] .floating-logo {
+  opacity: 0.28;
+  filter: brightness(3.6);
+}
+
+@keyframes floating-drift-a {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(22px, -28px) rotate(7deg); }
+}
+
+@keyframes floating-drift-b {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-26px, 22px) rotate(-8deg); }
+}
+
+@keyframes floating-drift-c {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(16px, 26px) rotate(6deg); }
+}
+
+.floating-drift-a {
+  animation-name: floating-drift-a;
+}
+
+.floating-drift-b {
+  animation-name: floating-drift-b;
+}
+
+.floating-drift-c {
+  animation-name: floating-drift-c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-item {
+    animation: none;
+  }
+}
+
+/* Custom Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}

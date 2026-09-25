@@ -1,0 +1,606 @@
+[
+  {
+    "id": "language-requirements-english",
+    "question": "What are the language requirements for admission?",
+    "expected_contains": [
+      "B2"
+    ],
+    "expected_absent": [
+      "PhD",
+      "Studienkolleg",
+      "refugee",
+      "Anpassungslehrgang",
+      "DSH 3",
+      "TestDaF"
+    ],
+    "notes": "AEDS is English-taught; the only real requirement is English B2. A generic university-wide page covering every degree programme is in the corpus and has repeatedly leaked German/PhD/Studienkolleg/refugee details from unrelated programmes into this answer.",
+    "expected_source_ids": [
+      "AEDS_website_language_requirements"
+    ]
+  },
+  {
+    "id": "thesis-ects",
+    "question": "How many ECTS credits is the thesis module worth?",
+    "expected_contains": [
+      "30"
+    ],
+    "expected_absent": [],
+    "notes": "Fixed fact from semester_planning_rules.md / catalog.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2023_EN",
+        "semester_planning_rules"
+      ]
+    ]
+  },
+  {
+    "id": "application-deadline-germany",
+    "question": "What is the application deadline for applicants with a German university entrance qualification?",
+    "expected_contains": [
+      "July 15",
+      "2026"
+    ],
+    "expected_absent": [
+      "June 15"
+    ],
+    "notes": "June 15 is the non-EU deadline, a different row of the same table - a common cross-record mixup."
+  },
+  {
+    "id": "application-deadline-non-eu",
+    "question": "What is the application deadline for non-EU applicants?",
+    "expected_contains": [
+      "June 15",
+      "2026"
+    ],
+    "expected_absent": [
+      "July 15"
+    ],
+    "notes": "Both non-EU rows (first semester and higher/transferring semester) are June 15 - catches the model inventing a July 15 distinction for transferring students that isn't in the table."
+  },
+  {
+    "id": "application-deadline-eu-eea",
+    "question": "What is the application deadline for EU/EEA applicants?",
+    "expected_contains": [
+      "July 15",
+      "2026"
+    ],
+    "expected_absent": [
+      "June 15"
+    ],
+    "notes": "Third row of the same deadlines table - EU/EEA shares Germany's July 15 deadline, not non-EU's June 15."
+  },
+  {
+    "id": "application-deadline-multi-category",
+    "question": "What are the application deadlines for Non-EU, EU, and German applicants?",
+    "expected_contains": [
+      "June 15",
+      "July 15",
+      "March 15",
+      "May 15"
+    ],
+    "expected_absent": [],
+    "notes": "Asking for all three categories in one question makes the tool router emit three separate tool calls (one per entry_qualification); a prior bug only executed response.tool_calls[0] and silently dropped the other two, returning only the Non-EU answer."
+  },
+  {
+    "id": "deadline-status-relative-to-today",
+    "question": "What is the application deadline for non-EU applicants?",
+    "expected_contains": [
+      "June 15",
+      "2026",
+      "cycle is closed"
+    ],
+    "expected_absent": [
+      "July 15"
+    ],
+    "notes": "The deadline answer must state where today sits relative to the deadline, not just the date. Computed in code (ingestion/deadlines.py describe_deadline_status) because the model has no reliable notion of the current date. NOTE: 'cycle is closed' is only correct while the 2026 dates in the corpus are in the past - once the deadlines table is re-scraped for a future intake this expectation must change to the open-window wording."
+  },
+  {
+    "id": "professor-lookup-ci1",
+    "question": "Who is the professor for Computational Intelligence I?",
+    "expected_contains": [
+      "Oliver Kramer"
+    ],
+    "expected_absent": [],
+    "notes": "Computational Intelligence I and II share an abbreviation (CII) and a similar name - a known source of professor misattribution.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "professor-lookup-ci2",
+    "question": "Who teaches Computational Intelligence II?",
+    "expected_contains": [
+      "Oliver Kramer"
+    ],
+    "expected_absent": [],
+    "notes": "Sibling of the CI I case - same professor here, but must resolve independently rather than reusing whatever the model last answered for CI I.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "professor-lookup-epe-abbreviation",
+    "question": "Who is the professor for EPE?",
+    "expected_contains": [
+      "Cristian Huse"
+    ],
+    "expected_absent": [],
+    "notes": "EPE (Econometrics of Policy Evaluation) referenced only by abbreviation, no full course name in the question.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "compulsory-course-economics",
+    "question": "Is Advanced Microeconomics a compulsory course?",
+    "expected_contains": [
+      "compulsory"
+    ],
+    "expected_absent": [
+      "not compulsory",
+      "elective"
+    ],
+    "notes": "wir874 is marked compulsory=yes in the catalog.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "compulsory-course-epe",
+    "question": "Is Econometrics of Policy Evaluation a compulsory course?",
+    "expected_contains": [
+      "compulsory"
+    ],
+    "expected_absent": [
+      "not compulsory",
+      "elective"
+    ],
+    "notes": "wir894 is marked compulsory=yes in the catalog, in the Empirical Methods component.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "german-taught-courses",
+    "question": "Which courses are taught only in German?",
+    "expected_contains": [
+      "Environmental Information Systems",
+      "Information Technology Law"
+    ],
+    "expected_absent": [],
+    "notes": "Enumeration question - the catalog has exactly these two German-only courses; a partial list would indicate the enumeration/filter path silently fell back to plain top-k retrieval.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "ects-total-programme",
+    "question": "How many total ECTS credits does the Applied Economics and Data Science programme require?",
+    "expected_contains": [
+      "120"
+    ],
+    "expected_absent": [],
+    "notes": "Fixed fact from semester_planning_rules.md.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "ects-distribution-phrasing",
+    "question": "How are the 120 ECTS distributed across semesters and subject areas?",
+    "expected_contains": [
+      "36",
+      "18",
+      "30"
+    ],
+    "expected_absent": [],
+    "notes": "Regression case: this exact 'distributed across semesters and subject areas' phrasing used to route to get_full_curriculum (which lists every catalog course at 6 ECTS each, without ever stating the real 36/18/18/18/30 component targets) instead of falling through to document search per the tool docstring's guardrail. Caught live via the new frontend's suggested-query button; fixed by adding 'distributed/broken down/split' as explicit anti-signals to get_full_curriculum's docstring.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "economics-component-target",
+    "question": "How many ECTS credits does the Economics component of the curriculum require?",
+    "expected_contains": [
+      "36"
+    ],
+    "expected_absent": [],
+    "notes": "Fixed fact from semester_planning_rules.md - distinct from the other components' targets (18/18/18/30) to catch a wrong-component mixup.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "empirical-component-target",
+    "question": "How many ECTS credits does the Empirical Methods component require?",
+    "expected_contains": [
+      "18"
+    ],
+    "expected_absent": [],
+    "notes": "Distinguishes from Economics (36) and Thesis (30) - all five component targets are similar-looking numbers in the same table.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "datascience-component-target",
+    "question": "How many ECTS credits does the Data Science component require?",
+    "expected_contains": [
+      "18"
+    ],
+    "expected_absent": [],
+    "notes": "Same component-target table as empirical/specialisation - all three are 18, only distinguishable by which row/label the model attaches the number to.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "bachelor-prerequisite-ects",
+    "question": "How many ECTS credits must an applicant's prior Bachelor's degree be worth to apply?",
+    "expected_contains": [
+      "180"
+    ],
+    "expected_absent": [],
+    "notes": "Fixed fact from AEDS_website_how_to_apply.md special admission requirements.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview"
+      ]
+    ]
+  },
+  {
+    "id": "bachelor-prerequisite-economics-credits",
+    "question": "How many ECTS credits in Economics must an applicant's previous degree have included?",
+    "expected_contains": [
+      "20"
+    ],
+    "expected_absent": [
+      "10 ECTS credits Mathematics"
+    ],
+    "notes": "The how_to_apply prerequisites list four subject minimums (Economics 20, Mathematics 10, Statistics 10, Econometrics 5) right next to each other - a classic cross-record mixup risk.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview"
+      ]
+    ]
+  },
+  {
+    "id": "bachelor-prerequisite-statistics-credits",
+    "question": "How many ECTS credits in Statistics must an applicant's previous degree have included?",
+    "expected_contains": [
+      "10"
+    ],
+    "expected_absent": [],
+    "notes": "Same prerequisites list as bachelor-prerequisite-economics-credits - Statistics and Mathematics share the same value (10), Economics is 20 and Econometrics is 5, so this alone doesn't distinguish a Math/Statistics mixup, but still guards against the wrong subject's number entirely (e.g. 20 or 5) leaking in.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview"
+      ]
+    ]
+  },
+  {
+    "id": "bachelor-prerequisite-econometrics-credits",
+    "question": "How many ECTS credits in Econometrics must an applicant's previous degree have included?",
+    "expected_contains": [
+      "5"
+    ],
+    "expected_absent": [
+      "10",
+      "20"
+    ],
+    "notes": "The uniquely distinct value (5) in the four-subject prerequisites list - a strict test that no other subject's number (10 or 20) leaked in instead.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview"
+      ]
+    ]
+  },
+  {
+    "id": "thesis-registration-semester",
+    "question": "In which semester do students usually register for their Master's thesis?",
+    "expected_contains": [
+      "fourth semester"
+    ],
+    "expected_absent": [],
+    "notes": "Fact from MPO_AEDS_2023_EN.pdf Section 9(1).",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2023_EN",
+        "semester_planning_rules"
+      ]
+    ]
+  },
+  {
+    "id": "accreditation-expiry",
+    "question": "When does the accreditation for this programme expire?",
+    "expected_contains": [
+      "2029"
+    ],
+    "expected_absent": [],
+    "notes": "Fact from Beschluss_Programmakkreditierung_Applied_Economics_DataScience.pdf (Akkreditierungsfrist: 01.10.2021 - 30.09.2029) - a German-language source document, so this also checks the model can extract a fact from German source text into an English answer.",
+    "expected_source_ids": [
+      "AEDS_accreditation_summary"
+    ]
+  },
+  {
+    "id": "exam-faq-lost-tan",
+    "question": "What should I do if I lost my TAN list for exam registration?",
+    "expected_contains": [
+      "central library"
+    ],
+    "expected_absent": [],
+    "notes": "Fact from the newly-added AEDS_website_exams_faq.md.",
+    "expected_source_ids": [
+      "AEDS_website_exams_faq"
+    ]
+  },
+  {
+    "id": "exam-faq-illness-on-exam-day",
+    "question": "What should I do if I'm ill on the day of an exam?",
+    "expected_contains": [
+      "doctor"
+    ],
+    "expected_absent": [],
+    "notes": "Fact from the newly-added AEDS_website_exams_faq.md - distinct FAQ entry from exam-faq-lost-tan and exam-faq-leave-of-absence, all three from the same small 4-chunk document.",
+    "expected_source_ids": [
+      "AEDS_website_exams_faq"
+    ]
+  },
+  {
+    "id": "first-semester-typical-courses",
+    "question": "Which compulsory courses are usually taken in the first semester of this programme?",
+    "expected_contains": [
+      "Econometrics of Policy Evaluation",
+      "Advanced Microeconomics"
+    ],
+    "expected_absent": [],
+    "notes": "Explicit sequencing rule from semester_planning_rules.md, independent of the schedule-recommendation code path.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "schedule-request-first-semester",
+    "setup": [
+      "Can you recommend courses for next semester?"
+    ],
+    "question": "1st semester",
+    "expected_contains": [
+      "Econometrics of Policy Evaluation",
+      "Advanced Microeconomics",
+      "30 ECTS"
+    ],
+    "expected_absent": [],
+    "notes": "Multi-turn: exercises the deterministic schedule builder (retrieve_node's awaiting_semester_number state machine), not the LLM - a 1st-semester student's recommended term must include both early-pinned compulsory courses and sum to a full 30 ECTS term."
+  },
+  {
+    "id": "specialization-component-target",
+    "question": "How many ECTS credits does the Specialisation component require?",
+    "expected_contains": [
+      "18"
+    ],
+    "expected_absent": [],
+    "notes": "Completes the full set of 5 component targets tested (Economics 36, Empirical 18, Data Science 18, Specialisation 18, Thesis 30).",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "schedule-request-full-plan",
+    "setup": [
+      "Can you recommend courses for next semester?",
+      "1st semester"
+    ],
+    "question": "Can you make a schedule for the full programme, all the way until graduation?",
+    "expected_contains": [
+      "Semester 1",
+      "Semester 4",
+      "120 ECTS"
+    ],
+    "expected_absent": [],
+    "notes": "Multi-turn: after establishing the student is in their 1st semester, an explicit full-plan request (matching both a schedule hint and a full-plan hint) must return all 4 terms (3 coursework + thesis) summing to the full 120 ECTS, not just the single next term."
+  },
+  {
+    "id": "curriculum-listing-generic",
+    "question": "What courses are in the curriculum?",
+    "expected_contains": [
+      "Computational Intelligence I",
+      "Advanced Microeconomics"
+    ],
+    "expected_absent": [],
+    "notes": "Generic 'show me everything' request - must hit the full category-grouped curriculum dump (_build_curriculum_context), covering courses from multiple categories, not the attribute-filtered enumeration path or a partial top-k retrieval.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "person-lookup-who-is",
+    "question": "Who is Oliver Kramer?",
+    "expected_contains": [
+      "Computational Intelligence I",
+      "Computational Intelligence II"
+    ],
+    "expected_absent": [],
+    "notes": "'Who is X' person lookup (distinct code path from 'who teaches <course>') must return every course belonging to that exact professor, not a single course or a different professor's.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "professor-multiple-courses",
+    "question": "Which courses does Carsten Helm teach?",
+    "expected_contains": [
+      "Advanced Microeconomics",
+      "Public Economics and Market Design",
+      "Environmental Economics"
+    ],
+    "expected_absent": [],
+    "notes": "A professor teaching several courses - the person-filter path must return all of them (filter_search has no result cap in practice here), not just the first/most-similar match.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "contribution-flagged-correction",
+    "question": "Actually the thesis module is 25 ECTS, not 30.",
+    "expected_contribution": "correction",
+    "notes": "detect_contribution_node must flag an assertive correction statement for admin review, even though it directly contradicts a fact the assistant would otherwise state confidently."
+  },
+  {
+    "id": "contribution-flagged-new-info",
+    "question": "The Data Science lab is located in room A14 in the main building.",
+    "expected_contribution": "new_info",
+    "notes": "A new factual assertion (not in any ingested document) must be flagged as new_info, not silently ignored or misclassified as a correction."
+  },
+  {
+    "id": "contribution-not-flagged-question",
+    "question": "How many ECTS credits is the thesis module worth?",
+    "expected_contribution": null,
+    "notes": "An ordinary question must never be auto-flagged as a contribution - detect_contribution_node's is-a-question gate is the first line of defense against spamming the admin review queue."
+  },
+  {
+    "id": "careers-employers",
+    "question": "What kind of employers hire graduates of this programme?",
+    "expected_contains": [
+      "Automotive companies"
+    ],
+    "expected_absent": [],
+    "notes": "Careers section of programme_overview.md - a distinctive, hard-to-paraphrase list item that should survive summarization if the right chunk was actually retrieved.",
+    "expected_source_ids": [
+      "AEDS_website_programme_overview"
+    ]
+  },
+  {
+    "id": "exam-office-contact",
+    "question": "Who is the contact person at the examinations office?",
+    "expected_contains": [
+      "Emmanuel Asane-Otoo"
+    ],
+    "expected_absent": [],
+    "notes": "Fact from AEDS_website_exams_regulations.md, a document that's otherwise mostly navigation links rather than prose."
+  },
+  {
+    "id": "german-enumeration-compulsory",
+    "question": "Welche Kurse sind Pflichtkurse?",
+    "expected_contains": [
+      "Applied Economics",
+      "Advanced Microeconomics",
+      "Industrial Organization",
+      "Econometrics of Policy Evaluation"
+    ],
+    "expected_absent": [],
+    "notes": "Non-English enumeration: the programme is English-taught but its applicants and official university pages are largely German-speaking, so a German question must still route to the catalog tool and return the same English course names. Replaced an equivalent Turkish case once German was confirmed as the only non-English language in scope.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "followup-pronoun-resolution",
+    "setup": [
+      "What is the examinations office responsible for?"
+    ],
+    "question": "Tell me more about it",
+    "expected_contains": [
+      [
+        "Examinations Office",
+        "Examining Board",
+        "exam administration"
+      ]
+    ],
+    "expected_absent": [
+      "ECTS distribution",
+      "application deadline"
+    ],
+    "notes": "Multi-turn: a short pronoun-heavy follow-up ('it') must combine with the previous turn for retrieval (_is_context_dependent_followup / _build_retrieval_query) and stay on the same topic, rather than retrieving unrelated chunks for 'tell me more about it' in isolation. Asserts topic continuity via any of several markers rather than the literal subject name: the system prompt tells the model to organise answers under its own headings and not restate the question, so demanding it repeat 'Examinations Office' verbatim tested our own formatting rule, not pronoun resolution. expected_absent catches the real failure mode - drifting to an unrelated topic."
+  },
+  {
+    "id": "exam-resit-attempts",
+    "question": "How many times can I retake a failed module exam?",
+    "expected_contains": [
+      [
+        "twice",
+        "two times",
+        "two attempts"
+      ]
+    ],
+    "expected_absent": [
+      "to f the"
+    ],
+    "notes": "Fact from the newly-added MPO_AEDS_2023_EN.pdf (examination regulations, Section 8(1)). Also guards against a since-fixed bug where _strip_fabricated_citations mangled 'Section 8(1) of the ...' into '...8(1) o' + 'f the ...' by greedily consuming a stray letter from the following prose - 'to f the' only appears in the broken form ('According to f the'), not the correct 'According to of the'. Accepts any equivalent wording of \"two\" - the fact under test is the number of resits, not the phrasing.",
+    "expected_source_ids": [
+      "MPO_AEDS_2023_EN"
+    ]
+  },
+  {
+    "id": "exam-faq-leave-of-absence",
+    "question": "Can I take an exam while on a leave of absence?",
+    "expected_contains": [
+      "not"
+    ],
+    "expected_absent": [
+      "Bachelor",
+      "Section 15"
+    ],
+    "notes": "Fact from the newly-added AEDS_website_exams_faq.md (a generic, university-wide FAQ tagged in _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). Guards against the same class of cross-programme bleeding already found twice this session - this FAQ's source page also has Bachelor's-only content (e.g. a Section 15(5) free-trial rule) that was deliberately excluded when curating this document, so it should never appear in an AEDS answer.",
+    "expected_source_ids": [
+      "AEDS_website_exams_faq"
+    ]
+  },
+  {
+    "id": "thesis-faq-credit-points",
+    "question": "How many credit points do I get for my thesis?",
+    "expected_contains": [
+      "30"
+    ],
+    "expected_absent": [
+      "15 credit"
+    ],
+    "notes": "Fact from the newly-added AEDS_website_theses_faq.md (generic, tagged in _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). The source FAQ states Bachelor's theses are 15 credits and most Master's are 30 - the Bachelor's number was deliberately excluded when curating this document and must never appear, while 30 corroborates the catalog/MPO's own thesis ECTS figure.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2023_EN",
+        "semester_planning_rules"
+      ]
+    ]
+  },
+  {
+    "id": "thesis-faq-grading-timeline",
+    "question": "How long does it take for my thesis to be graded after submission?",
+    "expected_contains": [
+      "six week"
+    ],
+    "expected_absent": [
+      "Bachelor"
+    ],
+    "notes": "Corrected: MPO_AEDS_2023_EN.pdf Section 10(7) states examiners must assess the thesis within six weeks for this specific programme - a more specific, authoritative figure than AEDS_website_theses_faq.md's generic 'about eight weeks for most Master's programmes'. The programme-specific source should win per the generic-vs-specific guardrail (see _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). Originally miswritten expecting 'eight' without checking MPO's own text for this fact.",
+    "expected_source_ids": [
+      "MPO_AEDS_2023_EN"
+    ]
+  },
+  {
+    "id": "application-deadline-unqualified",
+    "question": "What are the application deadlines?",
+    "expected_contains": [
+      "july",
+      "june"
+    ],
+    "expected_absent": [],
+    "notes": "Offered as a suggestion chip in the chat UI, so every visitor who clicks it gets this path. Asked without naming a category, the answer must cover all of them rather than silently picking one - the multi-category rule in SYSTEM_PROMPT. The enumerating variant is covered by application-deadline-multi-category; this is the plain phrasing a student actually types."
+  },
+  {
+    "id": "thesis-rules-general",
+    "question": "What are the rules for the Master Thesis?",
+    "expected_contains": [
+      "thesis"
+    ],
+    "expected_absent": [
+      "Bachelor"
+    ],
+    "notes": "The single most-asked question in query_log (21 of 124 turns) and a suggestion chip. Broad on purpose: it checks the assistant can assemble a useful answer from several thesis rules rather than needing a narrow, single-fact question."
+  }
+]
