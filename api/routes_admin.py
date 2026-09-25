@@ -40,6 +40,7 @@ from ingestion.chunker import (
 from graph.nodes import SYSTEM_PROMPT
 from runtime_config import (
     ALLOWED_GEMINI_MODELS,
+    ALLOWED_LLM_PROVIDERS,
     active_chat_model,
     get_runtime_config,
     update_runtime_config,
@@ -749,14 +750,18 @@ class ConfigField(BaseModel):
 class ConfigOut(BaseModel):
     chat_model: ConfigField
     default_system_prompt: ConfigField
+    # llm_provider IS live-editable - graph/nodes.py, api/rate_limit.py and
+    # llm_budget.py all re-check it against the live value on every call, no
+    # restart needed (see runtime_config.py's module docstring).
+    llm_provider: ConfigField
     gemini_model: ConfigField
+    openrouter_model: ConfigField
     retrieval_top_k: ConfigField
     rerank_top_k: ConfigField
     conversation_history_window: ConfigField
     system_prompt_override: ConfigField
     # Read-only, informational - changing these would require re-embedding the
-    # whole corpus or aren't meaningfully switchable via the Gemini API.
-    llm_provider: ConfigField
+    # whole corpus, which nothing here does live.
     embedding_provider: ConfigField
     embedding_model: ConfigField
     reranker_model: ConfigField
@@ -774,7 +779,13 @@ def get_config(admin: User = Depends(require_admin)):
         if settings.embedding_provider == "gemini"
         else settings.ollama_embedding_model
     )
-    serves_gemini = settings.llm_provider == "gemini"
+    serves_gemini = runtime.llm_provider == "gemini"
+    serves_openrouter = runtime.llm_provider == "openrouter"
+    keyed_providers = [
+        p
+        for p in ALLOWED_LLM_PROVIDERS
+        if p == "ollama" or (p == "gemini" and settings.gemini_api_key) or (p == "openrouter" and settings.openrouter_api_key)
+    ]
     return ConfigOut(
         # The model actually answering, whichever provider is active. Without
         # this the UI showed gemini_model unconditionally, i.e. the name of a
@@ -788,6 +799,15 @@ def get_config(admin: User = Depends(require_admin)):
             read_only=True,
             note="In use whenever the override below is empty",
         ),
+        llm_provider=ConfigField(
+            value=runtime.llm_provider,
+            read_only=False,
+            note=(
+                f"Allowed: {', '.join(ALLOWED_LLM_PROVIDERS)}. Only providers with a key "
+                f"configured in .env can be switched to: {', '.join(keyed_providers)}. "
+                "Takes effect on the next chat turn, no restart needed."
+            ),
+        ),
         gemini_model=ConfigField(
             value=runtime.gemini_model,
             # Editable only when Gemini is the active provider; otherwise the
@@ -797,14 +817,22 @@ def get_config(admin: User = Depends(require_admin)):
             note=(
                 f"Allowed: {', '.join(ALLOWED_GEMINI_MODELS)}"
                 if serves_gemini
-                else f"Not in use - llm_provider is '{settings.llm_provider}', "
-                f"serving {active_chat_model()}. Set LLM_PROVIDER=gemini to enable."
+                else f"Not in use - llm_provider is '{runtime.llm_provider}', "
+                f"serving {active_chat_model()}. Set llm_provider to 'gemini' to enable."
             ),
         ),
-        llm_provider=ConfigField(
-            value=settings.llm_provider,
-            read_only=True,
-            note="Set via LLM_PROVIDER in .env - requires a restart",
+        openrouter_model=ConfigField(
+            value=runtime.openrouter_model,
+            read_only=not serves_openrouter,
+            note=(
+                "Any OpenRouter model id, e.g. google/gemma-4-31b-it:free - see "
+                "https://openrouter.ai/api/v1/models for free (':free' suffixed) ones. "
+                "No allowlist here, unlike gemini_model: OpenRouter's catalog changes "
+                "too often to hardcode."
+                if serves_openrouter
+                else f"Not in use - llm_provider is '{runtime.llm_provider}', "
+                f"serving {active_chat_model()}. Set llm_provider to 'openrouter' to enable."
+            ),
         ),
         retrieval_top_k=ConfigField(value=runtime.retrieval_top_k, read_only=False),
         rerank_top_k=ConfigField(value=runtime.rerank_top_k, read_only=False),
@@ -834,7 +862,9 @@ def get_config(admin: User = Depends(require_admin)):
 
 
 class ConfigUpdateRequest(BaseModel):
+    llm_provider: str | None = None
     gemini_model: str | None = None
+    openrouter_model: str | None = None
     retrieval_top_k: int | None = None
     rerank_top_k: int | None = None
     conversation_history_window: int | None = None
@@ -853,14 +883,39 @@ MAX_HISTORY_WINDOW = 30
 
 @router.put("/config", response_model=ConfigOut)
 def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin)):
+    runtime = get_runtime_config()
+
+    # The provider this request ends up with, whether or not llm_provider is
+    # part of the payload - gemini_model/openrouter_model's own editability
+    # checks below must agree with a provider switch made in the SAME
+    # request, not just the one already in force.
+    effective_provider = payload.llm_provider if payload.llm_provider is not None else runtime.llm_provider
+
+    if payload.llm_provider is not None:
+        if payload.llm_provider not in ALLOWED_LLM_PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"llm_provider must be one of: {', '.join(ALLOWED_LLM_PROVIDERS)}",
+            )
+        if payload.llm_provider == "gemini" and not settings.gemini_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot switch to 'gemini': GEMINI_API_KEY is not set in .env.",
+            )
+        if payload.llm_provider == "openrouter" and not settings.openrouter_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot switch to 'openrouter': OPENROUTER_API_KEY is not set in .env.",
+            )
+
     if payload.gemini_model is not None:
-        if settings.llm_provider != "gemini":
+        if effective_provider != "gemini":
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"gemini_model is not editable while llm_provider is "
-                    f"'{settings.llm_provider}' - the chat model is {active_chat_model()}, "
-                    "set via OLLAMA_LLM_MODEL or OPENROUTER_MODEL in .env."
+                    f"'{effective_provider}' - set llm_provider to 'gemini' first "
+                    "(in the same request, if you like)."
                 ),
             )
         if payload.gemini_model not in ALLOWED_GEMINI_MODELS:
@@ -868,6 +923,20 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
                 status_code=400,
                 detail=f"gemini_model must be one of: {', '.join(ALLOWED_GEMINI_MODELS)}",
             )
+
+    if payload.openrouter_model is not None:
+        if effective_provider != "openrouter":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"openrouter_model is not editable while llm_provider is "
+                    f"'{effective_provider}' - set llm_provider to 'openrouter' first "
+                    "(in the same request, if you like)."
+                ),
+            )
+        if not payload.openrouter_model.strip():
+            raise HTTPException(status_code=400, detail="openrouter_model cannot be empty.")
+
     if payload.retrieval_top_k is not None and not 1 <= payload.retrieval_top_k <= MAX_RETRIEVAL_TOP_K:
         raise HTTPException(
             status_code=400, detail=f"retrieval_top_k must be between 1 and {MAX_RETRIEVAL_TOP_K}"
@@ -885,7 +954,6 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
     # Reranking can only narrow the retrieved pool, so a rerank_top_k above
     # retrieval_top_k silently does nothing - reject it rather than let the
     # admin believe they widened the LLM's context.
-    runtime = get_runtime_config()
     effective_retrieval = (
         payload.retrieval_top_k if payload.retrieval_top_k is not None else runtime.retrieval_top_k
     )
@@ -902,8 +970,12 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
         )
 
     fields = {}
+    if payload.llm_provider is not None:
+        fields["llm_provider"] = payload.llm_provider
     if payload.gemini_model is not None:
         fields["gemini_model"] = payload.gemini_model
+    if payload.openrouter_model is not None:
+        fields["openrouter_model"] = payload.openrouter_model
     if payload.retrieval_top_k is not None:
         fields["retrieval_top_k"] = payload.retrieval_top_k
     if payload.rerank_top_k is not None:

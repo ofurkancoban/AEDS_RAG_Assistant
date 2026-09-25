@@ -211,7 +211,9 @@ def _with_resilience(runnable):
     provider, which has no such quota to retry around. Must be applied as
     the LAST wrapping step (after bind_tools, if any) - the retry wrapper
     itself doesn't expose bind_tools."""
-    if settings.llm_provider not in ("gemini", "openrouter"):
+    from runtime_config import get_runtime_config
+
+    if get_runtime_config().llm_provider not in ("gemini", "openrouter"):
         return runnable
     from langchain_core.runnables.retry import ExponentialJitterParams
 
@@ -264,13 +266,19 @@ def _get_ollama_classifier_llm() -> BaseChatModel:
 def get_llm() -> BaseChatModel:
     # temperature=0 favors precise, literal reuse of figures from the retrieved
     # context (ECTS counts, dates, etc) over paraphrased/aggregated restatements.
-    if settings.llm_provider == "gemini":
-        from runtime_config import get_runtime_config
+    #
+    # Reads the LIVE provider (runtime_config, admin-switchable), not
+    # settings.llm_provider directly - the cached getters below are keyed by
+    # model name, so a live switch just starts calling a different one of
+    # them, with no restart needed.
+    from runtime_config import get_runtime_config
 
-        return _get_gemini_llm_cached(get_runtime_config().gemini_model)
+    config = get_runtime_config()
+    if config.llm_provider == "gemini":
+        return _get_gemini_llm_cached(config.gemini_model)
 
-    if settings.llm_provider == "openrouter":
-        return _get_openrouter_llm_cached(settings.openrouter_model)
+    if config.llm_provider == "openrouter":
+        return _get_openrouter_llm_cached(config.openrouter_model)
 
     return _get_ollama_generation_llm()
 
@@ -280,13 +288,14 @@ def get_classifier_llm() -> BaseChatModel:
     # classifier - same provider selection as get_llm, minus the
     # generation-tuned num_ctx/keep_alive Ollama options, which don't apply to
     # these shorter, single-shot classification calls.
-    if settings.llm_provider == "openrouter":
-        return _get_openrouter_llm_cached(settings.openrouter_model)
+    from runtime_config import get_runtime_config
 
-    if settings.llm_provider == "gemini":
-        from runtime_config import get_runtime_config
+    config = get_runtime_config()
+    if config.llm_provider == "openrouter":
+        return _get_openrouter_llm_cached(config.openrouter_model)
 
-        return _get_gemini_llm_cached(get_runtime_config().gemini_model)
+    if config.llm_provider == "gemini":
+        return _get_gemini_llm_cached(config.gemini_model)
 
     return _get_ollama_classifier_llm()
 

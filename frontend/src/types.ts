@@ -107,12 +107,15 @@ export interface AdminConfig {
   chat_model: ConfigField<string>;
   /** The built-in grounding prompt, used whenever the override is empty. */
   default_system_prompt: ConfigField<string>;
+  /** Live-editable: which chat/classifier provider is active - takes effect
+      on the next turn, no restart. */
+  llm_provider: ConfigField<string>;
   gemini_model: ConfigField<string>;
+  openrouter_model: ConfigField<string | null>;
   retrieval_top_k: ConfigField<number>;
   rerank_top_k: ConfigField<number>;
   conversation_history_window: ConfigField<number>;
   system_prompt_override: ConfigField<string | null>;
-  llm_provider: ConfigField<string>;
   embedding_provider: ConfigField<string>;
   embedding_model: ConfigField<string>;
   reranker_model: ConfigField<string>;

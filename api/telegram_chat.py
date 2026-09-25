@@ -16,14 +16,14 @@ have.
 
 Identity: each distinct Telegram chat gets one persistent guest User row
 (email f"telegram-{chat_id}@aeds.local"), created on first message - this
-is what gives a chat its own rate-limit bucket (the same chat_limiter, the
+is what gives a chat its own rate-limit bucket (via get_chat_limiter(), the
 same key format as the web UI: "user:<id>") and its own conversation
 thread, exactly like a browser tab's own guest token. The whole chat shares
 one ongoing thread_id ("{user.id}:telegram") rather than starting a fresh
 thread per message, since Telegram has no "new conversation" affordance of
 its own.
 
-No IP-layer backstop (api.rate_limit.chat_ip_limiter): Telegram gives no
+No IP-layer backstop (api.rate_limit.get_chat_ip_limiter): Telegram gives no
 usable per-caller network address here, so the per-chat identity limiter
 carries the weight the IP layer normally shares with it. A chat_id is not
 free to mint the way a guest browser token is, which is what makes this an
@@ -78,7 +78,7 @@ def handle_user_question(chat_id: str, question: str) -> str:
     exhaustion, or error, never an exception - since this runs inside the
     bot's poll loop, which must never go down over one bad turn."""
     import llm_budget
-    from api.rate_limit import chat_limiter, check_and_record
+    from api.rate_limit import check_and_record, get_chat_limiter
     from db import semantic_cache
     from db.chroma_client import get_embeddings
     from db.models import ChatMessage, PendingSubmission, QueryLog, SessionLocal, SubmissionType
@@ -92,7 +92,7 @@ def handle_user_question(chat_id: str, question: str) -> str:
 
         # Checked before the cache lookup, matching /chat: a throttled chat
         # shouldn't spend the embedding call either.
-        if not chat_limiter.check_and_record(client_key):
+        if not get_chat_limiter().check_and_record(client_key):
             return "Too many questions in a short period - please wait a little and try again."
 
         started = time.monotonic()

@@ -109,7 +109,7 @@ def test_different_chat_ids_get_isolated_users():
 def test_rate_limit_blocks_before_calling_the_pipeline(monkeypatch):
     chat_id = "pytest_chat_throttled"
     try:
-        from api.rate_limit import chat_limiter
+        from api.rate_limit import get_chat_limiter
 
         session = SessionLocal()
         try:
@@ -118,8 +118,9 @@ def test_rate_limit_blocks_before_calling_the_pipeline(monkeypatch):
         finally:
             session.close()
 
+        limiter = get_chat_limiter()
         for _ in range(30):
-            chat_limiter.check_and_record(key)
+            limiter.check_and_record(key)
 
         def _must_not_be_called(*args, **kwargs):
             raise AssertionError("run_chat must not be called once the rate limit is exhausted")

@@ -68,7 +68,8 @@ def test_feedback_rejects_ratings_outside_thumbs_up_or_down(client, guest_header
 def test_chat_limit_is_per_identity_not_per_address(client, guest_headers, other_guest_headers, monkeypatch):
     from api import rate_limit, routes_chat
 
-    monkeypatch.setattr(routes_chat, "chat_limiter", rate_limit.RateLimiter("test-chat-per-identity", [(2, 3600)]))
+    test_limiter = rate_limit.RateLimiter("test-chat-per-identity", [(2, 3600)])
+    monkeypatch.setattr(routes_chat, "get_chat_limiter", lambda: test_limiter)
 
     assert _ask(client, guest_headers).status_code == 200
     assert _ask(client, guest_headers).status_code == 200
@@ -83,7 +84,8 @@ def test_chat_limit_is_per_identity_not_per_address(client, guest_headers, other
 def test_a_per_address_backstop_bounds_identity_farming(client, monkeypatch):
     from api import rate_limit, routes_chat
 
-    monkeypatch.setattr(routes_chat, "chat_ip_limiter", rate_limit.RateLimiter("test-chat-per-ip", [(3, 3600)]))
+    test_limiter = rate_limit.RateLimiter("test-chat-per-ip", [(3, 3600)])
+    monkeypatch.setattr(routes_chat, "get_chat_ip_limiter", lambda: test_limiter)
 
     allowed = 0
     for _ in range(5):
@@ -99,7 +101,8 @@ def test_a_per_address_backstop_bounds_identity_farming(client, monkeypatch):
 def test_the_throttled_response_says_when_to_retry(client, guest_headers, monkeypatch):
     from api import rate_limit, routes_chat
 
-    monkeypatch.setattr(routes_chat, "chat_limiter", rate_limit.RateLimiter("test-retry-after", [(1, 3600)]))
+    test_limiter = rate_limit.RateLimiter("test-retry-after", [(1, 3600)])
+    monkeypatch.setattr(routes_chat, "get_chat_limiter", lambda: test_limiter)
 
     _ask(client, guest_headers)
     blocked = _ask(client, guest_headers)

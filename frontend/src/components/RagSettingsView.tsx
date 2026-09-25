@@ -2,13 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { Sliders, Layers, Sparkles, RotateCcw, Lock, Save, RefreshCw, Eye, Copy } from 'lucide-react';
 import { AdminConfig } from '../types';
 import { getConfig, putConfig } from '../api/client';
-import { ALLOWED_GEMINI_MODELS } from '../api/constants';
+import { ALLOWED_GEMINI_MODELS, ALLOWED_LLM_PROVIDERS } from '../api/constants';
 
 export const RagSettingsView: React.FC = () => {
   const [config, setConfig] = useState<AdminConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
+  // A free-text field (no fixed allowlist, unlike gemini_model's dropdown),
+  // so it needs its own draft state and saves on blur rather than on every
+  // keystroke.
+  const [openrouterModelDraft, setOpenrouterModelDraft] = useState('');
 
   const load = async () => {
     setIsLoading(true);
@@ -16,6 +20,7 @@ export const RagSettingsView: React.FC = () => {
       const data = await getConfig();
       setConfig(data);
       setSystemPrompt(data.system_prompt_override.value || '');
+      setOpenrouterModelDraft(data.openrouter_model.value || '');
     } catch (e) {
       console.error('Failed to load config:', e);
     } finally {
@@ -33,6 +38,7 @@ export const RagSettingsView: React.FC = () => {
       const updated = await putConfig(fields);
       setConfig(updated);
       setSystemPrompt(updated.system_prompt_override.value || '');
+      setOpenrouterModelDraft(updated.openrouter_model.value || '');
     } catch (e: any) {
       alert(e.message || 'Failed to save');
       // The sliders update local state optimistically on drag, so a rejected
@@ -143,25 +149,37 @@ export const RagSettingsView: React.FC = () => {
             />
           </div>
 
-          {/* Only a live control when Gemini is the active provider. Under the
-              local (Ollama) provider gemini_model is stored but never read, so
-              rendering an editable dropdown claimed a switch that did nothing. */}
+          {/* llm_provider is live-editable - it takes effect on the next chat
+              turn, no restart, since graph/nodes.py re-checks it on every
+              call (see api/routes_admin.py's ConfigOut.llm_provider note). */}
           <div className="space-y-1 pt-2 border-t border-accent-500/10">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-[var(--text-secondary)]">Chat model</label>
-              <span className="text-[10px] font-mono uppercase tracking-wide px-2 py-0.5 rounded-full bg-accent-500/10 text-accent-600 dark:text-accent-300 border border-accent-500/25">
-                {config.llm_provider.value}
+              <label className="text-xs font-bold text-[var(--text-secondary)]">LLM provider</label>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent-500/10 text-accent-600 dark:text-accent-300 border border-accent-500/25">
+                {config.chat_model.value}
               </span>
             </div>
+            <select
+              value={config.llm_provider.value}
+              onChange={(e) => save({ llm_provider: e.target.value })}
+              className="w-full glass-well rounded-2xl p-2.5 text-xs text-[var(--text)] focus:outline-none focus:border-accent-500 cursor-pointer"
+            >
+              {ALLOWED_LLM_PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <p className="text-[11px] text-[var(--text-faint)] italic">{config.llm_provider.note}</p>
+          </div>
 
+          {/* Only a live control when Gemini is the active provider. Under a
+              different provider gemini_model is stored but never read, so
+              rendering an editable dropdown would claim a switch that does
+              nothing. */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[var(--text-secondary)]">Gemini model</label>
             {config.gemini_model.read_only ? (
-              <>
-                <div className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
-                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{config.chat_model.value}</span>
-                </div>
-                <p className="text-[11px] text-[var(--text-faint)] italic">{config.gemini_model.note}</p>
-              </>
+              <div className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{config.gemini_model.value}</span>
+              </div>
             ) : (
               <select
                 value={config.gemini_model.value}
@@ -171,18 +189,44 @@ export const RagSettingsView: React.FC = () => {
                 {ALLOWED_GEMINI_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
+            <p className="text-[11px] text-[var(--text-faint)] italic">{config.gemini_model.note}</p>
+          </div>
+
+          {/* openrouter_model has no fixed allowlist (OpenRouter's catalog
+              changes too often to hardcode) - free text, saved on blur
+              rather than every keystroke. */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[var(--text-secondary)]">OpenRouter model</label>
+            {config.openrouter_model.read_only ? (
+              <div className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{config.openrouter_model.value || '(not set)'}</span>
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={openrouterModelDraft}
+                onChange={(e) => setOpenrouterModelDraft(e.target.value)}
+                onBlur={() => {
+                  if (openrouterModelDraft.trim() && openrouterModelDraft !== config.openrouter_model.value) {
+                    save({ openrouter_model: openrouterModelDraft.trim() });
+                  }
+                }}
+                placeholder="e.g. google/gemma-4-31b-it:free"
+                className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text)] focus:outline-none focus:border-accent-500"
+              />
+            )}
+            <p className="text-[11px] text-[var(--text-faint)] italic">{config.openrouter_model.note}</p>
           </div>
         </div>
 
         <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
           <div className="flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
             <Lock className="w-5 h-5 text-[var(--text-muted)]" />
-            <h2 className="text-sm font-extrabold text-[var(--text)]">Read-only (requires re-embedding or restart)</h2>
+            <h2 className="text-sm font-extrabold text-[var(--text)]">Read-only (requires re-embedding)</h2>
           </div>
 
           {[
-            ['LLM provider', config.llm_provider],
-            ['Chat model', config.chat_model],
             ['Embedding provider', config.embedding_provider],
             ['Embedding model', config.embedding_model],
             ['Reranker model', config.reranker_model],

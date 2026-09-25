@@ -6,6 +6,34 @@ from pydantic_settings import BaseSettings
 DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
+def daily_budget_for_provider(provider: str, explicit: int) -> int:
+    """Requests allowed per day, 0 meaning unlimited. Shared by
+    Settings.effective_daily_llm_budget (the .env-configured provider) and
+    llm_budget.py's live version (the admin-switchable runtime provider, see
+    runtime_config.py) - one formula, so a provider's number can never mean
+    something different depending on which of those two call sites asks.
+
+    Derived from the provider unless `explicit` (Settings.daily_llm_call_budget)
+    is set to something >= 0. The observed free-tier cap for
+    gemini-3.1-flash-lite was 500/day, so 450 leaves margin for the retries
+    _with_resilience makes (which also spend quota). openrouter's ":free"
+    models are capped at 50/day with no purchased credits (see config.py's
+    openrouter_api_key field) - 45 leaves the same retry margin; if the
+    account has bought credits and is really on the 1000/day tier, set
+    DAILY_LLM_CALL_BUDGET explicitly rather than relying on this
+    conservative default. Local models are unmetered - their real
+    constraint is CPU throughput, which the per-client rate limiter and the
+    hardware already bound.
+    """
+    if explicit >= 0:
+        return explicit
+    if provider == "gemini":
+        return 450
+    if provider == "openrouter":
+        return 45
+    return 0
+
+
 class Settings(BaseSettings):
     base_dir: Path = Path(__file__).resolve().parent
 
@@ -162,27 +190,13 @@ class Settings(BaseSettings):
 
     @property
     def effective_daily_llm_budget(self) -> int:
-        """Requests allowed per day, 0 meaning unlimited.
-
-        Derived from the provider unless daily_llm_call_budget is set
-        explicitly. The observed free-tier cap for gemini-3.1-flash-lite was
-        500/day, so 450 leaves margin for the retries _with_resilience makes
-        (which also spend quota). openrouter's ":free" models are capped at
-        50/day with no purchased credits (see openrouter_api_key's
-        docstring) - 45 leaves the same retry margin; if the account has
-        bought credits and is really on the 1000/day tier, set
-        daily_llm_call_budget explicitly rather than relying on this
-        conservative default. Local models are unmetered - their real
-        constraint is CPU throughput, which the per-client rate limiter and
-        the hardware already bound.
+        """Requests allowed per day for the provider fixed at process start
+        (from .env). llm_budget.py computes the LIVE version of this same
+        number against the admin-switchable runtime provider (see
+        runtime_config.py) - both call daily_budget_for_provider so the two
+        can never disagree on what a given provider's number actually is.
         """
-        if self.daily_llm_call_budget >= 0:
-            return self.daily_llm_call_budget
-        if self.llm_provider == "gemini":
-            return 450
-        if self.llm_provider == "openrouter":
-            return 45
-        return 0
+        return daily_budget_for_provider(self.llm_provider, self.daily_llm_call_budget)
 
     class Config:
         env_file = ".env"

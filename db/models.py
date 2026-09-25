@@ -140,15 +140,19 @@ class Deadline(Base):
 class RuntimeConfig(Base):
     """Single-row table (id=1) holding the subset of settings that are safe to
     change at runtime without a restart or re-ingestion - see
-    runtime_config.py. Everything else (embedding provider/model, llm
-    provider, reranker model) stays a config.py constant, since changing those
-    would require re-embedding the whole corpus or aren't meaningfully
-    switchable via the Gemini API."""
+    runtime_config.py. Embedding provider/model and reranker model stay
+    config.py constants, since changing those would require re-embedding the
+    whole corpus. llm_provider and openrouter_model ARE here (unlike the
+    module docstring's older claim) - switching the chat/classifier provider
+    needs no re-embedding, only a fresh LLM client, which
+    graph/nodes.py's cached getters already re-check on every call."""
 
     __tablename__ = "runtime_config"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    llm_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     gemini_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    openrouter_model: Mapped[str | None] = mapped_column(String, nullable=True)
     retrieval_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rerank_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
     conversation_history_window: Mapped[int | None] = mapped_column(Integer, nullable=True)

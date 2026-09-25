@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy import update
 
-from config import settings
 from db.models import DailyLlmUsage, SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -66,8 +65,23 @@ def usage_today() -> int:
         session.close()
 
 
+def _live_daily_budget() -> int:
+    """Like settings.effective_daily_llm_budget, but against the admin-
+    switchable runtime provider (see runtime_config.py) rather than the one
+    fixed in .env at process start - otherwise switching the provider live
+    left this ceiling stuck at whichever provider's number was baked in at
+    startup, which is actively dangerous for a tight quota (an admin
+    switching to openrouter mid-run would keep gemini's 450/day ceiling
+    instead of openrouter's real 45, with no protection until it started
+    failing with raw 429s)."""
+    from config import daily_budget_for_provider, settings
+    from runtime_config import get_runtime_config
+
+    return daily_budget_for_provider(get_runtime_config().llm_provider, settings.daily_llm_call_budget)
+
+
 def remaining() -> int:
-    return max(0, settings.effective_daily_llm_budget - usage_today())
+    return max(0, _live_daily_budget() - usage_today())
 
 
 def has_headroom(estimated_calls: int = 3) -> bool:
@@ -78,7 +92,7 @@ def has_headroom(estimated_calls: int = 3) -> bool:
     what the turn might cost rather than the single call that would trip it
     mid-answer, which would leave the user with a half-finished response.
     """
-    if settings.effective_daily_llm_budget <= 0:
+    if _live_daily_budget() <= 0:
         # No ceiling configured - the usual case for a local model, which has
         # no external quota to protect.
         return True

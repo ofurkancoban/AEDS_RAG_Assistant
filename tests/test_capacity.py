@@ -34,7 +34,10 @@ def test_the_cohort_can_come_back_the_same_day():
 
 
 def test_one_student_still_cannot_monopolise_the_pipeline():
-    limiter = rate_limit.chat_limiter
+    # get_chat_limiter() picks by the live provider - conftest.py pins
+    # LLM_PROVIDER=ollama, so this is the ollama-tier numbers this test's
+    # own reasoning is about.
+    limiter = rate_limit.get_chat_limiter()
     hourly = limiter._rules[0][0]
 
     # Measured throughput on the answer pipeline is about 6.5 answers/minute,
@@ -44,7 +47,7 @@ def test_one_student_still_cannot_monopolise_the_pipeline():
 
 
 def test_the_address_backstop_stays_near_what_the_hardware_can_serve():
-    hourly = rate_limit.chat_ip_limiter._rules[0][0]
+    hourly = rate_limit.get_chat_ip_limiter()._rules[0][0]
 
     # Too low and a busy shared network is throttled below capacity; far above
     # capacity and the backstop stops bounding anything, since the queue would
@@ -52,14 +55,26 @@ def test_the_address_backstop_stays_near_what_the_hardware_can_serve():
     assert 250 <= hourly <= 600
 
 
-def test_every_limiter_has_a_distinct_name():
+def test_every_limiter_category_has_a_distinct_name():
     limiters = [
         rate_limit.submission_limiter,
         rate_limit.auth_limiter,
         rate_limit.guest_limiter,
-        rate_limit.chat_limiter,
-        rate_limit.chat_ip_limiter,
+        rate_limit.get_chat_limiter(),
+        rate_limit.get_chat_ip_limiter(),
     ]
     names = [limiter.name for limiter in limiters]
     # Sharing a name would silently merge two limiters' windows in the table.
     assert len(names) == len(set(names))
+
+
+def test_every_provider_has_chat_and_chat_ip_rules():
+    """get_chat_limiter/get_chat_ip_limiter fall back to gemini's numbers for
+    an unrecognised provider (see their docstrings) - this would silently
+    hide a missing entry for a real provider name instead of erroring, so
+    it's checked explicitly here."""
+    from runtime_config import ALLOWED_LLM_PROVIDERS
+
+    for provider in ALLOWED_LLM_PROVIDERS:
+        assert provider in rate_limit._chat_limiters
+        assert provider in rate_limit._chat_ip_limiters

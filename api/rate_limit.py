@@ -16,9 +16,12 @@ The limiters guard different scarce resources:
                        does not own.
   guest_limiter      - bounds how fast new identities can be minted, since
                        each one inserts a users row.
-  chat_limiter       - protects the answer pipeline. Against Gemini that is a
-                       metered daily quota one visitor could otherwise drain
-                       for everyone; against the local model it is CPU time.
+  get_chat_limiter() - protects the answer pipeline, picking the rule set for
+                       the live LLM provider (runtime_config.py) - against a
+                       metered API that is a daily quota one visitor could
+                       otherwise drain for everyone; against the local model
+                       it is CPU time. A function, not a constant, because
+                       the provider is admin-switchable without a restart.
 
 A per-client limit cannot cap total consumption across many clients; it stops
 one actor from monopolising it. Capping total daily spend is a separate,
@@ -184,11 +187,17 @@ class RateLimiter:
 
 submission_limiter = RateLimiter("submission", [(5, 3600)])
 
-# Sized to the provider, because what is scarce differs completely between the
-# two. Against Gemini a turn spends 2-3 requests from a ~500/day free-tier
-# quota, so one heavy user really can take the assistant down for everyone. A
-# local model has no such quota - the only cost is CPU time, which the hardware
-# already bounds at roughly 8 questions a minute for the whole server.
+# Sized to the provider, because what is scarce differs completely between
+# them. Against Gemini a turn spends 2-3 requests from a ~500/day free-tier
+# quota, so one heavy user really can take the assistant down for everyone.
+# Against openrouter's free tier that quota is far tighter still (50/day
+# total with no purchased credits - see config.py's openrouter_api_key
+# field), so one user left unchecked could burn the whole day's budget alone
+# in under an hour even at these numbers; llm_budget.py's GLOBAL daily
+# ceiling is what actually protects that, this is just the per-person share
+# of it. A local model has no such quota - the only cost is CPU time, which
+# the hardware already bounds at roughly 8 questions a minute for the whole
+# server.
 #
 # The tight Gemini numbers were being applied to the local default too, which
 # made a normal session hit "too many questions" for no saving at all: the
@@ -196,6 +205,7 @@ submission_limiter = RateLimiter("submission", [(5, 3600)])
 # suggestions consumed most of a 20/hour allowance in a couple of minutes.
 _CHAT_RULES = {
     "gemini": [(20, 3600), (60, 86400)],
+    "openrouter": [(10, 3600), (30, 86400)],
     "ollama": [(30, 3600), (150, 86400)],
 }
 
@@ -220,12 +230,6 @@ auth_limiter = RateLimiter("auth", [(10, 300), (50, 3600)])
 # arrive several times over, e.g. from a lab and again from a lecture hall.
 guest_limiter = RateLimiter("guest", [(60, 3600), (300, 86400)])
 
-# Per person. Guests are keyed by their own identity rather than by IP, so
-# students behind one campus address get an allowance each instead of sharing a
-# single bucket between them - which, at the old numbers, worked out to about
-# two questions each.
-chat_limiter = RateLimiter("chat", _CHAT_RULES.get(settings.llm_provider, _CHAT_RULES["gemini"]))
-
 # Backstop, per IP, across every identity coming from that address. Keying
 # chat per identity is right for fairness but forgeable on its own: a script
 # can mint identities (within guest_limiter) and cycle them. This bounds that
@@ -234,9 +238,36 @@ chat_limiter = RateLimiter("chat", _CHAT_RULES.get(settings.llm_provider, _CHAT_
 # everyone else, while a busy shared network still fits underneath it.
 _CHAT_IP_RULES = {
     "gemini": [(60, 3600), (200, 86400)],
+    "openrouter": [(15, 3600), (40, 86400)],
     "ollama": [(300, 3600), (1200, 86400)],
 }
-chat_ip_limiter = RateLimiter("chat_ip", _CHAT_IP_RULES.get(settings.llm_provider, _CHAT_IP_RULES["gemini"]))
+
+# One RateLimiter per provider, built once - all sharing the same `name`
+# ("chat" / "chat_ip"), so they read and write the SAME SQLite bucket
+# regardless of which provider's numbers are currently in force (see
+# RateLimiter._bucket: the bucket key is name+identity, never the rule
+# list). A live provider switch (runtime_config.py) therefore just changes
+# which thresholds apply to the same ongoing event history, rather than
+# resetting anyone's count.
+_chat_limiters = {provider: RateLimiter("chat", rules) for provider, rules in _CHAT_RULES.items()}
+_chat_ip_limiters = {provider: RateLimiter("chat_ip", rules) for provider, rules in _CHAT_IP_RULES.items()}
+
+
+def get_chat_limiter() -> RateLimiter:
+    """Per person. Guests are keyed by their own identity rather than by IP,
+    so students behind one campus address get an allowance each instead of
+    sharing a single bucket between them - which, at the old numbers, worked
+    out to about two questions each. Picks the instance for the LIVE
+    provider (runtime_config.py), not the one fixed in .env at startup."""
+    from runtime_config import get_runtime_config
+
+    return _chat_limiters.get(get_runtime_config().llm_provider, _chat_limiters["gemini"])
+
+
+def get_chat_ip_limiter() -> RateLimiter:
+    from runtime_config import get_runtime_config
+
+    return _chat_ip_limiters.get(get_runtime_config().llm_provider, _chat_ip_limiters["gemini"])
 
 
 def check_and_record(key: str) -> bool:

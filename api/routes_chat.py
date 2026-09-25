@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 import llm_budget
 from api.auth import get_current_user_or_guest
-from api.rate_limit import chat_ip_limiter, chat_limiter, check_and_record, client_ip
+from api.rate_limit import check_and_record, client_ip, get_chat_ip_limiter, get_chat_limiter
 from api.telegram_bot import notify_new_submission
 from db import semantic_cache
 from db.models import ChatMessage, PendingSubmission, QueryLog, SubmissionType, User, get_session
@@ -37,22 +37,24 @@ def _enforce_chat_limit(request: Request, user: User) -> None:
     running many real students never reaches it.
     """
     ip_key = f"ip:{client_ip(request)}"
-    if not chat_ip_limiter.check_and_record(ip_key):
+    ip_limiter = get_chat_ip_limiter()
+    if not ip_limiter.check_and_record(ip_key):
         raise HTTPException(
             status_code=429,
             detail=(
                 "This network has reached its shared question limit for now - "
                 "please wait a little and try again."
             ),
-            headers={"Retry-After": str(chat_ip_limiter.retry_after(ip_key))},
+            headers={"Retry-After": str(ip_limiter.retry_after(ip_key))},
         )
 
     key = _client_key(request, user)
-    if not chat_limiter.check_and_record(key):
+    limiter = get_chat_limiter()
+    if not limiter.check_and_record(key):
         raise HTTPException(
             status_code=429,
             detail="Too many questions in a short period - please wait a little and try again.",
-            headers={"Retry-After": str(chat_limiter.retry_after(key))},
+            headers={"Retry-After": str(limiter.retry_after(key))},
         )
 
 

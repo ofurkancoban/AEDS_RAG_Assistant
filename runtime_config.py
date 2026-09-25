@@ -3,9 +3,13 @@ restart-only ones). Backed by a single-row SQLite table (RuntimeConfig,
 id=1) so changes made via the admin RAG Settings UI survive a restart.
 
 Deliberately excludes anything that would require re-embedding the corpus
-(embedding_provider, local_embedding_model) or that has no real live-switch
-value (llm_provider, reranker_model) - those stay config.py constants and are
-surfaced to the admin UI as read-only info instead.
+(embedding_provider, local_embedding_model) or the reranker model, which
+stay config.py constants. llm_provider IS here and IS live-switchable -
+graph/nodes.py's get_llm()/get_classifier_llm() re-check it on every call,
+and api/rate_limit.py + llm_budget.py both derive their provider-specific
+numbers from the live value too (see get_chat_limiter/get_chat_ip_limiter
+and llm_budget._live_daily_budget), so a switch changes the actual model
+AND its quota protection together, not just the model.
 """
 
 from functools import lru_cache
@@ -16,6 +20,8 @@ from db.models import RuntimeConfig, SessionLocal
 # Whitelisted Gemini chat models a live switch is actually safe/sensible
 # between - both are on the free tier and need no other code changes.
 ALLOWED_GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.6-flash"]
+
+ALLOWED_LLM_PROVIDERS = ["ollama", "gemini", "openrouter"]
 
 
 def _override(stored, fallback):
@@ -31,7 +37,9 @@ def _override(stored, fallback):
 
 class EffectiveConfig:
     def __init__(self, row: RuntimeConfig | None):
+        self.llm_provider = _override(row.llm_provider if row else None, settings.llm_provider)
         self.gemini_model = _override(row.gemini_model if row else None, settings.gemini_model)
+        self.openrouter_model = _override(row.openrouter_model if row else None, settings.openrouter_model)
         self.retrieval_top_k = _override(row.retrieval_top_k if row else None, settings.retrieval_top_k)
         self.rerank_top_k = _override(row.rerank_top_k if row else None, settings.rerank_top_k)
         self.conversation_history_window = _override(
@@ -42,17 +50,18 @@ class EffectiveConfig:
 
 
 def active_chat_model() -> str:
-    """The model actually answering chat turns.
-
-    gemini_model is only consulted when llm_provider is "gemini" (see
-    graph/nodes.py's _get_generation_llm). With the default local provider the
-    admin UI was reporting a Gemini model name that nothing was running, so
-    every caller that wants to *display* the chat model must go through here.
+    """The model actually answering chat turns, against the LIVE provider
+    (admin-switchable, see EffectiveConfig.llm_provider) - not the one fixed
+    in .env at startup. Every caller that wants to *display* the chat model
+    must go through here rather than settings.llm_provider directly, or a
+    live switch away from the .env default would report a model that isn't
+    actually running.
     """
-    if settings.llm_provider == "gemini":
-        return get_runtime_config().gemini_model
-    if settings.llm_provider == "openrouter":
-        return settings.openrouter_model
+    config = get_runtime_config()
+    if config.llm_provider == "gemini":
+        return config.gemini_model
+    if config.llm_provider == "openrouter":
+        return config.openrouter_model
     return settings.ollama_llm_model
 
 
