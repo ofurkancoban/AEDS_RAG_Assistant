@@ -184,17 +184,34 @@ def _get_gemini_llm_cached(model_name: str) -> BaseChatModel:
     )
 
 
+@lru_cache(maxsize=4)
+def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
+    # OpenRouter is OpenAI-API-compatible, so ChatOpenAI pointed at its base
+    # URL is the client - this is not an OpenAI account or API key.
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=model_name,
+        api_key=settings.openrouter_api_key,
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0,
+        callbacks=[_BudgetCountingCallback()],
+    )
+
+
 def _with_resilience(runnable):
-    """Wraps a Gemini Runnable with a much longer retry backoff than the
-    library's own hardcoded policy (langchain_google_genai's _chat_with_retry
-    is hardcoded to only 2 attempts with a max 60s wait - nowhere near enough
-    to actually clear a per-minute rate-limit window, so bursts of requests
-    - each chat turn can be 2-3 LLM calls: tool router, generation, and the
-    contribution classifier - reliably blew straight through it as outright
-    errors). No-op for the Ollama provider, which has no such quota to retry
-    around. Must be applied as the LAST wrapping step (after bind_tools, if
-    any) - the retry wrapper itself doesn't expose bind_tools."""
-    if settings.llm_provider != "gemini":
+    """Wraps a metered-provider Runnable with a much longer retry backoff
+    than the library's own hardcoded policy (langchain_google_genai's
+    _chat_with_retry is hardcoded to only 2 attempts with a max 60s wait -
+    nowhere near enough to actually clear a per-minute rate-limit window, so
+    bursts of requests - each chat turn can be 2-3 LLM calls: tool router,
+    generation, and the contribution classifier - reliably blew straight
+    through it as outright errors). Applied to openrouter too: its free-tier
+    20/minute cap is easier to trip than Gemini's. No-op for the Ollama
+    provider, which has no such quota to retry around. Must be applied as
+    the LAST wrapping step (after bind_tools, if any) - the retry wrapper
+    itself doesn't expose bind_tools."""
+    if settings.llm_provider not in ("gemini", "openrouter"):
         return runnable
     from langchain_core.runnables.retry import ExponentialJitterParams
 
@@ -252,6 +269,9 @@ def get_llm() -> BaseChatModel:
 
         return _get_gemini_llm_cached(get_runtime_config().gemini_model)
 
+    if settings.llm_provider == "openrouter":
+        return _get_openrouter_llm_cached(settings.openrouter_model)
+
     return _get_ollama_generation_llm()
 
 
@@ -260,6 +280,9 @@ def get_classifier_llm() -> BaseChatModel:
     # classifier - same provider selection as get_llm, minus the
     # generation-tuned num_ctx/keep_alive Ollama options, which don't apply to
     # these shorter, single-shot classification calls.
+    if settings.llm_provider == "openrouter":
+        return _get_openrouter_llm_cached(settings.openrouter_model)
+
     if settings.llm_provider == "gemini":
         from runtime_config import get_runtime_config
 

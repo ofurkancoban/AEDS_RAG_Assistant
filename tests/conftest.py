@@ -32,6 +32,13 @@ os.environ["CHECKPOINTER_SQLITE_PATH"] = str(_TMP / "checkpoints.db")
 os.environ["CHROMA_PERSIST_DIR"] = str(_TMP / "chroma")
 os.environ["JWT_SECRET"] = "test-secret-not-the-default"
 os.environ["ENVIRONMENT"] = "development"
+# Overrides whatever is in .env - without this, a dev machine set to
+# gemini/openrouter for manual testing silently changes which
+# api/rate_limit.py rules and llm_budget defaults the suite exercises (found
+# live: test_capacity.py failed only because .env had LLM_PROVIDER=openrouter
+# at the time, which api/rate_limit.py's module-level RateLimiter
+# construction picks up same as everything else here).
+os.environ["LLM_PROVIDER"] = "ollama"
 # Overrides whatever is in .env - without this, a dev machine with a real bot
 # configured sends real Telegram messages on every test run (found live: the
 # fixture submission in test_submissions_are_rate_limited posted "New

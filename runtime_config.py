@@ -51,6 +51,8 @@ def active_chat_model() -> str:
     """
     if settings.llm_provider == "gemini":
         return get_runtime_config().gemini_model
+    if settings.llm_provider == "openrouter":
+        return settings.openrouter_model
     return settings.ollama_llm_model
 
 

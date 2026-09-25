@@ -798,7 +798,7 @@ def get_config(admin: User = Depends(require_admin)):
                 f"Allowed: {', '.join(ALLOWED_GEMINI_MODELS)}"
                 if serves_gemini
                 else f"Not in use - llm_provider is '{settings.llm_provider}', "
-                f"serving {settings.ollama_llm_model}. Set LLM_PROVIDER=gemini to enable."
+                f"serving {active_chat_model()}. Set LLM_PROVIDER=gemini to enable."
             ),
         ),
         llm_provider=ConfigField(
@@ -859,8 +859,8 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
                 status_code=400,
                 detail=(
                     f"gemini_model is not editable while llm_provider is "
-                    f"'{settings.llm_provider}' - the chat model is {settings.ollama_llm_model}, "
-                    "set via OLLAMA_LLM_MODEL in .env."
+                    f"'{settings.llm_provider}' - the chat model is {active_chat_model()}, "
+                    "set via OLLAMA_LLM_MODEL or OPENROUTER_MODEL in .env."
                 ),
             )
         if payload.gemini_model not in ALLOWED_GEMINI_MODELS:

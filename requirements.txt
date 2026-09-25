@@ -9,6 +9,9 @@ langchain-ollama==0.2.0
 langchain-chroma==0.1.4
 langchain-google-genai==2.1.0
 google-ai-generativelanguage>=0.6.16,<0.7.0
+# OpenRouter is OpenAI-API-compatible, so this is the client for
+# llm_provider=openrouter too (see graph/nodes.py) - not an OpenAI account.
+langchain-openai==0.2.14
 rank_bm25==0.2.2
 chromadb==0.5.11
 pypdf==5.0.1

@@ -50,6 +50,19 @@ class Settings(BaseSettings):
     # requests/day) and is the practical default for this project.
     gemini_model: str = "gemini-3.1-flash-lite"
 
+    # llm_provider="openrouter": OpenRouter is OpenAI-API-compatible (see
+    # langchain_openai.ChatOpenAI usage in graph/nodes.py), and its ":free"
+    # suffixed models cost nothing - but the free tier is small: 20
+    # requests/minute, and only 50/day unless the account has purchased at
+    # least $10 in credits at some point (then 1000/day). A chat turn can
+    # spend 2-3 requests (tool router + generation [+ contribution
+    # classifier]), so the no-credits tier realistically covers roughly
+    # 15-25 real questions per day - measure your own account's tier via
+    # GET https://openrouter.ai/api/v1/key before relying on this for more
+    # than a handful of concurrent users.
+    openrouter_api_key: str = ""
+    openrouter_model: str = "google/gemma-4-31b-it:free"
+
     # Ceiling on LLM requests issued per calendar day, enforced in-app (see
     # llm_budget.py). 0 means no ceiling; leave it at -1 to derive one from the
     # provider (see effective_daily_llm_budget).
@@ -154,13 +167,22 @@ class Settings(BaseSettings):
         Derived from the provider unless daily_llm_call_budget is set
         explicitly. The observed free-tier cap for gemini-3.1-flash-lite was
         500/day, so 450 leaves margin for the retries _with_resilience makes
-        (which also spend quota). Local models are unmetered - their real
+        (which also spend quota). openrouter's ":free" models are capped at
+        50/day with no purchased credits (see openrouter_api_key's
+        docstring) - 45 leaves the same retry margin; if the account has
+        bought credits and is really on the 1000/day tier, set
+        daily_llm_call_budget explicitly rather than relying on this
+        conservative default. Local models are unmetered - their real
         constraint is CPU throughput, which the per-client rate limiter and
         the hardware already bound.
         """
         if self.daily_llm_call_budget >= 0:
             return self.daily_llm_call_budget
-        return 450 if self.llm_provider == "gemini" else 0
+        if self.llm_provider == "gemini":
+            return 450
+        if self.llm_provider == "openrouter":
+            return 45
+        return 0
 
     class Config:
         env_file = ".env"
@@ -181,6 +203,14 @@ if settings.llm_provider == "gemini" and not settings.gemini_api_key:
         "GEMINI_API_KEY=<your key> to .env (get one at "
         "https://aistudio.google.com/apikey), or set LLM_PROVIDER=ollama to "
         "use the local model instead."
+    )
+
+if settings.llm_provider == "openrouter" and not settings.openrouter_api_key:
+    raise RuntimeError(
+        "llm_provider is 'openrouter' but openrouter_api_key is not set. Add "
+        "OPENROUTER_API_KEY=<your key> to .env (get one at "
+        "https://openrouter.ai/keys), or set LLM_PROVIDER=ollama to use the "
+        "local model instead."
     )
 
 for path in (settings.sqlite_path.parent, settings.chroma_persist_dir, settings.documents_dir):
