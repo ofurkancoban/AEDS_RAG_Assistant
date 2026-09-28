@@ -93,9 +93,9 @@ async def _handle_unexpected_error(request: Request, exc: Exception):
     if now - _last_alert_at.get(key, _NEVER_ALERTED) > _ALERT_COOLDOWN_SECONDS:
         _last_alert_at[key] = now
         try:
-            from api.telegram_bot import send_message
+            from api.telegram_bot import _notify_admins
 
-            send_message(
+            _notify_admins(
                 f"Unhandled error on {request.method} {request.url.path}\n"
                 f"{type(exc).__name__}: {exc}"
             )

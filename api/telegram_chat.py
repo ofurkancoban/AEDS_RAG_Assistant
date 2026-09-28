@@ -66,17 +66,85 @@ def _format_reply(answer: str, sources: list) -> str:
     from api.telegram_bot import _truncate
 
     text = _truncate(answer, limit=_ANSWER_PREVIEW_CHARS)
-    source_ids = sorted({s["source_id"] if isinstance(s, dict) else s.source_id for s in sources})
-    if source_ids:
-        text += "\n\nSources: " + ", ".join(source_ids)
+
+    def get(source, key):
+        return source.get(key) if isinstance(source, dict) else getattr(source, key, None)
+
+    # Deduped by source_id first (a source can appear once per retrieved
+    # chunk/page) - expired_since is the same for every chunk of one source,
+    # so any single occurrence carries the label correctly.
+    by_id = {get(s, "source_id"): (get(s, "expired_since"), get(s, "url")) for s in sources}
+    if by_id:
+        lines = []
+        for source_id, (expired_since, url) in sorted(by_id.items()):
+            line = f"⚠️ {source_id} (outdated since {expired_since})" if expired_since else source_id
+            if url:
+                # A bare http(s) URL in a plain-text Telegram message is
+                # auto-linkified by the client on its own - no parse_mode
+                # (and the escaping it would require for arbitrary model
+                # output) needed for a tappable link.
+                line += f"\n{url}"
+            lines.append(line)
+        text += "\n\nSources:\n" + "\n".join(lines)
     return text
 
 
-def handle_user_question(chat_id: str, question: str) -> str:
+def _thread_id_for(user) -> str:
+    """The legacy, epoch-less format ("<id>:telegram") is kept for epoch 0
+    rather than switching every user onto a "<id>:telegram:0" scheme, so
+    deploying /new does not silently orphan every existing conversation
+    already under the old thread_id the moment this ships."""
+    epoch = user.telegram_thread_epoch or 0
+    return f"{user.id}:telegram" if epoch == 0 else f"{user.id}:telegram:{epoch}"
+
+
+def start_new_conversation(chat_id: str) -> str:
+    """Handles /new: bumps the user's thread epoch so the next question
+    starts a brand new LangGraph thread with no memory of earlier messages -
+    the only reset affordance a Telegram chat has, unlike the web UI where a
+    new browser tab/session does this implicitly."""
+    from db.models import SessionLocal
+
+    session = SessionLocal()
+    try:
+        user = _get_or_create_telegram_user(session, chat_id)
+        user.telegram_thread_epoch = (user.telegram_thread_epoch or 0) + 1
+        session.commit()
+        return "Started a new conversation - I won't remember earlier messages in this chat anymore."
+    finally:
+        session.close()
+
+
+def record_feedback(chat_id: str, query_log_id: int, rating: int) -> str:
+    """Handles a 👍/👎 button press - the Telegram equivalent of the web
+    UI's thumbs control (api/routes_chat.py's rate_answer), same ownership
+    check: only the chat that asked the logged question may rate it."""
+    if rating not in (1, -1):
+        return "Invalid rating."
+
+    from db.models import QueryLog, SessionLocal
+
+    session = SessionLocal()
+    try:
+        user = _get_or_create_telegram_user(session, chat_id)
+        entry = session.get(QueryLog, query_log_id)
+        if entry is None or entry.user_id != user.id:
+            return "Can't rate that."
+        entry.rating = rating
+        session.commit()
+        return "Thanks for the feedback!"
+    finally:
+        session.close()
+
+
+def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
     """Answers one question from a non-admin Telegram chat. Always returns a
-    string to send back - a friendly message on rate limit, budget
-    exhaustion, or error, never an exception - since this runs inside the
-    bot's poll loop, which must never go down over one bad turn."""
+    (reply text, query_log_id) pair - the reply is a friendly message on
+    rate limit, budget exhaustion, or error, never an exception, since this
+    runs inside the bot's poll loop, which must never go down over one bad
+    turn. query_log_id is None whenever no QueryLog row was created (every
+    early-return case above) - the caller uses it to decide whether to
+    attach 👍/👎 feedback buttons, which need a row to record against."""
     import llm_budget
     from api.rate_limit import check_and_record, get_chat_limiter
     from db import semantic_cache
@@ -87,13 +155,13 @@ def handle_user_question(chat_id: str, question: str) -> str:
     session = SessionLocal()
     try:
         user = _get_or_create_telegram_user(session, chat_id)
-        thread_id = f"{user.id}:telegram"
+        thread_id = _thread_id_for(user)
         client_key = f"user:{user.id}"
 
         # Checked before the cache lookup, matching /chat: a throttled chat
         # shouldn't spend the embedding call either.
         if not get_chat_limiter().check_and_record(client_key):
-            return "Too many questions in a short period - please wait a little and try again."
+            return "Too many questions in a short period - please wait a little and try again.", None
 
         started = time.monotonic()
 
@@ -109,22 +177,21 @@ def handle_user_question(chat_id: str, question: str) -> str:
             session.add(ChatMessage(thread_id=thread_id, user_id=user.id, role="user", content=question))
             session.add(ChatMessage(thread_id=thread_id, user_id=user.id, role="assistant", content=hit.answer))
             sources = json.loads(hit.sources_json)
-            session.add(
-                QueryLog(
-                    question=question,
-                    thread_id=thread_id,
-                    user_id=user.id,
-                    answered=True,
-                    source_ids=",".join(sorted({s["source_id"] for s in sources})),
-                    latency_ms=int((time.monotonic() - started) * 1000),
-                    served_from_cache=True,
-                )
+            log_entry = QueryLog(
+                question=question,
+                thread_id=thread_id,
+                user_id=user.id,
+                answered=True,
+                source_ids=",".join(sorted({s["source_id"] for s in sources})),
+                latency_ms=int((time.monotonic() - started) * 1000),
+                served_from_cache=True,
             )
+            session.add(log_entry)
             session.commit()
-            return _format_reply(hit.answer, sources)
+            return _format_reply(hit.answer, sources), log_entry.id
 
         if not llm_budget.has_headroom():
-            return "The assistant has reached its daily question limit and will reset tomorrow."
+            return "The assistant has reached its daily question limit and will reset tomorrow.", None
 
         result = run_chat(thread_id=thread_id, question=question, source_id_filter=None)
 
@@ -161,22 +228,21 @@ def handle_user_question(chat_id: str, question: str) -> str:
                 retrieval=result.get("retrieval", []),
             )
 
-        session.add(
-            QueryLog(
-                question=question,
-                thread_id=thread_id,
-                user_id=user.id,
-                answered=bool(result.get("answered", True)),
-                source_ids=",".join(sorted({s["source_id"] if isinstance(s, dict) else s.source_id for s in result["sources"]})),
-                latency_ms=int((time.monotonic() - started) * 1000),
-                served_from_cache=False,
-            )
+        log_entry = QueryLog(
+            question=question,
+            thread_id=thread_id,
+            user_id=user.id,
+            answered=bool(result.get("answered", True)),
+            source_ids=",".join(sorted({s["source_id"] if isinstance(s, dict) else s.source_id for s in result["sources"]})),
+            latency_ms=int((time.monotonic() - started) * 1000),
+            served_from_cache=False,
         )
+        session.add(log_entry)
         session.commit()
 
-        return _format_reply(result["answer"], result["sources"])
+        return _format_reply(result["answer"], result["sources"]), log_entry.id
     except Exception:
         logger.exception("Telegram question handling failed for chat_id=%s", chat_id)
-        return "Something went wrong answering that - please try again."
+        return "Something went wrong answering that - please try again.", None
     finally:
         session.close()

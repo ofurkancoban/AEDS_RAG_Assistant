@@ -15,6 +15,16 @@ import pytest
 from starlette.requests import Request
 
 import api.main as main_module
+from config import settings
+
+
+@pytest.fixture(autouse=True)
+def _admin_chat_configured(monkeypatch):
+    """The alert goes out via _notify_admins, which needs at least one admin
+    chat id - conftest.py forces telegram_chat_id to "" for the whole suite
+    (see its own docstring), so every test here needs its own non-empty
+    value regardless of that default."""
+    monkeypatch.setattr(settings, "telegram_chat_id", "test-admin-chat")
 
 
 def _request(path: str = "/chat", method: str = "POST") -> Request:

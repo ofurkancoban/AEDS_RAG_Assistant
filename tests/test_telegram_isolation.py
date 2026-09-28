@@ -59,7 +59,7 @@ def test_notify_functions_make_no_network_call(monkeypatch):
     telegram_bot.notify_pending_answer(1, "A question?", "An answer.")
     telegram_bot.notify_expiring_documents([("some_file.md", datetime.now())])
     telegram_bot.set_bot_commands()
-    telegram_bot._send_main_menu()
+    telegram_bot._send_main_menu("some_chat_id")
 
 
 def test_pull_commands_make_no_network_call(monkeypatch):
@@ -74,10 +74,10 @@ def test_pull_commands_make_no_network_call(monkeypatch):
     monkeypatch.setattr(requests, "post", _fail)
     monkeypatch.setattr(requests, "get", _fail)
 
-    telegram_bot._send_pending_summary()
-    telegram_bot._send_content_gaps_summary()
-    telegram_bot._send_source_changes_summary()
-    telegram_bot._send_stats_summary()
+    telegram_bot._send_pending_summary("some_chat_id")
+    telegram_bot._send_content_gaps_summary("some_chat_id")
+    telegram_bot._send_source_changes_summary("some_chat_id")
+    telegram_bot._send_stats_summary("some_chat_id")
 
 
 def test_menu_button_labels_resolve_to_known_categories():

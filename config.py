@@ -199,6 +199,13 @@ class Settings(BaseSettings):
     # jobs shouldn't fail because notifications aren't configured.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Extra admin chats (comma-separated ids) that get the same review-queue
+    # notifications and the same admin command access as telegram_chat_id -
+    # e.g. a second staff member's own chat, or a group chat. telegram_chat_id
+    # itself stays the one always-included primary, kept separate rather than
+    # folding everything into one list so existing single-admin setups need
+    # no .env change at all.
+    telegram_extra_admin_chat_ids: str = ""
 
     @property
     def effective_daily_llm_budget(self) -> int:

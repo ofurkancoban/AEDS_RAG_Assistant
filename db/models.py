@@ -63,6 +63,12 @@ class User(Base):
     # Guests hold no usable password and are refused at /auth/login; a token is
     # the only way to act as one.
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    # Bumped by a Telegram user's /new command (see api/telegram_chat.py) to
+    # start a fresh LangGraph thread without losing the old one - the thread
+    # id includes this, so incrementing it is enough to make the next message
+    # begin with no prior context. Unused (stays 0) for anyone who never
+    # talks to the bot.
+    telegram_thread_epoch: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     submissions: Mapped[list["PendingSubmission"]] = relationship(

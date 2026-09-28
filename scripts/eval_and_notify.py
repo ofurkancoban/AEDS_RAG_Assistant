@@ -41,7 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from api.telegram_bot import send_message  # noqa: E402
+from api.telegram_bot import _notify_admins  # noqa: E402
 from runtime_config import get_runtime_config  # noqa: E402
 from tests.eval_golden import load_cases, run  # noqa: E402
 
@@ -58,7 +58,7 @@ def main() -> int:
         # detail, since eval_golden.py's own retrieval report is much more
         # useful for actually diagnosing it than anything that fits in a chat
         # message.
-        send_message(
+        _notify_admins(
             f"Golden-set eval failed against the live provider ({provider}). "
             f"Run `PYTHONPATH=. python -m tests.eval_golden --verbose` to see "
             f"which cases regressed and why."

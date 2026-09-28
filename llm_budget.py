@@ -80,6 +80,14 @@ def _live_daily_budget() -> int:
     return daily_budget_for_provider(get_runtime_config().llm_provider, settings.daily_llm_call_budget)
 
 
+def daily_budget() -> int:
+    """Public wrapper on _live_daily_budget, for callers outside this module
+    (the Telegram /budget command) that need the raw ceiling itself - 0 means
+    unlimited, which remaining() alone cannot distinguish from "no budget
+    left" since it also reports 0 in that case."""
+    return _live_daily_budget()
+
+
 def remaining() -> int:
     return max(0, _live_daily_budget() - usage_today())
 

@@ -48,7 +48,7 @@ def _cleanup(chat_id: str) -> None:
 def test_first_message_creates_a_guest_user_and_answers():
     chat_id = "pytest_chat_1"
     try:
-        reply = telegram_chat.handle_user_question(chat_id, "A question")
+        reply, query_log_id = telegram_chat.handle_user_question(chat_id, "A question")
         assert STUB_ANSWER in reply
         assert "stub_source" in reply
 
@@ -64,6 +64,7 @@ def test_first_message_creates_a_guest_user_and_answers():
             logs = session.query(QueryLog).filter(QueryLog.user_id == user.id).all()
             assert len(logs) == 1
             assert logs[0].thread_id == f"{user.id}:telegram"
+            assert query_log_id == logs[0].id
         finally:
             session.close()
     finally:
@@ -129,7 +130,8 @@ def test_rate_limit_blocks_before_calling_the_pipeline(monkeypatch):
 
         monkeypatch.setattr(build_graph, "run_chat", _must_not_be_called)
 
-        reply = telegram_chat.handle_user_question(chat_id, "One question too many")
+        reply, query_log_id = telegram_chat.handle_user_question(chat_id, "One question too many")
         assert "Too many questions" in reply
+        assert query_log_id is None
     finally:
         _cleanup(chat_id)

@@ -19,10 +19,11 @@ row would turn a normal day of usage into a constant stream of phone
 notifications. Answer review is available via the same Approve/Reject
 buttons, but only on request: send the bot /pending.
 
-Trust model. The bot only acts on updates from the configured
-TELEGRAM_CHAT_ID (see config.py); everything else is ignored. There is no
-further login on the Telegram side, so that chat id is equivalent to an admin
-session - keep .env private.
+Trust model. Admin actions only come from TELEGRAM_CHAT_ID and
+TELEGRAM_EXTRA_ADMIN_CHAT_IDS (see config.py's and _admin_chat_ids());
+everything else is treated as a student asking a question. There is no
+further login on the Telegram side, so those chat ids are equivalent to an
+admin session - keep .env private.
 """
 
 import contextlib
@@ -53,6 +54,20 @@ _CONTENT_PREVIEW_CHARS = 3500
 
 def _enabled() -> bool:
     return bool(settings.telegram_bot_token and settings.telegram_chat_id)
+
+
+def _admin_chat_ids() -> list[str]:
+    """telegram_chat_id (the original, always-required admin) plus any
+    telegram_extra_admin_chat_ids - the full set of chats treated as admin
+    for both outbound notifications and inbound command/button access."""
+    primary = [settings.telegram_chat_id] if settings.telegram_chat_id else []
+    extra = [c.strip() for c in settings.telegram_extra_admin_chat_ids.split(",") if c.strip()]
+    return primary + [c for c in extra if c not in primary]
+
+
+def _notify_admins(text: str, reply_markup: dict | None = None) -> None:
+    for chat_id in _admin_chat_ids():
+        send_message(text, reply_markup=reply_markup, chat_id=chat_id)
 
 
 def _api_url(method: str) -> str:
@@ -193,9 +208,17 @@ _ADMIN_BOT_COMMANDS = [
     {"command": "gaps", "description": "Content gaps (unanswered questions)"},
     {"command": "sources", "description": "Pending source changes"},
     {"command": "stats", "description": "Corpus stats"},
+    {"command": "provider", "description": "Show/switch the live LLM provider"},
+    {"command": "budget", "description": "Today's LLM quota usage"},
+    {"command": "health", "description": "App health check"},
+    {"command": "evalnow", "description": "Run the golden-set quality eval now"},
+    {"command": "broadcast", "description": "Message every Telegram user"},
 ]
 # The default scope every other chat (i.e. every student) sees.
-_DEFAULT_BOT_COMMANDS = [{"command": "start", "description": "Ask a question"}]
+_DEFAULT_BOT_COMMANDS = [
+    {"command": "start", "description": "Ask a question"},
+    {"command": "new", "description": "Start a fresh conversation"},
+]
 
 
 def set_bot_commands() -> None:
@@ -212,15 +235,16 @@ def set_bot_commands() -> None:
             _api_url("setMyCommands"), json={"commands": _DEFAULT_BOT_COMMANDS}, timeout=_REQUEST_TIMEOUT
         )
         response.raise_for_status()
-        response = requests.post(
-            _api_url("setMyCommands"),
-            json={
-                "commands": _ADMIN_BOT_COMMANDS,
-                "scope": {"type": "chat", "chat_id": settings.telegram_chat_id},
-            },
-            timeout=_REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
+        for chat_id in _admin_chat_ids():
+            response = requests.post(
+                _api_url("setMyCommands"),
+                json={
+                    "commands": _ADMIN_BOT_COMMANDS,
+                    "scope": {"type": "chat", "chat_id": chat_id},
+                },
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
     except Exception as exc:
         logger.warning("Telegram setMyCommands failed: %s", exc)
 
@@ -263,17 +287,21 @@ def notify_expiring_documents(expiring: list[tuple[str, object]]) -> None:
     re-curate the file by hand, not a single approve/reject action."""
     lines = [f"{len(expiring)} corpus file(s) past or nearing their valid_until date:"]
     lines.extend(f"- {filename} (valid until {valid_until.date().isoformat()})" for filename, valid_until in expiring)
-    send_message("\n".join(lines))
+    _notify_admins("\n".join(lines))
 
 
-def notify_source_change(doc_id: int, filename: str, url: str | None) -> None:
+def notify_source_change(doc_id: int, filename: str, url: str | None, chat_id: str | None = None) -> None:
     text = (
         f"Source changed: {filename}\n"
         f"{url or ''}\n\n"
         "Review the word-level diff in the admin panel, then Dismiss here "
         "once it's been curated (or found not to matter)."
     )
-    send_message(text, {"inline_keyboard": [[_button("Dismiss", f"src:{doc_id}")]]})
+    markup = {"inline_keyboard": [[_button("Dismiss", f"src:{doc_id}")]]}
+    if chat_id is not None:
+        send_message(text, markup, chat_id=chat_id)
+    else:
+        _notify_admins(text, markup)
 
 
 def notify_source_draft(doc_id: int, filename: str, draft: str) -> None:
@@ -283,38 +311,53 @@ def notify_source_draft(doc_id: int, filename: str, draft: str) -> None:
     reject just discards the draft and leaves the ordinary Dismiss-only flow
     from notify_source_change in place."""
     text = f"Auto-draft ready for {filename} (from the source change above):\n\n{_truncate(draft)}"
-    send_message(
+    _notify_admins(
         text,
         {"inline_keyboard": [[_button("Approve draft", f"sdapp:{doc_id}"), _button("Reject draft", f"sdrej:{doc_id}")]]},
     )
 
 
-def notify_new_submission(sub_id: int, submission_type: str, source_id: str, content: str) -> None:
+def notify_new_submission(sub_id: int, submission_type: str, source_id: str, content: str, chat_id: str | None = None) -> None:
+    """Pushed to every admin on a new submission; also reused by
+    _send_pending_summary to render one already-pending item back to just
+    the admin who asked for /pending (chat_id given) rather than
+    re-broadcasting it to everyone."""
     text = f"New {submission_type} submission for '{source_id}':\n\n{_truncate(content)}"
-    send_message(
-        text,
-        {"inline_keyboard": [[_button("Approve", f"sa:{sub_id}"), _button("Reject", f"sr:{sub_id}")]]},
-    )
+    markup = {
+        "inline_keyboard": [
+            [_button("Approve", f"sa:{sub_id}"), _button("Edit", f"se:{sub_id}"), _button("Reject", f"sr:{sub_id}")]
+        ]
+    }
+    if chat_id is not None:
+        send_message(text, markup, chat_id=chat_id)
+    else:
+        _notify_admins(text, markup)
 
 
-def notify_pending_answer(answer_id: int, question: str, answer: str) -> None:
+def notify_pending_answer(answer_id: int, question: str, answer: str, chat_id: str | None = None) -> None:
     text = f"Q: {_truncate(question, 200)}\n\nA: {_truncate(answer)}"
-    send_message(
-        text,
-        {"inline_keyboard": [[_button("Approve", f"aa:{answer_id}"), _button("Reject", f"ar:{answer_id}")]]},
-    )
+    markup = {
+        "inline_keyboard": [
+            [_button("Approve", f"aa:{answer_id}"), _button("Edit", f"ae:{answer_id}"), _button("Reject", f"ar:{answer_id}")]
+        ]
+    }
+    if chat_id is not None:
+        send_message(text, markup, chat_id=chat_id)
+    else:
+        _notify_admins(text, markup)
 
 
-def _send_main_menu() -> None:
+def _send_main_menu(chat_id: str) -> None:
     send_message(
         "AEDS RAG admin bot. Pick a category below, or use the / commands:",
         _MAIN_MENU_KEYBOARD,
+        chat_id=chat_id,
     )
 
 
 # --- Inbound: button presses and the /pending command ------------------
 
-def _dispatch_action(data: str) -> str:
+def _dispatch_action(data: str, chat_id: str) -> str:
     """Applies one button press. Mirrors the corresponding admin route in
     api/routes_admin.py exactly, minus the admin-session Depends() - the
     Telegram chat id is the trust boundary here (see module docstring)."""
@@ -325,9 +368,38 @@ def _dispatch_action(data: str) -> str:
 
     try:
         action, raw_id = data.split(":", 1)
+    except ValueError:
+        return "Unrecognized action."
+
+    # Actions whose id is not a record's integer primary key - handled
+    # before the int() parse below, which would otherwise reject all of them.
+    if action == "prov":
+        return _switch_provider(raw_id)
+    if action == "evalgo":
+        threading.Thread(target=_run_eval_now, args=(chat_id,), daemon=True, name="telegram-evalnow").start()
+        return "Started - I'll message you when it finishes (this can take several minutes)."
+    if action == "evalno":
+        return "Cancelled."
+    if action == "bcgo":
+        with _pending_broadcasts_guard:
+            text = _pending_broadcasts.pop(chat_id, None)
+        if text is None:
+            return "Nothing pending."
+        threading.Thread(target=_run_broadcast, args=(text,), daemon=True, name="telegram-broadcast").start()
+        return "Sending..."
+    if action == "bcno":
+        with _pending_broadcasts_guard:
+            _pending_broadcasts.pop(chat_id, None)
+        return "Cancelled."
+
+    try:
         record_id = int(raw_id)
     except ValueError:
         return "Unrecognized action."
+
+    if action in ("se", "ae"):
+        _start_edit(chat_id, "submission" if action == "se" else "answer", record_id)
+        return "Reply with the corrected text."
 
     session = SessionLocal()
     try:
@@ -394,7 +466,7 @@ def _dispatch_action(data: str) -> str:
         session.close()
 
 
-def _send_pending_summary() -> None:
+def _send_pending_summary(chat_id: str) -> None:
     """Handles /pending: pulls the current review queues on request rather
     than pushing one message per answer (see module docstring)."""
     from db.models import AnswerStatus, CachedAnswer, PendingSubmission, SessionLocal, SubmissionStatus
@@ -421,24 +493,25 @@ def _send_pending_summary() -> None:
         session.close()
 
     if not submission_data and not answer_data:
-        send_message("Nothing pending.", _MAIN_MENU_KEYBOARD)
+        send_message("Nothing pending.", _MAIN_MENU_KEYBOARD, chat_id=chat_id)
         return
 
     send_message(
         f"{len(submission_data)} submission(s), {len(answer_data)} answer(s) pending (up to 10 shown each):",
         _MAIN_MENU_KEYBOARD,
+        chat_id=chat_id,
     )
     for sub_id, submission_type, source_id, content in submission_data:
-        notify_new_submission(sub_id, submission_type, source_id, content)
+        notify_new_submission(sub_id, submission_type, source_id, content, chat_id=chat_id)
     for answer_id, question, answer in answer_data:
-        notify_pending_answer(answer_id, question, answer)
+        notify_pending_answer(answer_id, question, answer, chat_id=chat_id)
 
 
 _GAPS_WINDOW_DAYS = 30
 _GAPS_LIST_SIZE = 10
 
 
-def _send_content_gaps_summary() -> None:
+def _send_content_gaps_summary(chat_id: str) -> None:
     """Handles /gaps: content_gaps (see api/routes_admin.py's get_analytics)
     is the most direct signal of what content the corpus is still missing -
     questions students actually asked that it could not answer, ranked by
@@ -458,7 +531,7 @@ def _send_content_gaps_summary() -> None:
         session.close()
 
     if not rows:
-        send_message(f"No queries logged in the last {_GAPS_WINDOW_DAYS} days.", _MAIN_MENU_KEYBOARD)
+        send_message(f"No queries logged in the last {_GAPS_WINDOW_DAYS} days.", _MAIN_MENU_KEYBOARD, chat_id=chat_id)
         return
 
     unanswered_counts = Counter(r.question.strip() for r in rows if not r.answered).most_common(_GAPS_LIST_SIZE)
@@ -474,10 +547,10 @@ def _send_content_gaps_summary() -> None:
         lines.append("\nMost thumbs-downed questions:")
         lines.extend(f"{count}x - {question}" for question, count in thumbs_down_counts)
 
-    send_message(_truncate("\n".join(lines), limit=_CONTENT_PREVIEW_CHARS), _MAIN_MENU_KEYBOARD)
+    send_message(_truncate("\n".join(lines), limit=_CONTENT_PREVIEW_CHARS), _MAIN_MENU_KEYBOARD, chat_id=chat_id)
 
 
-def _send_source_changes_summary() -> None:
+def _send_source_changes_summary(chat_id: str) -> None:
     """Handles /sources (and the 'Sources' menu button): the pull-on-demand
     counterpart to notify_source_change's nightly push - lists every
     currently-flagged source change with its own Dismiss button, same as
@@ -498,16 +571,16 @@ def _send_source_changes_summary() -> None:
         session.close()
 
     if not changed:
-        send_message("No pending source changes.", _MAIN_MENU_KEYBOARD)
+        send_message("No pending source changes.", _MAIN_MENU_KEYBOARD, chat_id=chat_id)
         return
 
     urls = load_source_urls()
-    send_message(f"{len(changed)} source(s) with a pending change:", _MAIN_MENU_KEYBOARD)
+    send_message(f"{len(changed)} source(s) with a pending change:", _MAIN_MENU_KEYBOARD, chat_id=chat_id)
     for doc_id, filename in changed:
-        notify_source_change(doc_id, filename, urls.get(filename))
+        notify_source_change(doc_id, filename, urls.get(filename), chat_id=chat_id)
 
 
-def _send_stats_summary() -> None:
+def _send_stats_summary(chat_id: str) -> None:
     """Handles /stats (and the 'Stats' menu button): a quick corpus/queue
     snapshot without opening the admin panel - the same counts
     api/routes_admin.py's get_stats exposes there."""
@@ -533,7 +606,231 @@ def _send_stats_summary() -> None:
         f"Pending answers: {pending_answers}\n"
         f"Pending source changes: {pending_source_changes}"
     )
-    send_message(text, _MAIN_MENU_KEYBOARD)
+    send_message(text, _MAIN_MENU_KEYBOARD, chat_id=chat_id)
+
+
+def _send_provider_status(chat_id: str) -> None:
+    """Handles /provider: shows the live (admin-switchable) LLM provider and
+    offers one-tap buttons to switch it, mirroring the admin panel's RAG
+    Configuration screen for the one setting worth reaching from a phone
+    during an incident (a provider going down)."""
+    from runtime_config import ALLOWED_LLM_PROVIDERS, active_chat_model, get_runtime_config
+
+    runtime = get_runtime_config()
+    text = f"Live provider: {runtime.llm_provider}\nModel: {active_chat_model()}"
+    others = [p for p in ALLOWED_LLM_PROVIDERS if p != runtime.llm_provider]
+    send_message(
+        text,
+        {"inline_keyboard": [[_button(f"Switch to {p}", f"prov:{p}") for p in others]]},
+        chat_id=chat_id,
+    )
+
+
+def _switch_provider(provider: str) -> str:
+    """Mirrors api/routes_admin.py's put_config provider-switch validation -
+    refusing a switch to a provider with no configured key, since that would
+    otherwise take live chat down for every user immediately."""
+    from runtime_config import ALLOWED_LLM_PROVIDERS, update_runtime_config
+
+    if provider not in ALLOWED_LLM_PROVIDERS:
+        return "Unknown provider."
+    if provider == "gemini" and not settings.gemini_api_key:
+        return "Cannot switch to gemini: GEMINI_API_KEY is not set."
+    if provider == "openrouter" and not settings.openrouter_api_key:
+        return "Cannot switch to openrouter: OPENROUTER_API_KEY is not set."
+    update_runtime_config(llm_provider=provider)
+    return f"Switched to {provider}."
+
+
+def _send_budget_status(chat_id: str) -> None:
+    """Handles /budget: today's LLM call count against the live provider's
+    daily ceiling (see llm_budget.py) - the number that determines whether
+    the assistant is about to start refusing new questions."""
+    import llm_budget
+    from runtime_config import get_runtime_config
+
+    provider = get_runtime_config().llm_provider
+    used = llm_budget.usage_today()
+    budget = llm_budget.daily_budget()
+    if budget <= 0:
+        text = f"Provider: {provider}\nUsed today: {used} (no daily ceiling)"
+    else:
+        text = f"Provider: {provider}\nUsed today: {used}/{budget} ({llm_budget.remaining()} remaining)"
+    send_message(text, chat_id=chat_id)
+
+
+def _send_health_status(chat_id: str) -> None:
+    """Handles /health: an on-demand version of the automatic Telegram error
+    alerting in api/main.py - "is everything actually working" rather than
+    waiting to find out from an error."""
+    from changelog import current_version
+    from db.models import SessionLocal, User
+    from runtime_config import active_chat_model, get_runtime_config
+
+    db_ok = True
+    try:
+        session = SessionLocal()
+        try:
+            session.query(User.id).first()
+        finally:
+            session.close()
+    except Exception:
+        db_ok = False
+
+    runtime = get_runtime_config()
+    text = (
+        f"Version: {current_version()}\n"
+        f"Database: {'OK' if db_ok else 'UNREACHABLE'}\n"
+        f"Live provider: {runtime.llm_provider} ({active_chat_model()})"
+    )
+    send_message(text, chat_id=chat_id)
+
+
+def _send_evalnow_confirmation(chat_id: str) -> None:
+    """Handles /evalnow: an on-demand trigger for the golden-set quality
+    eval scripts/eval_and_notify.py otherwise only runs weekly by cron.
+    Gated behind a confirmation because a run spends real LLM quota against
+    whichever provider is live - see that script's own docstring for why
+    this can exhaust an entire day's OpenRouter budget in one go."""
+    from runtime_config import get_runtime_config
+
+    provider = get_runtime_config().llm_provider
+    send_message(
+        f"This runs the full golden-set eval (~46 questions, 2-3 LLM calls "
+        f"each) against the LIVE provider ({provider}). On a metered "
+        f"provider this can consume the entire day's quota. Continue?",
+        {"inline_keyboard": [[_button("Yes, run it", "evalgo:1"), _button("Cancel", "evalno:1")]]},
+        chat_id=chat_id,
+    )
+
+
+def _run_eval_now(chat_id: str) -> None:
+    """Runs on its own background thread (see _dispatch_action's "evalgo"
+    handling) rather than inline - a full run can take several minutes, far
+    past what should hold up a callback-query response."""
+    from runtime_config import get_runtime_config
+    from tests.eval_golden import load_cases, run
+
+    provider = get_runtime_config().llm_provider
+    try:
+        cases = load_cases()
+        all_passed = run(cases, verbose=False)
+        status = "PASSED" if all_passed else "FAILED - run `PYTHONPATH=. python -m tests.eval_golden --verbose` on the server for details"
+        send_message(f"Golden-set eval against {provider}: {status}", chat_id=chat_id)
+    except Exception:
+        logger.exception("Manual /evalnow run failed")
+        send_message("Eval run crashed - check the server logs.", chat_id=chat_id)
+
+
+_pending_broadcasts: dict[str, str] = {}
+_pending_broadcasts_guard = threading.Lock()
+
+
+def _start_broadcast(chat_id: str, text: str) -> None:
+    """Handles /broadcast <message>: previews it with a recipient count and
+    waits for explicit confirmation before actually sending - a mis-tapped
+    or mis-typed broadcast reaching every student is not something to risk
+    on a single command with no undo."""
+    from db.models import SessionLocal, User
+
+    if not text.strip():
+        send_message("Usage: /broadcast <message>", chat_id=chat_id)
+        return
+
+    session = SessionLocal()
+    try:
+        count = session.query(User).filter(User.email.like("telegram-%"), User.is_guest.is_(True)).count()
+    finally:
+        session.close()
+
+    if count == 0:
+        send_message("No Telegram users to broadcast to yet.", chat_id=chat_id)
+        return
+
+    with _pending_broadcasts_guard:
+        _pending_broadcasts[chat_id] = text
+    send_message(
+        f"Send this to {count} Telegram user(s)?\n\n{text}",
+        {"inline_keyboard": [[_button("Yes, send", "bcgo:1"), _button("Cancel", "bcno:1")]]},
+        chat_id=chat_id,
+    )
+
+
+def _run_broadcast(text: str) -> None:
+    from db.models import SessionLocal, User
+
+    session = SessionLocal()
+    try:
+        chat_ids = [
+            u.email.removeprefix("telegram-").removesuffix("@aeds.local")
+            for u in session.query(User).filter(User.email.like("telegram-%"), User.is_guest.is_(True)).all()
+        ]
+    finally:
+        session.close()
+
+    sent = sum(1 for cid in chat_ids if send_message(text, chat_id=cid) is not None)
+    _notify_admins(f"Broadcast sent to {sent}/{len(chat_ids)} user(s).")
+
+
+_pending_edits: dict[str, tuple[str, int]] = {}
+_pending_edits_guard = threading.Lock()
+
+
+def _start_edit(chat_id: str, kind: str, record_id: int) -> None:
+    """Handles the "Edit" button on a submission or pending-answer
+    notification: prompts with a force-reply so the admin's next message (as
+    a reply to this prompt) is read as the corrected text - see
+    _handle_message's reply_to_message check and _apply_edit."""
+    with _pending_edits_guard:
+        _pending_edits[chat_id] = (kind, record_id)
+    send_message(
+        f"Send the corrected {kind} text as a reply to this message.",
+        {"force_reply": True, "selective": True},
+        chat_id=chat_id,
+    )
+
+
+def _apply_edit(chat_id: str, new_text: str) -> None:
+    from db.models import CachedAnswer, PendingSubmission, SessionLocal
+
+    with _pending_edits_guard:
+        pending = _pending_edits.pop(chat_id, None)
+    if pending is None:
+        return
+    kind, record_id = pending
+
+    if not new_text.strip():
+        send_message("Empty text - edit cancelled.", chat_id=chat_id)
+        return
+
+    session = SessionLocal()
+    try:
+        if kind == "submission":
+            row = session.get(PendingSubmission, record_id)
+            if row is None:
+                send_message("That submission no longer exists.", chat_id=chat_id)
+                return
+            row.content = new_text.strip()
+        else:
+            row = session.get(CachedAnswer, record_id)
+            if row is None:
+                send_message("That answer no longer exists.", chat_id=chat_id)
+                return
+            # Same rule as api/routes_admin.py's approve_answer: preserve
+            # what the model actually produced the first time this answer is
+            # ever edited, so a correction can always be compared against it.
+            if not row.original_answer:
+                row.original_answer = row.answer
+            row.answer = new_text.strip()
+        session.commit()
+    finally:
+        session.close()
+
+    send_message(
+        f"{kind.capitalize()} #{record_id} updated. Use the Approve/Reject buttons above "
+        f"(or send /pending to see it again).",
+        chat_id=chat_id,
+    )
 
 
 def _handle_update(update: dict) -> None:
@@ -548,45 +845,87 @@ _CATEGORY_HANDLERS = {
     "gaps": _send_content_gaps_summary,
     "sources": _send_source_changes_summary,
     "stats": _send_stats_summary,
+    "provider": _send_provider_status,
+    "budget": _send_budget_status,
+    "health": _send_health_status,
+    "evalnow": _send_evalnow_confirmation,
 }
 
 
 _USER_WELCOME_TEXT = (
     "Hi! Ask me anything about the Applied Economics and Data Science "
     "programme - courses, deadlines, exams, accommodation, and more - and "
-    "I'll answer from the official programme documents."
+    "I'll answer from the official programme documents.\n\n"
+    "Send /new anytime to start a fresh conversation."
 )
+_EXAMPLE_QUESTIONS = [
+    "What is the application deadline?",
+    "What are the admission requirements?",
+    "How many ECTS credits do I need?",
+]
+_EXAMPLE_QUESTIONS_KEYBOARD = {
+    "keyboard": [[{"text": q}] for q in _EXAMPLE_QUESTIONS],
+    "resize_keyboard": True,
+    "one_time_keyboard": True,
+}
 
 
 def _handle_user_message(chat_id: str, text: str) -> None:
-    """Any chat other than TELEGRAM_CHAT_ID lands here (see _handle_message)
-    - a student asking a question, not an admin action. Kept to a single
-    /start special case plus "everything else is a question" rather than
+    """Any chat not in _admin_chat_ids() lands here (see _handle_message) -
+    a student asking a question, not an admin action. Kept to /start and
+    /new special cases plus "everything else is a question" rather than
     mirroring the admin bot's command surface, since a student has no
     review-queue actions to reach."""
     if not text:
         return
     if text == "/start":
-        send_message(_USER_WELCOME_TEXT, chat_id=chat_id)
+        send_message(_USER_WELCOME_TEXT, _EXAMPLE_QUESTIONS_KEYBOARD, chat_id=chat_id)
+        return
+    if text == "/new":
+        from api.telegram_chat import start_new_conversation
+
+        send_message(start_new_conversation(chat_id), chat_id=chat_id)
         return
 
     from api.telegram_chat import handle_user_question
 
     with _typing_indicator(chat_id):
-        reply = handle_user_question(chat_id, text)
-    send_message(reply, chat_id=chat_id)
+        reply, query_log_id = handle_user_question(chat_id, text)
+    reply_markup = None
+    if query_log_id is not None:
+        reply_markup = {
+            "inline_keyboard": [[_button("👍", f"fb:{query_log_id}:1"), _button("👎", f"fb:{query_log_id}:-1")]]
+        }
+    send_message(reply, reply_markup, chat_id=chat_id)
+
+
+def _handle_feedback_callback(chat_id: str, data: str) -> str:
+    from api.telegram_chat import record_feedback
+
+    try:
+        _, log_id_str, rating_str = data.split(":", 2)
+        return record_feedback(chat_id, int(log_id_str), int(rating_str))
+    except ValueError:
+        return "Unrecognized."
 
 
 def _handle_message(message: dict) -> None:
     chat_id = str(message.get("chat", {}).get("id", ""))
     text = (message.get("text") or "").strip()
 
-    if chat_id != str(settings.telegram_chat_id):
+    if chat_id not in _admin_chat_ids():
         _handle_user_message(chat_id, text)
         return
 
+    if message.get("reply_to_message") and chat_id in _pending_edits:
+        _apply_edit(chat_id, text)
+        return
+
     if text in ("/start", "/menu"):
-        _send_main_menu()
+        _send_main_menu(chat_id)
+        return
+    if text.startswith("/broadcast"):
+        _start_broadcast(chat_id, text[len("/broadcast"):].strip())
         return
 
     # A command ("/pending") and its matching persistent-keyboard button
@@ -596,17 +935,21 @@ def _handle_message(message: dict) -> None:
     category = text.lstrip("/") if text.startswith("/") else _LABEL_TO_CATEGORY.get(text)
     handler = _CATEGORY_HANDLERS.get(category)
     if handler is not None:
-        handler()
+        handler(chat_id)
 
 
 def _handle_callback_query(callback_query: dict) -> None:
     message = callback_query.get("message") or {}
     chat_id = str(message.get("chat", {}).get("id", ""))
-    if chat_id != str(settings.telegram_chat_id):
-        _answer_callback(callback_query["id"], "Not authorized.")
-        return
+    data = callback_query.get("data", "")
 
-    result_text = _dispatch_action(callback_query.get("data", ""))
+    if chat_id in _admin_chat_ids():
+        result_text = _dispatch_action(data, chat_id)
+    elif data.startswith("fb:"):
+        result_text = _handle_feedback_callback(chat_id, data)
+    else:
+        result_text = "Not authorized."
+
     _answer_callback(callback_query["id"], result_text)
 
     message_id = message.get("message_id")
