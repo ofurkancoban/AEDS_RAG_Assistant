@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from api.routes_admin import router as admin_router
 from api.routes_auth import router as auth_router
 from api.routes_chat import router as chat_router
+from api.routes_version import router as version_router
 from api.telegram_bot import start_background_polling
 from config import settings
 from db.models import init_db
@@ -53,6 +54,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(admin_router)
+app.include_router(version_router)
 
 _logger = logging.getLogger("api.main")
 

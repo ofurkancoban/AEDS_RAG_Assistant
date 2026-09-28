@@ -10,6 +10,7 @@ import {
   SourceChange,
   SubmissionStatus,
   UsageAnalytics,
+  VersionInfo,
 } from '../types';
 
 // Set VITE_API_BASE_URL at build time to point the app at a deployed backend
@@ -288,6 +289,10 @@ export function putConfig(payload: Partial<{
 
 export function getStats(): Promise<AdminStats> {
   return request('/admin/stats');
+}
+
+export function getVersion(): Promise<VersionInfo> {
+  return request('/version');
 }
 
 export function getAnalytics(days = 30): Promise<UsageAnalytics> {

@@ -1,7 +1,7 @@
 import json
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -212,6 +212,11 @@ class SourceOut(BaseModel):
     source_id: str
     page: int | None = None
     url: str | None = None
+    # The date this source's content stopped being current (see
+    # db/freshness.py), or None if it is still valid. Lets the UI flag a
+    # stale source directly rather than depending on the model having said
+    # so in the answer text.
+    expired_since: date | None = None
 
 
 class RetrievedChunkOut(BaseModel):
@@ -219,6 +224,7 @@ class RetrievedChunkOut(BaseModel):
     snippet: str
     hybrid_score: float | None = None
     rerank_score: float | None = None
+    expired_since: date | None = None
 
 
 class ChatResponse(BaseModel):
@@ -230,6 +236,10 @@ class ChatResponse(BaseModel):
     node_latencies: dict[str, float] = {}
     query_log_id: int | None = None
     cached: bool = False
+    # True when this answer states that an application deadline has already
+    # passed - a structured (retrieval-free) answer, so it has no `sources`
+    # for the UI to badge (see graph/build_graph.py's _has_passed_deadline).
+    has_expired_deadline: bool = False
 
 
 @router.post("", response_model=ChatResponse)
@@ -322,6 +332,7 @@ def chat(
         retrieval=result.get("retrieval", []),
         node_latencies=result.get("node_latencies", {}),
         query_log_id=log_id,
+        has_expired_deadline=bool(result.get("has_expired_deadline")),
     )
 
 
@@ -370,6 +381,11 @@ def chat_stream(
             "node_latencies": {},
             "query_log_id": log_id,
             "cached": True,
+            # A cache hit is never a deadline answer (see the cacheable check
+            # above: time_sensitive turns are excluded from caching), so this
+            # is always false here - present anyway for a consistent payload
+            # shape between a streamed cache hit and a streamed fresh answer.
+            "has_expired_deadline": False,
         }
 
         def cached_stream():
@@ -457,6 +473,7 @@ def chat_stream(
                 "node_latencies": data.get("node_latencies", {}),
                 "query_log_id": log_id,
                 "cached": False,
+                "has_expired_deadline": bool(data.get("has_expired_deadline")),
             }
             yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 

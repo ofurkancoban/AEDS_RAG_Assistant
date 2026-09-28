@@ -61,11 +61,28 @@ def get_compiled_graph():
 
 
 def _build_sources(retrieved_docs: list) -> list[dict]:
+    # Previously a source past its valid_until (see db/freshness.py) was only
+    # ever flagged in the LLM's own prose - if the model dropped that caveat
+    # (paraphrasing it away, or just not following the instruction), the chat
+    # UI showed a stale date with no visible warning at all. This puts the
+    # same fact directly on the source entry itself, so the UI can render it
+    # regardless of what the model actually wrote.
+    from db.freshness import get_expired_source_ids
+
+    expired = get_expired_source_ids()
+
     sources = [
         {
             "source_id": doc.metadata.get("source_id", "unknown"),
             "page": doc.metadata.get("page"),
             "url": doc.metadata.get("source_url"),
+            # isoformat string, not a date: this dict is also json.dumps'd
+            # verbatim into CachedAnswer.sources_json (see db/semantic_cache.py).
+            "expired_since": (
+                expiry.isoformat()
+                if (expiry := expired.get(doc.metadata.get("source_id", "")))
+                else None
+            ),
         }
         for doc in retrieved_docs
     ]
@@ -84,13 +101,28 @@ def _build_retrieval_diagnostics(retrieved_docs: list) -> list[dict]:
     """Per-chunk hybrid/rerank scores (see db/chroma_client.py's _hybrid_score
     and db/reranker.py's _rerank_score metadata annotations) - real retrieval
     diagnostics for the Vector Analytics view, not the client-held cosine
-    similarity the original prototype fabricated from in-browser embeddings."""
+    similarity the original prototype fabricated from in-browser embeddings.
+
+    Also carries expired_since (see _build_sources) - this is the list the
+    chat UI's "Verified Document Passages Used" panel actually renders, so
+    that is where a stale-source badge needs the data, not just the
+    deduplicated `sources` list.
+    """
+    from db.freshness import get_expired_source_ids
+
+    expired = get_expired_source_ids()
+
     return [
         {
             "source_id": doc.metadata.get("source_id", "unknown"),
             "snippet": doc.page_content[:200],
             "hybrid_score": doc.metadata.get("_hybrid_score"),
             "rerank_score": doc.metadata.get("_rerank_score"),
+            "expired_since": (
+                expiry.isoformat()
+                if (expiry := expired.get(doc.metadata.get("source_id", "")))
+                else None
+            ),
         }
         for doc in retrieved_docs
     ]
@@ -108,6 +140,20 @@ _UNANSWERED_MARKERS = (
     "i don't have",
     "i do not have",
 )
+
+
+def _has_passed_deadline(answer: str) -> bool:
+    """True when the answer states that an application deadline has already
+    passed (see ingestion/deadlines.py's DEADLINE_PASSED_MARKER, appended by
+    _route_with_tools's lookup_application_deadline handling). This bypasses
+    retrieval entirely (see time_sensitive's own docstring), so it carries no
+    retrieved_docs for _build_sources/_build_retrieval_diagnostics' expiry
+    labelling to attach to - the chat UI needs this separate signal to show
+    the same "this describes a closed cycle" warning on an answer that has no
+    sources at all."""
+    from ingestion.deadlines import DEADLINE_PASSED_MARKER
+
+    return DEADLINE_PASSED_MARKER in answer
 
 
 def _looks_unanswered(answer: str) -> bool:
@@ -156,6 +202,7 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
         "node_latencies": result.get("node_latencies", {}),
         "answered": not _looks_unanswered(answer),
         "time_sensitive": bool(result.get("time_sensitive")),
+        "has_expired_deadline": _has_passed_deadline(answer),
     }
 
 
@@ -199,5 +246,6 @@ def stream_chat(
             "node_latencies": final_state.get("node_latencies", {}),
             "answered": not _looks_unanswered(final_answer),
             "time_sensitive": bool(final_state.get("time_sensitive")),
+            "has_expired_deadline": _has_passed_deadline(final_answer),
         },
     )

@@ -7,6 +7,9 @@ export interface ChatSource {
   source_id: string;
   page: number | null;
   url: string | null;
+  // ISO date this source's content stopped being current, or null while
+  // still valid (see db/freshness.py).
+  expired_since: string | null;
 }
 
 export interface RetrievalDiagnostic {
@@ -14,6 +17,9 @@ export interface RetrievalDiagnostic {
   snippet: string;
   hybrid_score: number | null;
   rerank_score: number | null;
+  // ISO date this chunk's source stopped being current, or null while still
+  // valid (see db/freshness.py).
+  expired_since: string | null;
 }
 
 export interface ChatQueryResult {
@@ -35,6 +41,11 @@ export interface ChatQueryResult {
       other askers and the network, and it is present for a cache hit, where
       the server reports no node timings at all. */
   elapsedMs: number;
+  // True when this answer states an application deadline has already
+  // passed. Such answers bypass document retrieval entirely (see
+  // graph/build_graph.py's _has_passed_deadline), so they have no `sources`
+  // for the per-passage "Outdated since ..." badge to attach to.
+  hasExpiredDeadline: boolean;
 }
 
 export interface UserSession {
@@ -159,4 +170,15 @@ export interface ReviewedAnswer {
   reviewed_at: string | null;
   /** Computed over the question and answer together. */
   injection_markers: string[];
+}
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  sections: Record<string, string[]>;
+}
+
+export interface VersionInfo {
+  version: string;
+  changelog: ChangelogEntry[];
 }

@@ -476,6 +476,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
             queryLogId: data.query_log_id ?? null,
             cached: Boolean(data.cached),
             elapsedMs: Date.now() - askedAt,
+            hasExpiredDeadline: Boolean(data.has_expired_deadline),
           };
 
           setMessages((prev) => {
@@ -658,9 +659,17 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
                     {isUser ? (
                       <p className="whitespace-pre-wrap font-medium">{msg.text}</p>
                     ) : (
-                      <div className="answer-prose max-w-none text-xs sm:text-sm text-[var(--text-secondary)]">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={ANSWER_MARKDOWN_COMPONENTS}>{msg.text}</ReactMarkdown>
-                      </div>
+                      <>
+                        {msg.resultData?.hasExpiredDeadline && (
+                          <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-2.5 py-1.5">
+                            <FileWarning className="w-3.5 h-3.5 shrink-0" />
+                            <span>Mentions a deadline that has already passed</span>
+                          </div>
+                        )}
+                        <div className="answer-prose max-w-none text-xs sm:text-sm text-[var(--text-secondary)]">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={ANSWER_MARKDOWN_COMPONENTS}>{msg.text}</ReactMarkdown>
+                        </div>
+                      </>
                     )}
 
                     {!isUser && msg.resultData && (
@@ -797,6 +806,12 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
                                         </span>
                                       )}
                                     </div>
+                                    {item.expired_since && (
+                                      <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 dark:text-amber-400">
+                                        <FileWarning className="w-3 h-3 shrink-0" />
+                                        <span>Outdated since {item.expired_since}</span>
+                                      </div>
+                                    )}
                                     <p className="text-[10px] text-[var(--text-muted)] line-clamp-2 font-mono leading-relaxed">
                                       "{item.snippet}"
                                     </p>
@@ -943,6 +958,13 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {selectedChunk.expired_since && (
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                <FileWarning className="w-4 h-4 shrink-0" />
+                <span>This source describes a cycle that ended on {selectedChunk.expired_since}. Any dates in it belong to a past cycle.</span>
+              </div>
+            )}
 
             <div className="flex items-center space-x-4 text-xs font-mono glass-well p-3 rounded-xl">
               {selectedChunk.rerank_score != null && (

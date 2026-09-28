@@ -10,6 +10,7 @@ import { UserManagementView } from './components/UserManagementView';
 import { AnswerReviewView } from './components/AnswerReviewView';
 import { LoginModal } from './components/LoginModal';
 import { FloatingBackground } from './components/FloatingBackground';
+import { VersionBadge } from './components/VersionBadge';
 import { useAuth } from './context/AuthContext';
 import { getStats } from './api/client';
 
@@ -99,6 +100,7 @@ export default function App() {
       </main>
 
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
+      <VersionBadge />
 
     </div>
   );
