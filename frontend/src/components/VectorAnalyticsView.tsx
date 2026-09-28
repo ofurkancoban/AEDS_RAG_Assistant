@@ -12,8 +12,11 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const load = async () => {
-    setIsLoading(true);
+  // Silent (no spinner) by default - only the manual Refresh button and the
+  // very first load should show one. A spinner flashing every 30s on its
+  // own would read as the page having a problem, not as it staying current.
+  const load = async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const [statsData, analyticsData] = await Promise.all([getStats(), getAnalytics()]);
       setStats(statsData);
@@ -21,12 +24,21 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
-      setIsLoading(false);
+      if (showSpinner) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    load(true);
+
+    // Corpus size and usage counts change from actions elsewhere (another
+    // admin ingesting a document, a student asking questions) that this tab
+    // has no other way to hear about - a 30s poll is enough for a
+    // monitoring view like this without hammering the admin-only endpoints
+    // it calls. Only runs while this tab is actually mounted (the admin
+    // shell unmounts inactive tabs), so it costs nothing when unused.
+    const interval = setInterval(() => load(false), 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   // A cache hit returns no node timings at all, and summing that empty object
@@ -59,7 +71,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
         </div>
 
         <button
-          onClick={load}
+          onClick={() => load(true)}
           className="flex items-center space-x-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] bg-[var(--bg-inset)] hover:bg-[var(--bg-inset)]/70 px-4 py-2.5 rounded-2xl border border-accent-500/20 transition-all cursor-pointer shadow-md shrink-0"
         >
           <RefreshCw className={`w-3.5 h-3.5 text-accent-500 dark:text-accent-400 ${isLoading ? 'animate-spin' : ''}`} />
