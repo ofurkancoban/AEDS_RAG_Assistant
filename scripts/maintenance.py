@@ -10,6 +10,12 @@ therefore produces a consistent, already-compacted copy while the API keeps
 serving. Copying the .db file with cp does not: it can catch a write mid-flight
 and silently omits the -wal, so the copy is corrupt or stale.
 
+data/chroma (the embedded vector store built from the ingested documents) is
+backed up too, as a plain tar.gz - it is technically rebuildable by
+re-ingesting data/documents from scratch, but that means re-running every
+embed call and losing whichever admin-approved submissions were only ever
+applied as chunks, not kept as their own source file.
+
 Growth. The LangGraph checkpointer writes a state snapshot per graph step and
 never deletes one, so checkpoints.db grows without bound - and most of it is
 not conversation at all but throwaway state from eval runs. Checkpoints are
@@ -35,6 +41,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+import tarfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -112,7 +119,38 @@ def snapshot(source: Path, keep: int, dry_run: bool) -> Path | None:
     return target
 
 
-def _rotate(stem: str, keep: int, dry_run: bool) -> None:
+def snapshot_directory(source: Path, stem: str, keep: int, dry_run: bool) -> Path | None:
+    """Write one tar.gz snapshot of a directory and rotate old ones.
+
+    Exists for data/chroma, the embedded vector store: previously nothing
+    backed it up at all, only app.db. Unlike snapshot() there is no VACUUM
+    INTO equivalent for a directory, so this is a plain tar rather than a
+    transaction-consistent copy - a write landing mid-tar could in principle
+    make one snapshot inconsistent. Acceptable here because Chroma is only
+    ever written by admin actions (ingest/approve/revoke), which are rare and
+    already serialized by the admin UI, not by concurrent user traffic.
+    """
+    if not source.exists():
+        print(f"  {source.name}: missing, skipped")
+        return None
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    target = BACKUP_DIR / f"{stem}-{stamp}.tar.gz"
+
+    if dry_run:
+        print(f"  {source.name}: would snapshot to {target.name}")
+        return None
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(target, "w:gz") as tar:
+        tar.add(source, arcname=source.name)
+
+    print(f"  {source.name}: -> {target.name} ({_human(target.stat().st_size)})")
+    _rotate(stem, keep, dry_run, suffix=".tar.gz")
+    return target
+
+
+def _rotate(stem: str, keep: int, dry_run: bool, suffix: str = ".db") -> None:
     """Delete all but the newest `keep` snapshots of one database.
 
     keep <= 0 disables rotation rather than deleting everything: an operator
@@ -120,7 +158,7 @@ def _rotate(stem: str, keep: int, dry_run: bool) -> None:
     on a misread flag is not a recoverable mistake. Names sort
     chronologically because the timestamp is fixed-width.
     """
-    snapshots = sorted(BACKUP_DIR.glob(f"{stem}-*.db"))
+    snapshots = sorted(BACKUP_DIR.glob(f"{stem}-*{suffix}"))
     stale = snapshots[:-keep] if keep > 0 else []
     for path in stale:
         if dry_run:
@@ -312,6 +350,7 @@ def main() -> int:
     if not args.prune_only:
         print("backups:")
         snapshot(settings.sqlite_path, args.keep, args.dry_run)
+        snapshot_directory(settings.chroma_persist_dir, "chroma", args.keep, args.dry_run)
         # Opt-in: checkpoints.db is machine state, an order of magnitude larger
         # than app.db, and losing it costs nothing a user would notice - the
         # readable conversation lives in app.db's chat_history. Keeping 14

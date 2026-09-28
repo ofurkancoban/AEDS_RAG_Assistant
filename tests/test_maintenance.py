@@ -120,6 +120,46 @@ def test_a_snapshot_is_a_readable_standalone_copy(tmp_path, monkeypatch):
         copy.close()
 
 
+def test_a_directory_snapshot_is_a_restorable_tarball(tmp_path, monkeypatch):
+    source = tmp_path / "chroma"
+    source.mkdir()
+    (source / "chroma.sqlite3").write_bytes(b"fake vector store contents")
+    (source / "subdir").mkdir()
+    (source / "subdir" / "nested.bin").write_bytes(b"nested")
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
+
+    target = maintenance.snapshot_directory(source, "chroma", keep=5, dry_run=False)
+
+    assert target is not None and target.exists() and target.suffix == ".gz"
+    import tarfile
+
+    with tarfile.open(target) as tar:
+        names = set(tar.getnames())
+    assert "chroma/chroma.sqlite3" in names
+    assert "chroma/subdir/nested.bin" in names
+
+
+def test_a_missing_directory_is_skipped_not_an_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
+    assert maintenance.snapshot_directory(tmp_path / "does-not-exist", "chroma", keep=5, dry_run=False) is None
+
+
+def test_directory_snapshots_rotate_independently_of_db_snapshots(tmp_path, monkeypatch):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", backups)
+    for stamp in ("20260101-000000", "20260102-000000", "20260103-000000"):
+        (backups / f"chroma-{stamp}.tar.gz").write_bytes(b"")
+    (backups / "app-20260101-000000.db").write_bytes(b"")
+
+    maintenance._rotate("chroma", keep=2, dry_run=False, suffix=".tar.gz")
+
+    remaining = sorted(p.name for p in backups.glob("chroma-*.tar.gz"))
+    assert remaining == ["chroma-20260102-000000.tar.gz", "chroma-20260103-000000.tar.gz"]
+    # The unrelated .db snapshot must be untouched by a .tar.gz rotation.
+    assert (backups / "app-20260101-000000.db").exists()
+
+
 def test_rotation_keeps_the_most_recent_snapshots(tmp_path, monkeypatch):
     backups = tmp_path / "backups"
     backups.mkdir()

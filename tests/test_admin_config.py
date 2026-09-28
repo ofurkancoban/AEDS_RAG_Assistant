@@ -1,0 +1,96 @@
+"""GET/PUT /admin/config: the live-switch surface (api/routes_admin.py) that
+lets an admin change llm_provider, its model, and openrouter_fallback_model
+without a restart. Previously this endpoint had no coverage beyond "a
+non-admin cannot reach it" - every behavior here was only ever checked by
+hand against a running server.
+
+settings.gemini_api_key / settings.openrouter_api_key are monkeypatched
+explicitly in every test that needs a key present, rather than relying on
+whatever a local .env happens to hold - real key values there would make
+these tests pass locally and fail (or silently test the wrong branch) in CI,
+where no such .env exists.
+"""
+
+from config import settings
+
+
+def test_get_config_reports_openrouter_fallback_model(client, admin_headers):
+    response = client.get("/admin/config", headers=admin_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["openrouter_model"]["value"] == "stealth/space-bunny-alpha"
+    assert body["openrouter_fallback_model"]["value"] == "cohere/north-mini-code:free"
+    # Default provider is ollama (see conftest.py) - the openrouter fields
+    # are stored but not in effect, so the UI must not offer to edit them.
+    assert body["openrouter_model"]["read_only"] is True
+    assert body["openrouter_fallback_model"]["read_only"] is True
+
+
+def test_cannot_switch_to_a_provider_with_no_configured_key(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(settings, "openrouter_api_key", "")
+    response = client.put("/admin/config", headers=admin_headers, json={"llm_provider": "openrouter"})
+    assert response.status_code == 400
+
+
+def test_switching_provider_updates_the_active_chat_model(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    response = client.put(
+        "/admin/config",
+        headers=admin_headers,
+        json={"llm_provider": "gemini", "gemini_model": "gemini-3.6-flash"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["llm_provider"]["value"] == "gemini"
+    assert body["chat_model"]["value"] == "gemini-3.6-flash"
+    # Now in effect, so gemini_model becomes editable and openrouter_model does not.
+    assert body["gemini_model"]["read_only"] is False
+    assert body["openrouter_model"]["read_only"] is True
+
+
+def test_openrouter_model_not_editable_while_a_different_provider_is_active(client, admin_headers):
+    response = client.put("/admin/config", headers=admin_headers, json={"openrouter_model": "x/y"})
+    assert response.status_code == 400
+
+
+def test_openrouter_fallback_model_can_be_cleared_but_openrouter_model_cannot(
+    client, admin_headers, monkeypatch
+):
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    switch = client.put("/admin/config", headers=admin_headers, json={"llm_provider": "openrouter"})
+    assert switch.status_code == 200
+
+    cleared = client.put("/admin/config", headers=admin_headers, json={"openrouter_fallback_model": ""})
+    assert cleared.status_code == 200
+    assert cleared.json()["openrouter_fallback_model"]["value"] == ""
+
+    emptied = client.put("/admin/config", headers=admin_headers, json={"openrouter_model": ""})
+    assert emptied.status_code == 400
+
+
+def test_rerank_top_k_cannot_exceed_retrieval_top_k(client, admin_headers):
+    response = client.put(
+        "/admin/config",
+        headers=admin_headers,
+        json={"retrieval_top_k": 5, "rerank_top_k": 8},
+    )
+    assert response.status_code == 400
+
+
+def test_retrieval_top_k_out_of_bounds_is_rejected(client, admin_headers):
+    response = client.put("/admin/config", headers=admin_headers, json={"retrieval_top_k": 999})
+    assert response.status_code == 400
+
+
+def test_system_prompt_override_can_be_set_and_reset(client, admin_headers):
+    set_response = client.put(
+        "/admin/config", headers=admin_headers, json={"system_prompt_override": "Be terse."}
+    )
+    assert set_response.status_code == 200
+    assert set_response.json()["system_prompt_override"]["value"] == "Be terse."
+
+    reset_response = client.put(
+        "/admin/config", headers=admin_headers, json={"reset_system_prompt": True}
+    )
+    assert reset_response.status_code == 200
+    assert reset_response.json()["system_prompt_override"]["value"] is None

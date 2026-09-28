@@ -89,6 +89,14 @@ def _clean_state(monkeypatch):
     rate_limit_events rather than process memory - without it one test's
     requests count against the next one's budget and failures depend on test
     order.
+
+    Also clears runtime_config's process-level lru_cache: deleting the
+    runtime_config row above does not by itself un-cache the EffectiveConfig
+    built from it, so a test that switches llm_provider (or any other
+    runtime-config field) would otherwise leak that value into every test
+    that runs after it, in any file - found live when a fallback test left
+    llm_provider="openrouter" cached and broke an unrelated test_system_prompt
+    test that ran afterward in the same session.
     """
     session = SessionLocal()
     try:
@@ -98,7 +106,13 @@ def _clean_state(monkeypatch):
     finally:
         session.close()
 
+    from runtime_config import _cached_effective_config
+
+    _cached_effective_config.cache_clear()
+
     yield
+
+    _cached_effective_config.cache_clear()
 
 
 @pytest.fixture(autouse=True)
