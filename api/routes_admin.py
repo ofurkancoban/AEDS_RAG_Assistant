@@ -756,6 +756,7 @@ class ConfigOut(BaseModel):
     llm_provider: ConfigField
     gemini_model: ConfigField
     openrouter_model: ConfigField
+    openrouter_fallback_model: ConfigField
     retrieval_top_k: ConfigField
     rerank_top_k: ConfigField
     conversation_history_window: ConfigField
@@ -834,6 +835,20 @@ def get_config(admin: User = Depends(require_admin)):
                 f"serving {active_chat_model()}. Set llm_provider to 'openrouter' to enable."
             ),
         ),
+        openrouter_fallback_model=ConfigField(
+            value=runtime.openrouter_fallback_model,
+            read_only=not serves_openrouter,
+            note=(
+                "Tried only if openrouter_model's own call fails - protects against a "
+                "'stealth' (anonymous, temporary) model being pulled or erroring with no "
+                "notice. Empty disables the fallback. Note: any ':free' model, including "
+                "this one, can itself be rate-limited by OpenRouter's shared upstream pool "
+                "at any given moment - this is a mitigation, not a guarantee."
+                if serves_openrouter
+                else f"Not in use - llm_provider is '{runtime.llm_provider}', "
+                f"serving {active_chat_model()}. Set llm_provider to 'openrouter' to enable."
+            ),
+        ),
         retrieval_top_k=ConfigField(value=runtime.retrieval_top_k, read_only=False),
         rerank_top_k=ConfigField(value=runtime.rerank_top_k, read_only=False),
         conversation_history_window=ConfigField(value=runtime.conversation_history_window, read_only=False),
@@ -865,6 +880,7 @@ class ConfigUpdateRequest(BaseModel):
     llm_provider: str | None = None
     gemini_model: str | None = None
     openrouter_model: str | None = None
+    openrouter_fallback_model: str | None = None
     retrieval_top_k: int | None = None
     rerank_top_k: int | None = None
     conversation_history_window: int | None = None
@@ -937,6 +953,19 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
         if not payload.openrouter_model.strip():
             raise HTTPException(status_code=400, detail="openrouter_model cannot be empty.")
 
+    if payload.openrouter_fallback_model is not None:
+        if effective_provider != "openrouter":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"openrouter_fallback_model is not editable while llm_provider is "
+                    f"'{effective_provider}' - set llm_provider to 'openrouter' first "
+                    "(in the same request, if you like)."
+                ),
+            )
+        # Empty is allowed here (unlike openrouter_model) - it's the documented
+        # way to disable the fallback entirely (see _with_fallback in graph/nodes.py).
+
     if payload.retrieval_top_k is not None and not 1 <= payload.retrieval_top_k <= MAX_RETRIEVAL_TOP_K:
         raise HTTPException(
             status_code=400, detail=f"retrieval_top_k must be between 1 and {MAX_RETRIEVAL_TOP_K}"
@@ -976,6 +1005,8 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
         fields["gemini_model"] = payload.gemini_model
     if payload.openrouter_model is not None:
         fields["openrouter_model"] = payload.openrouter_model
+    if payload.openrouter_fallback_model is not None:
+        fields["openrouter_fallback_model"] = payload.openrouter_fallback_model
     if payload.retrieval_top_k is not None:
         fields["retrieval_top_k"] = payload.retrieval_top_k
     if payload.rerank_top_k is not None:

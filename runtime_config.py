@@ -40,6 +40,9 @@ class EffectiveConfig:
         self.llm_provider = _override(row.llm_provider if row else None, settings.llm_provider)
         self.gemini_model = _override(row.gemini_model if row else None, settings.gemini_model)
         self.openrouter_model = _override(row.openrouter_model if row else None, settings.openrouter_model)
+        self.openrouter_fallback_model = _override(
+            row.openrouter_fallback_model if row else None, settings.openrouter_fallback_model
+        )
         self.retrieval_top_k = _override(row.retrieval_top_k if row else None, settings.retrieval_top_k)
         self.rerank_top_k = _override(row.rerank_top_k if row else None, settings.rerank_top_k)
         self.conversation_history_window = _override(

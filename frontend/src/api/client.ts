@@ -272,6 +272,7 @@ export function putConfig(payload: Partial<{
   llm_provider: string;
   gemini_model: string;
   openrouter_model: string;
+  openrouter_fallback_model: string;
   retrieval_top_k: number;
   rerank_top_k: number;
   conversation_history_window: number;

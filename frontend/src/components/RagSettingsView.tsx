@@ -13,6 +13,7 @@ export const RagSettingsView: React.FC = () => {
   // so it needs its own draft state and saves on blur rather than on every
   // keystroke.
   const [openrouterModelDraft, setOpenrouterModelDraft] = useState('');
+  const [openrouterFallbackModelDraft, setOpenrouterFallbackModelDraft] = useState('');
 
   const load = async () => {
     setIsLoading(true);
@@ -21,6 +22,7 @@ export const RagSettingsView: React.FC = () => {
       setConfig(data);
       setSystemPrompt(data.system_prompt_override.value || '');
       setOpenrouterModelDraft(data.openrouter_model.value || '');
+      setOpenrouterFallbackModelDraft(data.openrouter_fallback_model.value || '');
     } catch (e) {
       console.error('Failed to load config:', e);
     } finally {
@@ -39,6 +41,7 @@ export const RagSettingsView: React.FC = () => {
       setConfig(updated);
       setSystemPrompt(updated.system_prompt_override.value || '');
       setOpenrouterModelDraft(updated.openrouter_model.value || '');
+      setOpenrouterFallbackModelDraft(updated.openrouter_fallback_model.value || '');
     } catch (e: any) {
       alert(e.message || 'Failed to save');
       // The sliders update local state optimistically on drag, so a rejected
@@ -217,6 +220,33 @@ export const RagSettingsView: React.FC = () => {
               />
             )}
             <p className="text-[11px] text-[var(--text-faint)] italic">{config.openrouter_model.note}</p>
+          </div>
+
+          {/* openrouter_fallback_model mirrors openrouter_model, but unlike it
+              an empty value is valid (disables the fallback), so blur saves
+              even when the draft is empty. */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[var(--text-secondary)]">OpenRouter fallback model</label>
+            {config.openrouter_fallback_model.read_only ? (
+              <div className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{config.openrouter_fallback_model.value || '(not set)'}</span>
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={openrouterFallbackModelDraft}
+                onChange={(e) => setOpenrouterFallbackModelDraft(e.target.value)}
+                onBlur={() => {
+                  if (openrouterFallbackModelDraft.trim() !== (config.openrouter_fallback_model.value || '')) {
+                    save({ openrouter_fallback_model: openrouterFallbackModelDraft.trim() });
+                  }
+                }}
+                placeholder="e.g. cohere/north-mini-code:free (empty disables fallback)"
+                className="w-full glass-well rounded-2xl p-2.5 text-xs font-mono text-[var(--text)] focus:outline-none focus:border-accent-500"
+              />
+            )}
+            <p className="text-[11px] text-[var(--text-faint)] italic">{config.openrouter_fallback_model.note}</p>
           </div>
         </div>
 

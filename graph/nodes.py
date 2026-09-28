@@ -195,8 +195,55 @@ def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
+        # openai's client otherwise defaults to a 600s timeout - fine for a
+        # healthy model, but it means a stealth model that starts hanging
+        # instead of erroring (rather than a clean 4xx) would sit for ten
+        # minutes before _with_fallback ever gets a chance to try the
+        # fallback model. 30s is generous for a real response and still
+        # short enough that a hung primary fails over quickly.
+        timeout=30,
         callbacks=[_BudgetCountingCallback()],
     )
+
+
+def _with_fallback(runnable, *, tools: list | None = None):
+    """Adds openrouter_fallback_model as a fallback for `runnable` - tried
+    only if the primary call itself raises (a 4xx/5xx from OpenRouter, a
+    timeout, etc). Exists for openrouter's ":free" stealth-style releases
+    (anonymous, temporary test models - see config.py's
+    openrouter_fallback_model), which OpenRouter can pull or start erroring
+    on with no notice; the fallback is a second, more established model that
+    doesn't share that risk.
+
+    `tools` must be passed whenever the caller is about to (or already did)
+    bind_tools on `runnable` - the fallback model needs the identical tools
+    bound, or the router silently loses tool-calling the moment it fails
+    over, which reads as a routing regression rather than a provider hiccup.
+    This is also why fallback is applied BEFORE bind_tools() at the call
+    sites that need it: RunnableWithFallbacks has no bind_tools of its own
+    (that's a BaseChatModel-only method), so `runnable` here must already be
+    the tool-bound model, with `tools` given separately to bind the same
+    ones onto the fallback.
+
+    No-op unless the live provider is openrouter with a fallback model
+    configured. Applied BEFORE _with_resilience (i.e. _with_resilience wraps
+    the outside) - retries then cover the whole primary-then-fallback
+    attempt together, rather than exhausting all retries on the primary
+    before ever trying the fallback once.
+    """
+    from runtime_config import get_runtime_config
+
+    config = get_runtime_config()
+    if config.llm_provider != "openrouter" or not config.openrouter_fallback_model:
+        return runnable
+    if config.openrouter_fallback_model == config.openrouter_model:
+        # Falling back to itself would just repeat the same failure.
+        return runnable
+
+    fallback = _get_openrouter_llm_cached(config.openrouter_fallback_model)
+    if tools:
+        fallback = fallback.bind_tools(tools)
+    return runnable.with_fallbacks([fallback])
 
 
 def _with_resilience(runnable):
@@ -209,8 +256,8 @@ def _with_resilience(runnable):
     through it as outright errors). Applied to openrouter too: its free-tier
     20/minute cap is easier to trip than Gemini's. No-op for the Ollama
     provider, which has no such quota to retry around. Must be applied as
-    the LAST wrapping step (after bind_tools, if any) - the retry wrapper
-    itself doesn't expose bind_tools."""
+    the LAST wrapping step (after bind_tools and _with_fallback, if either
+    applies) - the retry wrapper itself doesn't expose bind_tools."""
     from runtime_config import get_runtime_config
 
     if get_runtime_config().llm_provider not in ("gemini", "openrouter"):
@@ -627,7 +674,9 @@ def _route_with_tools(question: str) -> dict | None:
     expressed via native tool-calling instead of string-matching. Returns None
     (falls through to generic retrieval) if the model doesn't call a tool, or
     if the tool it calls turns up nothing useful."""
-    llm_with_tools = _with_resilience(get_classifier_llm().bind_tools(_ROUTING_TOOLS))
+    llm_with_tools = _with_resilience(
+        _with_fallback(get_classifier_llm().bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS)
+    )
     try:
         response = llm_with_tools.invoke(
             [SystemMessage(content=_ROUTER_SYSTEM_PROMPT), HumanMessage(content=question)]
@@ -1298,7 +1347,7 @@ def generate_node(state: RagState) -> dict:
     # no override has been saved.
     system_prompt = runtime.system_prompt_override or SYSTEM_PROMPT
 
-    llm = _with_resilience(get_llm())
+    llm = _with_resilience(_with_fallback(get_llm()))
     response = llm.invoke(
         [SystemMessage(content=system_prompt), *prior_messages, context_message, state["messages"][-1]]
     )
@@ -1447,7 +1496,7 @@ def detect_contribution_node(state: RagState) -> dict:
     # This extraction handles the fence, and was measured working where the
     # wrapper was not.
     try:
-        raw = _with_resilience(get_classifier_llm()).invoke(prompt).content
+        raw = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         parsed = json.loads(match.group(0) if match else raw)
     except Exception:
