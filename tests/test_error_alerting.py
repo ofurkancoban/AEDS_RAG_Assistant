@@ -31,6 +31,10 @@ def _request(path: str = "/chat", method: str = "POST") -> Request:
 
 @pytest.fixture(autouse=True)
 def _reset_alert_cooldowns():
+    """Belt and suspenders: every test below also uses its own request path
+    (see _handle's default arg pattern in each test), so no test's assertion
+    actually depends on this running - a cooldown from a previous test can
+    never collide with a different path's key regardless."""
     main_module._last_alert_at.clear()
     yield
     main_module._last_alert_at.clear()
@@ -43,7 +47,7 @@ def _handle(path: str, exc: Exception):
 def test_unhandled_error_returns_a_generic_500(monkeypatch):
     monkeypatch.setattr("api.telegram_bot.send_message", lambda *a, **k: None)
 
-    response = _handle("/chat", RuntimeError("boom"))
+    response = _handle("/path-a", RuntimeError("boom"))
 
     assert response.status_code == 500
     # Generic on purpose - an internal exception message (a stack trace, a
@@ -57,10 +61,10 @@ def test_unhandled_error_alerts_telegram_once(monkeypatch):
     calls = []
     monkeypatch.setattr("api.telegram_bot.send_message", lambda text, **k: calls.append(text))
 
-    _handle("/chat", RuntimeError("boom"))
+    _handle("/path-b", RuntimeError("boom"))
 
     assert len(calls) == 1
-    assert "/chat" in calls[0]
+    assert "/path-b" in calls[0]
     assert "RuntimeError" in calls[0]
     assert "boom" in calls[0]
 
@@ -70,7 +74,7 @@ def test_repeated_errors_on_the_same_endpoint_are_not_spammed(monkeypatch):
     monkeypatch.setattr("api.telegram_bot.send_message", lambda text, **k: calls.append(text))
 
     for _ in range(5):
-        _handle("/chat", RuntimeError("boom"))
+        _handle("/path-c", RuntimeError("boom"))
 
     assert len(calls) == 1
 
@@ -79,8 +83,8 @@ def test_a_different_exception_type_on_the_same_path_alerts_again(monkeypatch):
     calls = []
     monkeypatch.setattr("api.telegram_bot.send_message", lambda text, **k: calls.append(text))
 
-    _handle("/chat", RuntimeError("boom"))
-    _handle("/chat", ValueError("different failure"))
+    _handle("/path-d", RuntimeError("boom"))
+    _handle("/path-d", ValueError("different failure"))
 
     assert len(calls) == 2
 
@@ -91,6 +95,6 @@ def test_a_failed_telegram_send_does_not_break_the_response(monkeypatch):
 
     monkeypatch.setattr("api.telegram_bot.send_message", _raise)
 
-    response = _handle("/chat", RuntimeError("boom"))
+    response = _handle("/path-e", RuntimeError("boom"))
 
     assert response.status_code == 500

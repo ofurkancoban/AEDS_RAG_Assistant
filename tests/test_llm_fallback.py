@@ -8,6 +8,7 @@ tests that should have existed before that live test was the only check."""
 from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.fallbacks import RunnableWithFallbacks
 
+from config import settings
 from graph.nodes import _with_fallback
 from runtime_config import update_runtime_config
 
@@ -35,7 +36,11 @@ def test_no_fallback_when_fallback_equals_primary():
     assert _with_fallback(_DUMMY) is _DUMMY
 
 
-def test_fallback_applied_when_provider_is_openrouter_with_a_distinct_fallback():
+def test_fallback_applied_when_provider_is_openrouter_with_a_distinct_fallback(monkeypatch):
+    # ChatOpenAI (the fallback client) validates that an api_key is present
+    # at construction time - real locally (from .env), absent in CI, so this
+    # must not depend on either and set its own.
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     _reset(llm_provider="openrouter", openrouter_model="a/a", openrouter_fallback_model="b/b")
     wrapped = _with_fallback(_DUMMY)
     assert isinstance(wrapped, RunnableWithFallbacks)
