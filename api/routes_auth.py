@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -26,6 +28,18 @@ MIN_PASSWORD_LENGTH = 8
 # Guests are never asked to log in again, so their token has to outlive a
 # normal session or they silently lose their conversation history.
 GUEST_TOKEN_MINUTES = 60 * 24 * 90
+
+# bcrypt's own verify is deliberately slow (~100-300ms) - real protection
+# against offline guessing, but a timing side channel on this endpoint: for
+# an unknown email, `user` is None and short-circuit evaluation skips
+# verify_password entirely, so that request returns in under a millisecond
+# while a wrong-password guess against a REAL email takes the full bcrypt
+# time. Both branches already return the identical error message so the
+# response body cannot be used to enumerate accounts - but the response
+# TIME still could, measurably, even over a network. Hashed once at import
+# so every "no such user" login still burns a real bcrypt verify against
+# this fixed hash, closing the timing gap without slowing down real logins.
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 def _normalise_email(email: str) -> str:
@@ -172,7 +186,13 @@ def login(
     if user is not None and user.is_guest:
         user = None
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # Always calls verify_password, on a real hash either way - see
+    # _DUMMY_PASSWORD_HASH's comment for why this can't short-circuit to
+    # skipping it for an unknown email.
+    password_ok = verify_password(
+        form_data.password, user.hashed_password if user is not None else _DUMMY_PASSWORD_HASH
+    )
+    if user is None or not password_ok:
         # One message for both branches so the endpoint cannot be used to
         # discover which addresses have accounts.
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

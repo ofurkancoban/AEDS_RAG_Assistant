@@ -109,6 +109,31 @@ def test_login_gives_the_same_error_for_unknown_and_wrong_password(client, admin
     assert unknown.json()["detail"] == wrong.json()["detail"]
 
 
+def test_login_runs_password_verification_for_an_unknown_email_too(client, admin_user, monkeypatch):
+    """The response body cannot distinguish "no such user" from "wrong
+    password" (see the test above), but a login that skips bcrypt entirely
+    for an unknown email answers in under a millisecond while a real wrong
+    guess takes bcrypt's ~100-300ms - a timing side channel that still
+    reveals which emails have accounts. verify_password must run against
+    some real hash on both paths so the two cannot be told apart by timing
+    either."""
+    import api.routes_auth as routes_auth
+
+    calls = []
+    real_verify = routes_auth.verify_password
+
+    def spy(password, hashed):
+        calls.append(hashed)
+        return real_verify(password, hashed)
+
+    monkeypatch.setattr(routes_auth, "verify_password", spy)
+
+    client.post("/auth/login", data={"username": "nobody@example.com", "password": "whatever"})
+
+    assert len(calls) == 1
+    assert calls[0] == routes_auth._DUMMY_PASSWORD_HASH
+
+
 def test_auth_endpoints_are_rate_limited_per_ip(client, monkeypatch):
     from api import rate_limit, routes_auth
 
