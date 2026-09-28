@@ -182,3 +182,7 @@ export interface VersionInfo {
   version: string;
   changelog: ChangelogEntry[];
 }
+
+export interface VisitorCount {
+  unique_visitors: number;
+}

@@ -11,6 +11,7 @@ import {
   SubmissionStatus,
   UsageAnalytics,
   VersionInfo,
+  VisitorCount,
 } from '../types';
 
 // Set VITE_API_BASE_URL at build time to point the app at a deployed backend
@@ -293,6 +294,10 @@ export function getStats(): Promise<AdminStats> {
 
 export function getVersion(): Promise<VersionInfo> {
   return request('/version');
+}
+
+export function getVisitorCount(): Promise<VisitorCount> {
+  return request('/visitors');
 }
 
 export function getAnalytics(days = 30): Promise<UsageAnalytics> {

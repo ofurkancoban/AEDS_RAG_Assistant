@@ -11,6 +11,7 @@ import { AnswerReviewView } from './components/AnswerReviewView';
 import { LoginModal } from './components/LoginModal';
 import { FloatingBackground } from './components/FloatingBackground';
 import { VersionBadge } from './components/VersionBadge';
+import { VisitorCounter } from './components/VisitorCounter';
 import { useAuth } from './context/AuthContext';
 import { getStats } from './api/client';
 
@@ -101,6 +102,7 @@ export default function App() {
 
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
       <VersionBadge />
+      <VisitorCounter />
 
     </div>
   );

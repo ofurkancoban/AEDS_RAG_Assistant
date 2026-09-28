@@ -60,3 +60,38 @@ def test_version_endpoint_reports_the_topmost_entry(client):
     body = response.json()
     assert body["version"] == body["changelog"][0]["version"]
     assert len(body["changelog"]) >= 1
+
+
+def test_visitor_count_excludes_the_shared_fallback_guest(client):
+    from api.auth import GUEST_EMAIL, get_or_create_shared_guest_user
+    from db.models import SessionLocal, User
+
+    session = SessionLocal()
+    try:
+        get_or_create_shared_guest_user(session)
+        before = client.get("/visitors").json()["unique_visitors"]
+        # Calling it again reuses the same row rather than minting another.
+        get_or_create_shared_guest_user(session)
+        after = client.get("/visitors").json()["unique_visitors"]
+        assert after == before
+
+        assert session.query(User).filter(User.email == GUEST_EMAIL).count() == 1
+    finally:
+        session.close()
+
+
+def test_visitor_count_counts_a_real_guest_and_a_registered_user(client, admin_user):
+    from api.auth import create_guest_user
+    from db.models import SessionLocal
+
+    session = SessionLocal()
+    try:
+        create_guest_user(session)
+    finally:
+        session.close()
+
+    response = client.get("/visitors")
+    assert response.status_code == 200
+    # admin_user (fixture) + the guest just minted here = at least 2, and the
+    # shared fallback (if any request created it) must not be among them.
+    assert response.json()["unique_visitors"] >= 2
