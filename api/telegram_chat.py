@@ -185,6 +185,7 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
                 source_ids=",".join(sorted({s["source_id"] for s in sources})),
                 latency_ms=int((time.monotonic() - started) * 1000),
                 served_from_cache=True,
+                origin="telegram",
             )
             session.add(log_entry)
             session.commit()
@@ -226,6 +227,7 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
                 answer=result["answer"],
                 sources=result["sources"],
                 retrieval=result.get("retrieval", []),
+                origin="telegram",
             )
 
         log_entry = QueryLog(
@@ -236,6 +238,7 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
             source_ids=",".join(sorted({s["source_id"] if isinstance(s, dict) else s.source_id for s in result["sources"]})),
             latency_ms=int((time.monotonic() - started) * 1000),
             served_from_cache=False,
+            origin="telegram",
         )
         session.add(log_entry)
         session.commit()

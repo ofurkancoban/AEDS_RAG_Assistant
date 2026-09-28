@@ -125,6 +125,36 @@ def test_chat_records_both_sides_of_the_turn(client, guest_headers):
         session.close()
 
 
+def test_the_origin_header_is_recorded_on_both_the_log_and_the_cached_answer(client, guest_headers):
+    from db.models import CachedAnswer, QueryLog, SessionLocal
+
+    headers = {**guest_headers, "Origin": "https://ofurkancoban.github.io"}
+    _ask(client, headers, message="What are the admission requirements?")
+
+    session = SessionLocal()
+    try:
+        log = session.query(QueryLog).order_by(QueryLog.id.desc()).first()
+        cached = session.query(CachedAnswer).order_by(CachedAnswer.id.desc()).first()
+        assert log.origin == "https://ofurkancoban.github.io"
+        assert cached.origin == "https://ofurkancoban.github.io"
+    finally:
+        session.close()
+
+
+def test_no_origin_header_is_recorded_as_none(client, guest_headers):
+    from db.models import QueryLog, SessionLocal
+
+    # guest_headers alone carries no Origin - a direct, non-browser API call.
+    _ask(client, guest_headers, message="What are the exam regulations?")
+
+    session = SessionLocal()
+    try:
+        log = session.query(QueryLog).order_by(QueryLog.id.desc()).first()
+        assert log.origin is None
+    finally:
+        session.close()
+
+
 def test_submissions_are_rate_limited(client, guest_headers, monkeypatch):
     from api import rate_limit, routes_chat
 

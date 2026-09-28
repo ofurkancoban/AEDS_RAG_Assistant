@@ -425,6 +425,9 @@ class AnswerOut(BaseModel):
     # Computed over the question and the answer together: either half can
     # carry the instruction that produced the other.
     injection_markers: list[str] = []
+    # Which frontend this came in through - see CachedAnswer.origin's
+    # docstring. None for anything answered before this field existed.
+    origin: str | None = None
 
 
 def _to_answer_out(row: CachedAnswer) -> AnswerOut:
@@ -444,6 +447,7 @@ def _to_answer_out(row: CachedAnswer) -> AnswerOut:
         created_at=row.created_at,
         reviewed_at=row.reviewed_at,
         injection_markers=injection_markers(f"{row.question}\n{row.answer}"),
+        origin=row.origin,
     )
 
 

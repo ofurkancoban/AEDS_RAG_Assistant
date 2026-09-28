@@ -24,6 +24,22 @@ const STATUS_ICON: Record<AnswerStatus, React.ReactNode> = {
   rejected: <XCircle className="w-3.5 h-3.5" />,
 };
 
+/** A short, readable label for where the question came in from - "Telegram"
+    as-is, a bare Origin URL reduced to its hostname (so a long
+    "https://ofurkancoban.github.io" reads as "ofurkancoban.github.io"), or
+    null for a caller that sent no Origin header at all (a direct API call,
+    or an answer logged before this field existed) - nothing meaningful to
+    show in that case. */
+function formatOrigin(origin: string | null): string | null {
+  if (!origin) return null;
+  if (origin === 'telegram') return 'Telegram';
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return origin;
+  }
+}
+
 interface AnswerReviewViewProps {
   /** Lets the navbar badge refresh once an item leaves the queue. */
   onQueueChange?: () => void;
@@ -184,6 +200,11 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
                   <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)] font-mono">
                     <span>{new Date(item.created_at).toLocaleString('en-US')}</span>
+                    {formatOrigin(item.origin) && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-[var(--bg-inset)] border border-[var(--border)]">
+                        {formatOrigin(item.origin)}
+                      </span>
+                    )}
                     {item.sources.length > 0 && <span>· {item.sources.join(', ')}</span>}
                     {item.hit_count > 0 && (
                       <span className="flex items-center gap-1 text-accent-500 dark:text-accent-300">

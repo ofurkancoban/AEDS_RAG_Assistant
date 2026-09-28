@@ -170,6 +170,11 @@ export interface ReviewedAnswer {
   reviewed_at: string | null;
   /** Computed over the question and answer together. */
   injection_markers: string[];
+  /** Which frontend this came in through - the browser's Origin header
+      (the main site vs. a third-party widget like ECTS Tracker), "telegram"
+      for the bot, or null for a caller with no Origin header (a direct API
+      call) or an answer logged before this field existed. */
+  origin: string | null;
 }
 
 export interface ChangelogEntry {

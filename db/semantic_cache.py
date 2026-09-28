@@ -89,6 +89,7 @@ def store(
     answer: str,
     sources: list[dict],
     retrieval: list[dict],
+    origin: str | None = None,
 ) -> None:
     """Record an answered question for review. Stored as PENDING, so it is not
     served to anyone until an admin has checked it."""
@@ -108,6 +109,7 @@ def store(
             sources_json=json.dumps(sources),
             retrieval_json=json.dumps(retrieval),
             status=AnswerStatus.PENDING,
+            origin=origin,
         )
     )
     session.commit()

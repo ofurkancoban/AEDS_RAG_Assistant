@@ -258,6 +258,14 @@ class CachedAnswer(Base):
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Which frontend the question came in through: the browser's Origin
+    # header for a web caller (e.g. the main site vs. a third-party widget
+    # like ECTS Tracker, both allowed by CORS_ALLOW_ORIGINS), "telegram" for
+    # the bot, or None if no Origin header was sent at all (a direct API
+    # call). Purely informational for the admin review queue - never used
+    # for any access-control decision, since it is caller-supplied and not
+    # a trust boundary.
+    origin: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -296,6 +304,8 @@ class QueryLog(Base):
     served_from_cache: Mapped[bool] = mapped_column(Boolean, default=False)
     # +1 / -1 from the thumbs control, NULL until the user rates it.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # See CachedAnswer.origin's docstring - same meaning, same caveats.
+    origin: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 

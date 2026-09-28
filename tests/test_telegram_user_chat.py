@@ -135,3 +135,37 @@ def test_rate_limit_blocks_before_calling_the_pipeline(monkeypatch):
         assert query_log_id is None
     finally:
         _cleanup(chat_id)
+
+
+def test_telegram_answers_are_tagged_with_that_origin(monkeypatch):
+    import graph.build_graph as build_graph
+
+    # This file's own _stub_pipeline fixture forces is_cacheable_turn False
+    # for every test (see its docstring) - overridden here just for this one,
+    # since only a cacheable turn ever reaches semantic_cache.store() at all.
+    monkeypatch.setattr(build_graph, "is_cacheable_turn", lambda thread_id: True)
+
+    chat_id = "pytest_chat_origin"
+    try:
+        _, query_log_id = telegram_chat.handle_user_question(chat_id, "A distinctly worded question")
+
+        session = SessionLocal()
+        try:
+            log = session.get(QueryLog, query_log_id)
+            assert log.origin == "telegram"
+
+            from db.models import CachedAnswer
+
+            cached = (
+                session.query(CachedAnswer)
+                .filter(CachedAnswer.question == "A distinctly worded question")
+                .first()
+            )
+            assert cached is not None
+            assert cached.origin == "telegram"
+            session.delete(cached)
+            session.commit()
+        finally:
+            session.close()
+    finally:
+        _cleanup(chat_id)

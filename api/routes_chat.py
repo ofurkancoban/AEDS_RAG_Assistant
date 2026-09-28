@@ -115,7 +115,19 @@ def _lookup_cache(session: Session, payload: "ChatRequest", thread_id: str):
     return True, embedding, semantic_cache.lookup(session, payload.message, embedding)
 
 
-def _maybe_store_cache(session: Session, payload: "ChatRequest", cacheable: bool, embedding, result: dict) -> None:
+def _request_origin(request: Request) -> str | None:
+    """The browser's Origin header - which frontend actually sent this (the
+    main site vs. a third-party widget like ECTS Tracker, both allowed by
+    CORS_ALLOW_ORIGINS), for the admin review queue's own information. Never
+    used for any access-control decision: CORS itself is what already
+    decides whether the browser was allowed to make the call at all, and a
+    non-browser client can set this header to anything."""
+    return request.headers.get("origin")
+
+
+def _maybe_store_cache(
+    session: Session, payload: "ChatRequest", cacheable: bool, embedding, result: dict, origin: str | None = None
+) -> None:
     """Only successful, grounded, time-independent answers are worth replaying.
     Caching an "I couldn't find that" would keep serving the gap after the
     missing document is added, and caching a deadline countdown would restate
@@ -129,6 +141,7 @@ def _maybe_store_cache(session: Session, payload: "ChatRequest", cacheable: bool
         answer=result["answer"],
         sources=result["sources"],
         retrieval=result.get("retrieval", []),
+        origin=origin,
     )
 
 
@@ -142,6 +155,7 @@ def _log_query(
     sources: list,
     latency_ms: int,
     served_from_cache: bool,
+    origin: str | None = None,
 ) -> int:
     """Record the turn and return the log id, which the client sends back with
     a thumbs rating so the two can be tied together."""
@@ -156,6 +170,7 @@ def _log_query(
         source_ids=source_ids,
         latency_ms=latency_ms,
         served_from_cache=served_from_cache,
+        origin=origin,
     )
     session.add(entry)
     session.commit()
@@ -251,6 +266,7 @@ def chat(
 ):
     thread_id = _resolve_thread_id(payload, user)
     started = time.monotonic()
+    origin = _request_origin(request)
 
     # Checked before the cache lookup so a throttled client cannot spend the
     # embedding either, and so the limit reflects requests made rather than
@@ -272,6 +288,7 @@ def chat(
             sources=sources,
             latency_ms=int((time.monotonic() - started) * 1000),
             served_from_cache=True,
+            origin=origin,
         )
         return ChatResponse(
             thread_id=thread_id,
@@ -311,7 +328,7 @@ def chat(
     if auto_flagged_contribution:
         notify_new_submission(submission.id, submission.submission_type.value, submission.source_id, submission.content)
 
-    _maybe_store_cache(session, payload, cacheable, embedding, result)
+    _maybe_store_cache(session, payload, cacheable, embedding, result, origin=origin)
 
     log_id = _log_query(
         session,
@@ -322,6 +339,7 @@ def chat(
         sources=result["sources"],
         latency_ms=int((time.monotonic() - started) * 1000),
         served_from_cache=False,
+        origin=origin,
     )
 
     return ChatResponse(
@@ -350,6 +368,7 @@ def chat_stream(
     rather than by content."""
     thread_id = _resolve_thread_id(payload, user)
     started = time.monotonic()
+    origin = _request_origin(request)
 
     # Both guards run before the StreamingResponse is returned so a rejection
     # is a normal 429 the client can read, rather than an error buried inside
@@ -371,6 +390,7 @@ def chat_stream(
             sources=sources,
             latency_ms=int((time.monotonic() - started) * 1000),
             served_from_cache=True,
+            origin=origin,
         )
         cached_payload = {
             "thread_id": thread_id,
@@ -451,6 +471,7 @@ def chat_stream(
                     "answered": data.get("answered", True),
                     "time_sensitive": data.get("time_sensitive", False),
                 },
+                origin=origin,
             )
 
             log_id = _log_query(
@@ -462,6 +483,7 @@ def chat_stream(
                 sources=data["sources"],
                 latency_ms=int((time.monotonic() - started) * 1000),
                 served_from_cache=False,
+                origin=origin,
             )
 
             done_payload = {
