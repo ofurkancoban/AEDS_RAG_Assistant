@@ -91,7 +91,22 @@ AUTO_DRAFT_ELIGIBLE = {
 }
 
 
+# Strips a self-regenerating "created on <date>" stamp some of the
+# university's PDFs (the module handbooks) carry in their own title line -
+# e.g. "... Master-Studiengang erstellt am 28.09.2026". The server re-renders
+# the whole PDF with today's date baked into this line on every request, so
+# without stripping it, the diff would flag "changed" daily even when the
+# actual content is byte-for-byte the same underlying curriculum data -
+# exactly the kind of false positive _is_significant_change's own digit rule
+# cannot filter, since it exists specifically to never suppress a real
+# one-token date change (a deadline). This is a known, named phrase, not a
+# generic date regex, so it cannot accidentally swallow a real deadline that
+# happens to sit near the word "erstellt".
+_GENERATED_ON_STAMP_RE = re.compile(r"\berstellt am \d{1,2}\.\d{1,2}\.\d{4}\b")
+
+
 def _normalise(text: str) -> str:
+    text = _GENERATED_ON_STAMP_RE.sub("", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
