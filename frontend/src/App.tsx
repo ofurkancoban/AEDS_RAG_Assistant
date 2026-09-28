@@ -1,19 +1,33 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { ChatQueryResult, AdminStats } from './types';
 import { Navbar, TabId } from './components/Navbar';
-import { KnowledgeBaseView } from './components/KnowledgeBaseView';
 import { RagChatView } from './components/RagChatView';
-import { RagSettingsView } from './components/RagSettingsView';
-import { VectorAnalyticsView } from './components/VectorAnalyticsView';
-import { AdminApprovalView } from './components/AdminApprovalView';
-import { UserManagementView } from './components/UserManagementView';
-import { AnswerReviewView } from './components/AnswerReviewView';
 import { LoginModal } from './components/LoginModal';
 import { FloatingBackground } from './components/FloatingBackground';
 import { VersionBadge } from './components/VersionBadge';
 import { VisitorCounter } from './components/VisitorCounter';
 import { useAuth } from './context/AuthContext';
 import { getStats } from './api/client';
+
+// Every one of these is admin-only - a regular visitor (the common case:
+// an anonymous student asking questions) never renders any of them, but
+// previously still downloaded and parsed all six as part of the one main
+// bundle before ever seeing the chat view. Split into their own chunks so
+// that cost is paid only by someone who actually opens an admin tab.
+const KnowledgeBaseView = lazy(() => import('./components/KnowledgeBaseView').then((m) => ({ default: m.KnowledgeBaseView })));
+const RagSettingsView = lazy(() => import('./components/RagSettingsView').then((m) => ({ default: m.RagSettingsView })));
+const VectorAnalyticsView = lazy(() => import('./components/VectorAnalyticsView').then((m) => ({ default: m.VectorAnalyticsView })));
+const AdminApprovalView = lazy(() => import('./components/AdminApprovalView').then((m) => ({ default: m.AdminApprovalView })));
+const UserManagementView = lazy(() => import('./components/UserManagementView').then((m) => ({ default: m.UserManagementView })));
+const AnswerReviewView = lazy(() => import('./components/AnswerReviewView').then((m) => ({ default: m.AnswerReviewView })));
+
+const AdminTabFallback: React.FC = () => (
+  <div className="max-w-5xl mx-auto px-4 py-16 text-center text-[var(--text-muted)] text-xs flex items-center justify-center space-x-2">
+    <RefreshCw className="w-4 h-4 animate-spin" />
+    <span>Loading...</span>
+  </div>
+);
 
 export default function App() {
   const { isAdmin, identity, isReady } = useAuth();
@@ -92,12 +106,16 @@ export default function App() {
           />
         )}
 
-        {isAdmin && activeTab === 'knowledge' && <KnowledgeBaseView onCorpusChange={refreshStats} />}
-        {isAdmin && activeTab === 'admin' && <AdminApprovalView onQueueChange={refreshStats} />}
-        {isAdmin && activeTab === 'settings' && <RagSettingsView />}
-        {isAdmin && activeTab === 'analytics' && <VectorAnalyticsView latestResult={latestResult} />}
-        {isAdmin && activeTab === 'users' && <UserManagementView />}
-        {isAdmin && activeTab === 'answers' && <AnswerReviewView onQueueChange={refreshStats} />}
+        {isAdmin && activeTab !== 'chat' && (
+          <Suspense fallback={<AdminTabFallback />}>
+            {activeTab === 'knowledge' && <KnowledgeBaseView onCorpusChange={refreshStats} />}
+            {activeTab === 'admin' && <AdminApprovalView onQueueChange={refreshStats} />}
+            {activeTab === 'settings' && <RagSettingsView />}
+            {activeTab === 'analytics' && <VectorAnalyticsView latestResult={latestResult} />}
+            {activeTab === 'users' && <UserManagementView />}
+            {activeTab === 'answers' && <AnswerReviewView onQueueChange={refreshStats} />}
+          </Suspense>
+        )}
       </main>
 
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
