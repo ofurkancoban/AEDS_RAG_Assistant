@@ -1,0 +1,26 @@
+[
+  {
+    "id": "review-corrected-8",
+    "question": "Which courses are taught only in German?",
+    "expected_contains": [],
+    "expected_absent": [
+      "30 ECTS",
+      "Degree Module"
+    ],
+    "notes": "Derived from admin correction of answer #8. The model's original answer was corrected by a reviewer; the terms above are the factual difference between the two.",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  },
+  {
+    "id": "review-rejected-1",
+    "question": "What are the compulsory courses in the economics component?",
+    "expected_contains": [],
+    "expected_absent": [],
+    "needs_review": true,
+    "notes": "Derived from admin rejection of answer #1. No corrected text exists, so expected_absent lists the hard facts from the rejected answer as candidates only - a human must delete any that were actually correct before this case is trustworthy. Admin note: (none)",
+    "expected_source_ids": [
+      "catalog"
+    ]
+  }
+]

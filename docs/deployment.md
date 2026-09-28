@@ -44,7 +44,7 @@ response (this shipped once already, for `/version`).
 0 2 * * *   scripts/update_catalog.py    - refreshes the course catalog cache
 0 3 * * *   scripts/source_refresh.py    - checks source documents for changes, notifies on drift
 30 3 * * *  scripts/maintenance.py       - backs up app.db and data/chroma, prunes old checkpoints/history
-0 5 * * 0   scripts/eval_and_notify.py   - runs the golden-set quality eval, alerts on regression (Sundays only)
+0 5 * * 0   scripts/eval_and_notify.py   - mines new regression cases from admin review decisions, then runs the golden-set quality eval and alerts on regression (Sundays only)
 ```
 
 All log to `data/backups/<script>.log`. `eval_and_notify.py` runs weekly

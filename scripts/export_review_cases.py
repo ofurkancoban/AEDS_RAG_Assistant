@@ -175,16 +175,10 @@ def load_existing() -> list[dict]:
     return json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="Print what would be written, change nothing")
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Rebuild cases that already exist, discarding any hand-trimmed assertions",
-    )
-    args = parser.parse_args()
-
+def mine_review_cases(overwrite: bool = False, dry_run: bool = False) -> dict:
+    """The actual work, independent of argparse, so other code (see
+    scripts/eval_and_notify.py) can call this directly without going through
+    a CLI invocation. Returns the summary counts main() prints."""
     existing = load_existing()
     by_id = {case["id"]: case for case in existing}
 
@@ -202,7 +196,7 @@ def main() -> int:
 
     added, refreshed, skipped = 0, 0, 0
     for case in built:
-        if case["id"] in by_id and not args.overwrite:
+        if case["id"] in by_id and not overwrite:
             skipped += 1
             continue
         if case["id"] in by_id:
@@ -214,22 +208,48 @@ def main() -> int:
     merged = sorted(by_id.values(), key=lambda c: c["id"])
     needs_review = sum(1 for c in merged if c.get("needs_review"))
 
-    print(f"reviewed answers examined : {len(rows)}")
-    print(f"cases buildable           : {len(built)}")
-    print(f"new                       : {added}")
-    print(f"refreshed (--overwrite)   : {refreshed}")
-    print(f"kept as-is                : {skipped}")
-    print(f"total in file             : {len(merged)} ({needs_review} still need human trimming)")
+    if not dry_run:
+        OUTPUT_PATH.write_text(
+            json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+
+    return {
+        "examined": len(rows),
+        "buildable": len(built),
+        "added": added,
+        "refreshed": refreshed,
+        "skipped": skipped,
+        "total": len(merged),
+        "needs_review": needs_review,
+        "sample": merged[:3],
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="Print what would be written, change nothing")
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Rebuild cases that already exist, discarding any hand-trimmed assertions",
+    )
+    args = parser.parse_args()
+
+    result = mine_review_cases(overwrite=args.overwrite, dry_run=args.dry_run)
+
+    print(f"reviewed answers examined : {result['examined']}")
+    print(f"cases buildable           : {result['buildable']}")
+    print(f"new                       : {result['added']}")
+    print(f"refreshed (--overwrite)   : {result['refreshed']}")
+    print(f"kept as-is                : {result['skipped']}")
+    print(f"total in file             : {result['total']} ({result['needs_review']} still need human trimming)")
 
     if args.dry_run:
         print("\n--dry-run: nothing written")
-        for case in merged[:3]:
+        for case in result["sample"]:
             print(json.dumps(case, indent=2, ensure_ascii=False))
         return 0
 
-    OUTPUT_PATH.write_text(
-        json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
     print(f"\nwrote {OUTPUT_PATH}")
     return 0
 
