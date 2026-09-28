@@ -29,7 +29,22 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AEDS RAG", lifespan=lifespan)
+# The auto-generated interactive docs expose the full API schema (every
+# endpoint, request/response model, and a "try it out" form that shows
+# exactly what payload each one expects) - useful in development, but pure
+# reconnaissance value for an attacker in production, on top of nginx's own
+# path allowlist and the backend now being bound to 127.0.0.1 (see
+# scripts/deploy.sh) already keeping it unreachable from outside. Disabled
+# here too so that protection does not depend on both of those other layers
+# never having a gap at the same time.
+_docs_enabled = settings.environment != "production"
+app = FastAPI(
+    title="AEDS RAG",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 
 # Any Vite dev port on localhost. Kept only for development: hardcoding it was
 # fine while the only user was whoever ran the server, but a deployment serving
