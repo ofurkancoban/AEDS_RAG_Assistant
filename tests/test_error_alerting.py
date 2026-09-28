@@ -69,6 +69,24 @@ def test_unhandled_error_alerts_telegram_once(monkeypatch):
     assert "boom" in calls[0]
 
 
+def test_a_fresh_process_still_alerts_on_the_first_error(monkeypatch):
+    """time.monotonic() counts from system boot, not from the epoch - on a
+    machine with days of uptime `now` is always far past the cooldown
+    window, which is exactly why this went unnoticed until it ran on a
+    freshly booted CI runner: with under 600s of uptime, a key seen for the
+    first time was wrongly treated as still "within cooldown" and the first
+    alert was silently dropped. Reproduced directly here by forcing `now`
+    itself to be small, so this does not depend on the real system's uptime.
+    """
+    monkeypatch.setattr("api.main.time.monotonic", lambda: 5.0)
+    calls = []
+    monkeypatch.setattr("api.telegram_bot.send_message", lambda text, **k: calls.append(text))
+
+    _handle("/path-fresh-boot", RuntimeError("boom"))
+
+    assert len(calls) == 1
+
+
 def test_repeated_errors_on_the_same_endpoint_are_not_spammed(monkeypatch):
     calls = []
     monkeypatch.setattr("api.telegram_bot.send_message", lambda text, **k: calls.append(text))

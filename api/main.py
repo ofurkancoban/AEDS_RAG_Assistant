@@ -60,8 +60,20 @@ _logger = logging.getLogger("api.main")
 # type) pair, keyed on first-seen time. Without this, an outage that makes
 # every request to one endpoint fail (e.g. the LLM provider going down)
 # would fire one Telegram message per request instead of one per outage.
+#
+# time.monotonic() counts from an arbitrary point - in practice, system boot,
+# not process start. A dev machine's uptime is usually days, so `now` is
+# always far past any cooldown window for a key seen for the first time. A
+# freshly booted VM (a CI runner, or this app right after a pm2 restart) can
+# have an uptime under _ALERT_COOLDOWN_SECONDS though, and a 0.0 default for
+# an unseen key would make `now - 0.0` read as still "within cooldown",
+# silently swallowing the very first alert - found live when this exact
+# scenario made a from-scratch CI runner's tests fail while passing
+# everywhere else. -inf guarantees a key seen for the first time always
+# alerts, regardless of how small `now` happens to be.
 _ALERT_COOLDOWN_SECONDS = 600
 _last_alert_at: dict[str, float] = {}
+_NEVER_ALERTED = float("-inf")
 
 
 @app.exception_handler(Exception)
@@ -76,7 +88,7 @@ async def _handle_unexpected_error(request: Request, exc: Exception):
 
     key = f"{request.url.path}:{type(exc).__name__}"
     now = time.monotonic()
-    if now - _last_alert_at.get(key, 0.0) > _ALERT_COOLDOWN_SECONDS:
+    if now - _last_alert_at.get(key, _NEVER_ALERTED) > _ALERT_COOLDOWN_SECONDS:
         _last_alert_at[key] = now
         try:
             from api.telegram_bot import send_message
