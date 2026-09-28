@@ -1,8 +1,10 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.routes_admin import router as admin_router
 from api.routes_auth import router as auth_router
@@ -51,6 +53,42 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(admin_router)
+
+_logger = logging.getLogger("api.main")
+
+# Cooldown between repeated Telegram alerts for the same (path, exception
+# type) pair, keyed on first-seen time. Without this, an outage that makes
+# every request to one endpoint fail (e.g. the LLM provider going down)
+# would fire one Telegram message per request instead of one per outage.
+_ALERT_COOLDOWN_SECONDS = 600
+_last_alert_at: dict[str, float] = {}
+
+
+@app.exception_handler(Exception)
+async def _handle_unexpected_error(request: Request, exc: Exception):
+    """Catches any exception a route didn't handle itself (HTTPException has
+    its own default handler and never reaches here) - previously these were
+    only visible by tailing pm2 logs on the VPS after a user reported a
+    problem. Alerts to the same Telegram chat the source-refresh and review
+    queue notifications already use, so a production error surfaces without
+    anyone having to go looking for it."""
+    _logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+
+    key = f"{request.url.path}:{type(exc).__name__}"
+    now = time.monotonic()
+    if now - _last_alert_at.get(key, 0.0) > _ALERT_COOLDOWN_SECONDS:
+        _last_alert_at[key] = now
+        try:
+            from api.telegram_bot import send_message
+
+            send_message(
+                f"Unhandled error on {request.method} {request.url.path}\n"
+                f"{type(exc).__name__}: {exc}"
+            )
+        except Exception:
+            _logger.exception("Failed to send Telegram error alert")
+
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/health")
