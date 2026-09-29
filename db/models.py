@@ -213,6 +213,16 @@ class IngestedDocument(Base):
     # dismiss flow).
     source_draft: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Consecutive failed fetch attempts of this source's URL (see
+    # scripts/source_refresh.py's decide_fetch_failure_alert), reset to 0 on
+    # the next successful fetch. A single failed check is almost always
+    # transient (the source site briefly down) and not worth surfacing -
+    # this only becomes an admin-visible alert once it has failed several
+    # checks in a row, i.e. looks like a genuinely dead link rather than a
+    # blip.
+    fetch_failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_fetch_failure_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 class AnswerStatus(str, enum.Enum):
     PENDING = "pending"

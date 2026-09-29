@@ -91,6 +91,35 @@ AUTO_DRAFT_ELIGIBLE = {
 }
 
 
+# A source failing to fetch once (the site briefly down, a transient
+# network blip) is normal and not worth surfacing. Three checks in a row -
+# three separate days at the default crontab cadence - looks like a
+# genuinely dead link (404/410, DNS failure, the page moved) rather than a
+# blip, and is when this actually alerts (see decide_fetch_failure_alert).
+FETCH_FAILURE_ALERT_THRESHOLD = 3
+
+
+def decide_fetch_failure_alert(
+    prior_count: int, succeeded: bool, threshold: int = FETCH_FAILURE_ALERT_THRESHOLD
+) -> tuple[int, str | None]:
+    """Pure decision: given whether this check's fetch just succeeded and
+    the streak of consecutive failures going in, what count to persist next
+    and whether to alert. Alerts exactly once when a streak first reaches
+    `threshold` (not again on every subsequent daily failure), and once
+    more with a "recovered" outcome when a source that had reached it
+    succeeds again - mirroring scripts/system_health_check.py's
+    decide_action, which is the same breach/recover/cooldown shape applied
+    to a different kind of check."""
+    if succeeded:
+        if prior_count >= threshold:
+            return 0, "recovered"
+        return 0, None
+    new_count = prior_count + 1
+    if new_count == threshold:
+        return new_count, "broken"
+    return new_count, None
+
+
 # Strips a self-regenerating "created on <date>" stamp some of the
 # university's PDFs (the module handbooks) carry in their own title line -
 # e.g. "... Master-Studiengang erstellt am 28.09.2026". The server re-renders
@@ -325,14 +354,25 @@ def check_expiring_documents() -> None:
     notify_expiring_documents(expiring)
 
 
-def refresh_sources(only: str | None, dry_run: bool) -> list[tuple[int, str, str, str | None]]:
+def refresh_sources(
+    only: str | None, dry_run: bool
+) -> tuple[list[tuple[int, str, str, str | None]], list[tuple[str, str, str]], list[tuple[str, str]]]:
     """Checks every manifest entry that has already been locally ingested.
-    Returns (id, filename, url, draft) for every source found changed - the
-    id is what a Telegram button's callback_data carries (see
-    api/telegram_bot.py), since several filenames in this manifest are well
-    over Telegram's 64-byte callback_data limit. draft is the LLM-proposed
-    replacement text for an AUTO_DRAFT_ELIGIBLE file (None otherwise, or if
-    drafting failed - see _draft_curated_replacement)."""
+    Returns (changed, broken, recovered):
+
+      changed   - (id, filename, url, draft) for every source found changed.
+                  id is what a Telegram button's callback_data carries (see
+                  api/telegram_bot.py), since several filenames in this
+                  manifest are well over Telegram's 64-byte callback_data
+                  limit. draft is the LLM-proposed replacement text for an
+                  AUTO_DRAFT_ELIGIBLE file (None otherwise, or if drafting
+                  failed - see _draft_curated_replacement).
+      broken    - (filename, url, error) for every source whose fetch has
+                  now failed FETCH_FAILURE_ALERT_THRESHOLD checks in a row -
+                  see decide_fetch_failure_alert.
+      recovered - (filename, url) for every source that had reached that
+                  threshold and has now fetched successfully again.
+    """
     from db.models import IngestedDocument, SessionLocal, init_db
     from ingestion.chunker import load_source_urls
 
@@ -350,6 +390,8 @@ def refresh_sources(only: str | None, dry_run: bool) -> list[tuple[int, str, str
             return []
 
     changed: list[tuple[int, str, str, str | None]] = []
+    broken: list[tuple[str, str, str]] = []
+    recovered: list[tuple[str, str]] = []
     session = SessionLocal()
     try:
         for filename, url in sorted(manifest.items()):
@@ -364,8 +406,22 @@ def refresh_sources(only: str | None, dry_run: bool) -> list[tuple[int, str, str
             try:
                 live_text = fetch_source_text(filename, url)
             except Exception as exc:
-                logger.warning("%s: fetch failed (%s)", filename, exc)
+                new_count, outcome = decide_fetch_failure_alert(existing.fetch_failure_count, succeeded=False)
+                logger.warning(
+                    "%s: fetch failed (%s) - %d consecutive failure(s)", filename, exc, new_count
+                )
+                if not dry_run:
+                    existing.fetch_failure_count = new_count
+                    existing.last_fetch_failure_at = now
+                    session.commit()
+                if outcome == "broken":
+                    broken.append((filename, url, str(exc)))
                 continue
+
+            new_count, outcome = decide_fetch_failure_alert(existing.fetch_failure_count, succeeded=True)
+            if outcome == "recovered":
+                recovered.append((filename, url))
+            existing.fetch_failure_count = new_count
 
             new_hash = hashlib.sha256(live_text.encode("utf-8")).hexdigest()
 
@@ -425,7 +481,7 @@ def refresh_sources(only: str | None, dry_run: bool) -> list[tuple[int, str, str
     finally:
         session.close()
 
-    return changed
+    return changed, broken, recovered
 
 
 def main() -> int:
@@ -435,8 +491,9 @@ def main() -> int:
     args = parser.parse_args()
 
     print(f"source refresh run {datetime.now(timezone.utc).isoformat(timespec='seconds')}")
-    changed = refresh_sources(only=args.only, dry_run=args.dry_run)
+    changed, broken, recovered = refresh_sources(only=args.only, dry_run=args.dry_run)
     print(f"{len(changed)} source(s) changed since their last check")
+    print(f"{len(broken)} source(s) newly flagged as broken, {len(recovered)} recovered")
     if changed and not args.dry_run:
         # Each notification carries its own button(s); a running API server's
         # background poller (api/telegram_bot.start_background_polling) is
@@ -447,6 +504,17 @@ def main() -> int:
             notify_source_change(doc_id, filename, url)
             if draft:
                 notify_source_draft(doc_id, filename, draft)
+
+    if (broken or recovered) and not args.dry_run:
+        from api.telegram_bot import _notify_admins
+
+        for filename, url, error in broken:
+            _notify_admins(
+                f"Source link may be broken: {filename} ({url})\n"
+                f"Failed {FETCH_FAILURE_ALERT_THRESHOLD} checks in a row: {error}"
+            )
+        for filename, url in recovered:
+            _notify_admins(f"Source link recovered: {filename} ({url})")
 
     if not args.dry_run:
         check_expiring_documents()

@@ -2,7 +2,13 @@
 heuristics - the two pure functions the nightly source-change check is
 built on. No network, no LLM: covers the diff logic itself."""
 
-from scripts.source_refresh import _diff_tokens, _is_significant_change, _normalise
+from scripts.source_refresh import (
+    FETCH_FAILURE_ALERT_THRESHOLD,
+    _diff_tokens,
+    _is_significant_change,
+    _normalise,
+    decide_fetch_failure_alert,
+)
 
 
 def test_normalise_collapses_whitespace():
@@ -42,3 +48,33 @@ def test_a_large_wording_change_is_significant_even_without_digits():
     new = "eleven twelve thirteen fourteen fifteen six seven eight nine ten"
     tokens = _diff_tokens(old, new)
     assert _is_significant_change(tokens, old_word_count=10) is True
+
+
+def test_a_single_failure_is_not_yet_an_alert():
+    count, outcome = decide_fetch_failure_alert(0, succeeded=False)
+    assert count == 1
+    assert outcome is None
+
+
+def test_reaching_the_threshold_alerts_exactly_once():
+    count, outcome = decide_fetch_failure_alert(FETCH_FAILURE_ALERT_THRESHOLD - 1, succeeded=False)
+    assert count == FETCH_FAILURE_ALERT_THRESHOLD
+    assert outcome == "broken"
+
+
+def test_failing_again_past_the_threshold_does_not_realert():
+    count, outcome = decide_fetch_failure_alert(FETCH_FAILURE_ALERT_THRESHOLD, succeeded=False)
+    assert count == FETCH_FAILURE_ALERT_THRESHOLD + 1
+    assert outcome is None
+
+
+def test_a_success_before_the_threshold_resets_silently():
+    count, outcome = decide_fetch_failure_alert(1, succeeded=True)
+    assert count == 0
+    assert outcome is None
+
+
+def test_a_success_after_the_threshold_reports_recovery():
+    count, outcome = decide_fetch_failure_alert(FETCH_FAILURE_ALERT_THRESHOLD, succeeded=True)
+    assert count == 0
+    assert outcome == "recovered"
