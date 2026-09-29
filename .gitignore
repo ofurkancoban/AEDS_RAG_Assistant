@@ -12,4 +12,3 @@ frontend/dist/
 **/.DS_Store
 *.log
 .claude/
-CLAUDE.md
