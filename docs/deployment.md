@@ -89,3 +89,20 @@ Existing pre-encryption backups already in `data/backups/` are left as-is;
 this only applies to snapshots written after the key is set. Losing the key
 means losing every encrypted backup - keep it somewhere other than the VPS
 itself.
+
+## Load testing
+
+`scripts/load_test.py` fires concurrent requests at a running instance and
+reports latency percentiles and error rate:
+
+```
+PYTHONPATH=. python scripts/load_test.py --url http://localhost:8000
+PYTHONPATH=. python scripts/load_test.py --url https://aeds-rag-assistant.ofurkan.co \
+    --concurrency 20 --requests 200
+```
+
+Defaults to `GET /health` - cheap, unauthenticated, not rate limited. `--chat`
+instead hits `POST /chat` with a real question, which spends real LLM budget
+and counts against the real per-client rate limiter exactly like a genuine
+user would; read the script's own docstring before pointing `--chat` at the
+production URL, and keep `--requests` small there.
