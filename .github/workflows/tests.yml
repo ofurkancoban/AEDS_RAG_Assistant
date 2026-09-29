@@ -26,3 +26,29 @@ jobs:
       # query embedding are stubbed (see conftest.py's module docstring).
       - name: Run tests
         run: python -m pytest tests/
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # VITE_API_BASE_URL is intentionally left unset here, matching
+      # scripts/deploy.sh's own build - the check that matters in CI is that
+      # the build succeeds at all, not the specific API base it embeds.
+      - name: Build
+        run: npm run build

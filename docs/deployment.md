@@ -12,6 +12,11 @@ restarts the app, and waits for `/health` before declaring success. See the
 script itself for what it does and does not touch (it never touches
 `data/` or `.env` on the server).
 
+Deploy is manual and separate from CI - `.github/workflows/tests.yml` runs
+`pytest` and a frontend `tsc --noEmit` + `npm run build` on every push and
+PR against `main`, but does not deploy. A push that fails CI is a signal to
+fix it before running `deploy.sh`, not something CI blocks by itself.
+
 ## Process manager (pm2)
 
 The backend runs under pm2, started once by hand rather than from a tracked
