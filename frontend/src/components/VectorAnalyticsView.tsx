@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database } from 'lucide-react';
-import { AdminStats, ChatQueryResult, UsageAnalytics } from '../types';
-import { getAnalytics, getStats } from '../api/client';
+import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe } from 'lucide-react';
+import { AdminStats, ChatQueryResult, OriginBreakdown, UsageAnalytics } from '../types';
+import { getAnalytics, getOriginStats, getStats } from '../api/client';
+
+// A small fixed palette, cycled by rank so the biggest origin always gets
+// the same accent colour across refreshes rather than reshuffling.
+const ORIGIN_BAR_COLORS = ['bg-accent-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500'];
 
 interface VectorAnalyticsViewProps {
   latestResult: ChatQueryResult | null;
@@ -10,6 +14,7 @@ interface VectorAnalyticsViewProps {
 export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latestResult }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
+  const [originStats, setOriginStats] = useState<OriginBreakdown | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Silent (no spinner) by default - only the manual Refresh button and the
@@ -18,9 +23,14 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const load = async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     try {
-      const [statsData, analyticsData] = await Promise.all([getStats(), getAnalytics()]);
+      const [statsData, analyticsData, originData] = await Promise.all([
+        getStats(),
+        getAnalytics(),
+        getOriginStats(),
+      ]);
       setStats(statsData);
       setAnalytics(analyticsData);
+      setOriginStats(originData);
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
@@ -292,6 +302,39 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {originStats && originStats.total_queries > 0 && (
+        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
+            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+              <Globe className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+              <span>Traffic by Origin (last 30 days)</span>
+            </h2>
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
+              {originStats.total_queries} queries
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {originStats.by_origin.map((row, idx) => (
+              <div key={row.origin} className="space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-[var(--text-secondary)] truncate">{row.origin}</span>
+                  <span className="font-mono font-bold text-[var(--text-muted)] shrink-0">
+                    {row.count} ({Math.round(row.percent * 100)}%)
+                  </span>
+                </div>
+                <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all ${ORIGIN_BAR_COLORS[idx % ORIGIN_BAR_COLORS.length]}`}
+                    style={{ width: `${Math.max(2, row.percent * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

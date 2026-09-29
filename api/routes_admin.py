@@ -2,6 +2,7 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, EmailStr
@@ -1217,3 +1218,54 @@ def get_analytics(
         content_gaps=_ranked(unanswered),
         thumbs_down_questions=[r.question for r in rows if r.rating == -1][:20],
     )
+
+
+def _origin_label(origin: str | None) -> str:
+    """Normalises a QueryLog/CachedAnswer.origin value into a stable,
+    human-readable bucket. Raw values are either "telegram", a browser
+    Origin header (a full scheme+host URL, since more than one site is
+    allowed via CORS_ALLOW_ORIGINS), or None for a direct API call with no
+    Origin header at all - grouping by hostname avoids a scheme or port
+    difference silently splitting one caller into two rows."""
+    if origin is None:
+        return "direct/unknown"
+    if origin == "telegram":
+        return "telegram"
+    host = urlparse(origin).hostname
+    return host or origin
+
+
+class OriginCount(BaseModel):
+    origin: str
+    count: int
+    percent: float
+
+
+class OriginBreakdownOut(BaseModel):
+    total_queries: int
+    by_origin: list[OriginCount]
+
+
+@router.get("/origin-stats", response_model=OriginBreakdownOut)
+def get_origin_stats(
+    days: int = 30,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Traffic breakdown by calling origin over the last N days - how much
+    of the chat volume comes from the main site vs. embedded widgets (e.g.
+    ECTS Tracker) vs. the Telegram bot, built on the origin tagging already
+    recorded on every QueryLog row."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = session.query(QueryLog).filter(QueryLog.created_at >= since).all()
+
+    if not rows:
+        return OriginBreakdownOut(total_queries=0, by_origin=[])
+
+    counter = Counter(_origin_label(r.origin) for r in rows)
+    total = len(rows)
+    by_origin = [
+        OriginCount(origin=label, count=count, percent=round(count / total, 3))
+        for label, count in counter.most_common()
+    ]
+    return OriginBreakdownOut(total_queries=total, by_origin=by_origin)

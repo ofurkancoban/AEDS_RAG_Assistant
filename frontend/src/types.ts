@@ -107,6 +107,17 @@ export interface UsageAnalytics {
   thumbs_down_questions: string[];
 }
 
+export interface OriginCount {
+  origin: string;
+  count: number;
+  percent: number;
+}
+
+export interface OriginBreakdown {
+  total_queries: number;
+  by_origin: OriginCount[];
+}
+
 export interface ConfigField<T = unknown> {
   value: T;
   read_only: boolean;

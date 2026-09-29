@@ -5,6 +5,7 @@ import {
   ChatSource,
   IngestedDocumentInfo,
   AnswerStatus,
+  OriginBreakdown,
   PendingSubmission,
   RetrievalDiagnostic,
   ReviewedAnswer,
@@ -308,6 +309,10 @@ export function getVisitorCount(): Promise<VisitorCount> {
 
 export function getAnalytics(days = 30): Promise<UsageAnalytics> {
   return request(`/admin/analytics?days=${days}`);
+}
+
+export function getOriginStats(days = 30): Promise<OriginBreakdown> {
+  return request(`/admin/origin-stats?days=${days}`);
 }
 
 export interface StaffUser {
