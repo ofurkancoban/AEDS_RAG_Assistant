@@ -380,6 +380,24 @@ class RateLimitEvent(Base):
     created_at: Mapped[float] = mapped_column(Float, index=True)
 
 
+class RateLimitRejectionDaily(Base):
+    """One row per (calendar day, limiter name) counting how many requests
+    that limiter turned away (see api/rate_limit.py's RateLimiter). Rejected
+    requests are deliberately NOT written to RateLimitEvent - a rejection
+    must not consume the caller's own quota - so without this there was no
+    record anywhere of how often any limit actually bites, only the
+    thresholds themselves. Kept as a same-day aggregate rather than one row
+    per rejection: the point is "is this limiter tight enough to bother
+    tuning", not who was rejected or when within the day.
+    """
+
+    __tablename__ = "rate_limit_rejection_daily"
+
+    day: Mapped[str] = mapped_column(String, primary_key=True)
+    limiter_name: Mapped[str] = mapped_column(String, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class CorpusVersion(Base):
     """A counter bumped whenever the approved-chunk set changes.
 

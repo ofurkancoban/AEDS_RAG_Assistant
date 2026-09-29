@@ -28,11 +28,19 @@ one actor from monopolising it. Capping total daily spend is a separate,
 global control (see llm_budget.py).
 """
 
+import logging
 import time
+from datetime import datetime, timezone
 
 from fastapi import Request
 
 from config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def client_ip(request: Request) -> str:
@@ -122,8 +130,13 @@ class RateLimiter:
                 for max_events, window in self._rules:
                     if sum(1 for t in timestamps if now - t <= window) >= max_events:
                         # A rejected request does not consume quota, matching
-                        # the behaviour callers already relied on.
+                        # the behaviour callers already relied on - but it is
+                        # still worth counting on its own, so this limiter's
+                        # tightness is visible somewhere (see
+                        # RateLimitRejectionDaily) instead of only inferable
+                        # from support complaints.
                         connection.exec_driver_sql("COMMIT")
+                        self._record_rejection()
                         return False
 
                 connection.exec_driver_sql(
@@ -156,6 +169,34 @@ class RateLimiter:
                 # before another one is allowed
                 waits.append(window - (now - in_window[0]))
         return max(1, int(max(waits))) if waits else 0
+
+    def _record_rejection(self) -> None:
+        """Best-effort daily tally of this limiter's rejections. Never
+        raises: a bookkeeping failure here must not turn an otherwise-correct
+        429 into a 500."""
+        from sqlalchemy import update
+
+        from db.models import RateLimitRejectionDaily, SessionLocal
+
+        day = _today()
+        session = SessionLocal()
+        try:
+            updated = session.execute(
+                update(RateLimitRejectionDaily)
+                .where(
+                    RateLimitRejectionDaily.day == day,
+                    RateLimitRejectionDaily.limiter_name == self.name,
+                )
+                .values(count=RateLimitRejectionDaily.count + 1)
+            ).rowcount
+            if not updated:
+                session.add(RateLimitRejectionDaily(day=day, limiter_name=self.name, count=1))
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.warning("Failed to record a rate-limit rejection for %s", self.name, exc_info=True)
+        finally:
+            session.close()
 
     @staticmethod
     def _timestamps(connection, bucket: str, cutoff: float) -> list[float]:

@@ -27,6 +27,7 @@ from db.models import (
     IngestedDocument,
     PendingSubmission,
     QueryLog,
+    RateLimitRejectionDaily,
     Role,
     SubmissionStatus,
     SystemHealthAlertState,
@@ -1351,3 +1352,43 @@ def get_ops_status(
     ]
 
     return OpsStatusOut(provider_usage=provider_usage, system_health=system_health)
+
+
+class RateLimitRejectionCount(BaseModel):
+    limiter_name: str
+    total_rejections: int
+
+
+class RateLimitStatsOut(BaseModel):
+    days: int
+    by_limiter: list[RateLimitRejectionCount]
+
+
+@router.get("/rate-limit-stats", response_model=RateLimitStatsOut)
+def get_rate_limit_stats(
+    days: int = 7,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """How often each limiter (submission / auth / guest / chat / chat_ip -
+    see api/rate_limit.py) has actually turned a request away over the last
+    N days. Until RateLimitRejectionDaily existed, a limit's thresholds were
+    tuned once from a written-down rationale and never revisited - this is
+    the data that says whether any of them are too tight (rejections happen
+    daily) or so loose they do nothing (zero rejections ever)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    rows = (
+        session.query(RateLimitRejectionDaily)
+        .filter(RateLimitRejectionDaily.day >= since)
+        .all()
+    )
+
+    totals: dict[str, int] = {}
+    for row in rows:
+        totals[row.limiter_name] = totals.get(row.limiter_name, 0) + row.count
+
+    by_limiter = [
+        RateLimitRejectionCount(limiter_name=name, total_rejections=count)
+        for name, count in sorted(totals.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return RateLimitStatsOut(days=days, by_limiter=by_limiter)

@@ -69,6 +69,7 @@ def _seed_submission(user_id, submission_type=SubmissionType.NEW_INFO, related_c
         ("get", "/admin/analytics"),
         ("get", "/admin/origin-stats"),
         ("get", "/admin/ops-status"),
+        ("get", "/admin/rate-limit-stats"),
     ],
 )
 def test_admin_screens_are_closed_to_visitors(client, guest_headers, method, path):

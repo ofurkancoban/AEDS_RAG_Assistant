@@ -3,8 +3,8 @@
 import threading
 import time
 
-from api.rate_limit import RateLimiter
-from db.models import RateLimitEvent, SessionLocal
+from api.rate_limit import RateLimiter, _today
+from db.models import RateLimitEvent, RateLimitRejectionDaily, SessionLocal
 
 
 def test_events_are_allowed_up_to_the_limit_then_refused():
@@ -144,3 +144,31 @@ def test_reset_clears_one_key_or_the_whole_limiter():
 
     limiter.reset()
     assert limiter.check_and_record("bob") is True
+
+
+def test_rejections_are_tallied_per_limiter_per_day():
+    limiter = RateLimiter("rejection-unit", [(1, 3600)])
+    limiter.check_and_record("alice")  # allowed, no rejection
+    limiter.check_and_record("alice")  # rejected
+    limiter.check_and_record("alice")  # rejected
+
+    session = SessionLocal()
+    try:
+        row = session.get(RateLimitRejectionDaily, (_today(), "rejection-unit"))
+        assert row is not None
+        assert row.count == 2
+    finally:
+        session.close()
+
+
+def test_allowed_requests_do_not_add_to_the_rejection_tally():
+    limiter = RateLimiter("rejection-unit-2", [(5, 3600)])
+    for _ in range(3):
+        limiter.check_and_record("alice")
+
+    session = SessionLocal()
+    try:
+        row = session.get(RateLimitRejectionDaily, (_today(), "rejection-unit-2"))
+        assert row is None
+    finally:
+        session.close()

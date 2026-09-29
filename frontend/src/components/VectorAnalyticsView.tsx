@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge } from 'lucide-react';
-import { AdminStats, ChatQueryResult, OpsStatus, OriginBreakdown, UsageAnalytics } from '../types';
-import { getAnalytics, getOpsStatus, getOriginStats, getStats } from '../api/client';
+import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge, ShieldAlert } from 'lucide-react';
+import { AdminStats, ChatQueryResult, OpsStatus, OriginBreakdown, RateLimitStats, UsageAnalytics } from '../types';
+import { getAnalytics, getOpsStatus, getOriginStats, getRateLimitStats, getStats } from '../api/client';
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
@@ -16,6 +16,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
   const [originStats, setOriginStats] = useState<OriginBreakdown | null>(null);
   const [opsStatus, setOpsStatus] = useState<OpsStatus | null>(null);
+  const [rateLimitStats, setRateLimitStats] = useState<RateLimitStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Silent (no spinner) by default - only the manual Refresh button and the
@@ -24,16 +25,18 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const load = async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     try {
-      const [statsData, analyticsData, originData, opsData] = await Promise.all([
+      const [statsData, analyticsData, originData, opsData, rateLimitData] = await Promise.all([
         getStats(),
         getAnalytics(),
         getOriginStats(),
         getOpsStatus(),
+        getRateLimitStats(),
       ]);
       setStats(statsData);
       setAnalytics(analyticsData);
       setOriginStats(originData);
       setOpsStatus(opsData);
+      setRateLimitStats(rateLimitData);
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
@@ -426,6 +429,30 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {rateLimitStats && rateLimitStats.by_limiter.length > 0 && (
+        <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
+          <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+            <ShieldAlert className="w-4 h-4 text-amber-500" />
+            <span>Rate Limit Rejections (last {rateLimitStats.days} days)</span>
+          </h2>
+          <p className="text-[11px] text-[var(--text-muted)] -mt-1">
+            How often each limiter has turned a request away - a limiter with zero here is not doing
+            anything; one with rejections every day may be worth loosening.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {rateLimitStats.by_limiter.map((row) => (
+              <div
+                key={row.limiter_name}
+                className="flex items-center gap-2 text-[11px] rounded-xl px-3 py-2 border border-amber-500/25 bg-amber-500/5"
+              >
+                <span className="font-semibold text-[var(--text-secondary)]">{row.limiter_name}</span>
+                <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{row.total_rejections}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

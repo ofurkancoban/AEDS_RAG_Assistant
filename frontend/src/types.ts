@@ -142,6 +142,16 @@ export interface OpsStatus {
   system_health: SystemHealthCheckStatus[];
 }
 
+export interface RateLimitRejectionCount {
+  limiter_name: string;
+  total_rejections: number;
+}
+
+export interface RateLimitStats {
+  days: number;
+  by_limiter: RateLimitRejectionCount[];
+}
+
 export interface ConfigField<T = unknown> {
   value: T;
   read_only: boolean;

@@ -8,6 +8,7 @@ import {
   OpsStatus,
   OriginBreakdown,
   PendingSubmission,
+  RateLimitStats,
   RetrievalDiagnostic,
   ReviewedAnswer,
   SourceChange,
@@ -318,6 +319,10 @@ export function getOriginStats(days = 30): Promise<OriginBreakdown> {
 
 export function getOpsStatus(): Promise<OpsStatus> {
   return request('/admin/ops-status');
+}
+
+export function getRateLimitStats(days = 7): Promise<RateLimitStats> {
+  return request(`/admin/rate-limit-stats?days=${days}`);
 }
 
 export interface StaffUser {
