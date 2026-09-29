@@ -7,6 +7,11 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.5.0] - 2026-09-29
+### Added
+- 16 more per-session welcome messages (now 27 total), same self-deprecating
+  tone as the existing ones.
+
 ## [1.4.0] - 2026-09-29
 ### Added
 - A favicon (previously unset, so browser tabs showed a generic icon).
