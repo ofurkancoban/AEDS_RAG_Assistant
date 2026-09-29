@@ -46,3 +46,32 @@ def test_fallback_applied_when_provider_is_openrouter_with_a_distinct_fallback(m
     assert isinstance(wrapped, RunnableWithFallbacks)
     assert wrapped.runnable is _DUMMY
     assert len(wrapped.fallbacks) == 1
+
+
+def test_no_fallback_when_the_daily_budget_fallback_has_diverted_away_from_openrouter(monkeypatch):
+    """_with_fallback checks llm_budget.effective_provider(), not the raw
+    configured one - once the daily-budget fallback has moved this call to
+    gemini, wrapping it in an openrouter fallback model would mix two
+    unrelated providers' fallback mechanisms."""
+    import llm_budget
+    from db.models import DailyLlmUsage, SessionLocal
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
+    _reset(
+        llm_provider="openrouter",
+        openrouter_model="a/a",
+        openrouter_fallback_model="b/b",
+        daily_budget_fallback_provider="gemini",
+    )
+
+    session = SessionLocal()
+    try:
+        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.commit()
+    finally:
+        session.close()
+
+    assert llm_budget.effective_provider() == "gemini"
+    assert _with_fallback(_DUMMY) is _DUMMY

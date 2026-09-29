@@ -248,6 +248,22 @@ export const RagSettingsView: React.FC = () => {
             )}
             <p className="text-[11px] text-[var(--text-faint)] italic">{config.openrouter_fallback_model.note}</p>
           </div>
+
+          {/* Always editable, unlike openrouter_fallback_model - this one
+              applies no matter which provider is live, since it exists for
+              exactly the moment THAT provider's own budget runs out. */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-[var(--text-secondary)]">Daily budget fallback provider</label>
+            <select
+              value={config.daily_budget_fallback_provider.value ?? ''}
+              onChange={(e) => save({ daily_budget_fallback_provider: e.target.value })}
+              className="w-full glass-well rounded-2xl p-2.5 text-xs text-[var(--text)] focus:outline-none focus:border-accent-500 cursor-pointer"
+            >
+              <option value="">(disabled - refuse once the live provider's budget is exhausted)</option>
+              {ALLOWED_LLM_PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <p className="text-[11px] text-[var(--text-faint)] italic">{config.daily_budget_fallback_provider.note}</p>
+          </div>
         </div>
 
         <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">

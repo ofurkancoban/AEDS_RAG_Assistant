@@ -124,6 +124,7 @@ export interface AdminConfig {
   gemini_model: ConfigField<string>;
   openrouter_model: ConfigField<string | null>;
   openrouter_fallback_model: ConfigField<string | null>;
+  daily_budget_fallback_provider: ConfigField<string | null>;
   retrieval_top_k: ConfigField<number>;
   rerank_top_k: ConfigField<number>;
   conversation_history_window: ConfigField<number>;

@@ -160,6 +160,7 @@ class RuntimeConfig(Base):
     gemini_model: Mapped[str | None] = mapped_column(String, nullable=True)
     openrouter_model: Mapped[str | None] = mapped_column(String, nullable=True)
     openrouter_fallback_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    daily_budget_fallback_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     retrieval_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rerank_top_k: Mapped[int | None] = mapped_column(Integer, nullable=True)
     conversation_history_window: Mapped[int | None] = mapped_column(Integer, nullable=True)

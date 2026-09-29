@@ -94,3 +94,41 @@ def test_system_prompt_override_can_be_set_and_reset(client, admin_headers):
     )
     assert reset_response.status_code == 200
     assert reset_response.json()["system_prompt_override"]["value"] is None
+
+
+def test_daily_budget_fallback_provider_is_always_editable_regardless_of_live_provider(client, admin_headers, monkeypatch):
+    # Unlike openrouter_model/openrouter_fallback_model, this applies no
+    # matter which provider is currently live - the default fixture
+    # provider is ollama (see conftest.py), and it must still be settable.
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    response = client.put(
+        "/admin/config", headers=admin_headers, json={"daily_budget_fallback_provider": "gemini"}
+    )
+    assert response.status_code == 200
+    assert response.json()["daily_budget_fallback_provider"]["value"] == "gemini"
+
+
+def test_daily_budget_fallback_provider_rejects_an_unknown_name(client, admin_headers):
+    response = client.put(
+        "/admin/config", headers=admin_headers, json={"daily_budget_fallback_provider": "not-a-real-provider"}
+    )
+    assert response.status_code == 400
+
+
+def test_daily_budget_fallback_provider_refuses_a_provider_with_no_configured_key(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "")
+    response = client.put(
+        "/admin/config", headers=admin_headers, json={"daily_budget_fallback_provider": "gemini"}
+    )
+    assert response.status_code == 400
+
+
+def test_daily_budget_fallback_provider_can_be_cleared(client, admin_headers, monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    client.put("/admin/config", headers=admin_headers, json={"daily_budget_fallback_provider": "gemini"})
+
+    response = client.put(
+        "/admin/config", headers=admin_headers, json={"daily_budget_fallback_provider": ""}
+    )
+    assert response.status_code == 200
+    assert response.json()["daily_budget_fallback_provider"]["value"] == ""

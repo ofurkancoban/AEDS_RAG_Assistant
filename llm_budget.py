@@ -92,16 +92,90 @@ def remaining() -> int:
     return max(0, _live_daily_budget() - usage_today())
 
 
+_notified_fallback_day: str | None = None
+
+
+def _notify_fallback_engaged(live: str, fallback: str) -> None:
+    """Best-effort, once per calendar day. A budget fallback changes which
+    provider is actually answering without the admin panel's live-provider
+    display changing to say so, so this is the only place that surfaces it
+    - the same reasoning as graph/nodes.py's model-level fallback getting
+    its own Telegram alert."""
+    global _notified_fallback_day
+    today = _today()
+    if _notified_fallback_day == today:
+        return
+    _notified_fallback_day = today
+    try:
+        from api.telegram_bot import _notify_admins
+
+        _notify_admins(
+            f"{live}'s daily budget is exhausted ({usage_today()} calls today) - "
+            f"falling back to {fallback} for the rest of the day."
+        )
+    except Exception:
+        logger.warning("Failed to send budget-fallback Telegram alert", exc_info=True)
+
+
+def effective_provider() -> str:
+    """Which provider actually answers the next call: the live configured
+    one (runtime_config.llm_provider), unless its own daily budget is
+    exhausted and RuntimeConfig.daily_budget_fallback_provider names a
+    different provider that still has headroom of its own - in which case
+    that fallback takes over for the rest of the day, rather than refusing
+    every new question outright the moment the primary's ceiling is hit.
+
+    The daily counter this checks (DailyLlmUsage) is a single row per day,
+    not one per provider, so a fallback's own headroom check really asks
+    "has today's total call count - whatever mix of providers made those
+    calls - reached THIS provider's ceiling yet". That is a conservative
+    approximation, not an exact per-provider quota mirror, but it holds
+    because a provider switch (live or via this fallback) is a rare,
+    explicit event here, not routine traffic.
+
+    graph/nodes.py's get_llm()/get_classifier_llm(), _with_fallback, and
+    _with_resilience all call this rather than reading
+    get_runtime_config().llm_provider directly, so a budget-triggered
+    switch to gemini this call also correctly skips openrouter's own
+    model-level fallback and retry policy for that same call.
+    """
+    from config import daily_budget_for_provider, settings
+    from runtime_config import get_runtime_config
+
+    runtime = get_runtime_config()
+    live = runtime.llm_provider
+    used = usage_today()
+
+    live_budget = daily_budget_for_provider(live, settings.daily_llm_call_budget)
+    if live_budget <= 0 or used < live_budget:
+        return live
+
+    fallback = runtime.daily_budget_fallback_provider
+    if fallback and fallback != live:
+        fallback_budget = daily_budget_for_provider(fallback, settings.daily_llm_call_budget)
+        if fallback_budget <= 0 or used < fallback_budget:
+            _notify_fallback_engaged(live, fallback)
+            return fallback
+
+    return live
+
+
 def has_headroom(estimated_calls: int = 3) -> bool:
-    """Whether a turn about to start can be afforded.
+    """Whether a turn about to start can be afforded, checked against
+    whichever provider effective_provider() says will actually serve it -
+    so a request is only refused once neither the live provider nor its
+    configured budget fallback has room left.
 
     estimated_calls defaults to the worst case for one turn (router +
     generation + contribution classifier) so the budget is checked against
     what the turn might cost rather than the single call that would trip it
     mid-answer, which would leave the user with a half-finished response.
     """
-    if _live_daily_budget() <= 0:
+    from config import daily_budget_for_provider, settings
+
+    budget = daily_budget_for_provider(effective_provider(), settings.daily_llm_call_budget)
+    if budget <= 0:
         # No ceiling configured - the usual case for a local model, which has
         # no external quota to protect.
         return True
-    return remaining() >= estimated_calls
+    return max(0, budget - usage_today()) >= estimated_calls

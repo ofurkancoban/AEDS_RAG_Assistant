@@ -761,6 +761,7 @@ class ConfigOut(BaseModel):
     gemini_model: ConfigField
     openrouter_model: ConfigField
     openrouter_fallback_model: ConfigField
+    daily_budget_fallback_provider: ConfigField
     retrieval_top_k: ConfigField
     rerank_top_k: ConfigField
     conversation_history_window: ConfigField
@@ -853,6 +854,20 @@ def get_config(admin: User = Depends(require_admin)):
                 f"serving {active_chat_model()}. Set llm_provider to 'openrouter' to enable."
             ),
         ),
+        daily_budget_fallback_provider=ConfigField(
+            value=runtime.daily_budget_fallback_provider,
+            read_only=False,
+            note=(
+                f"Provider to switch to for the rest of the day once "
+                f"'{runtime.llm_provider}' own daily budget is exhausted, instead of "
+                f"refusing new questions outright. Empty disables this."
+                + (
+                    " Currently active: today's answers are coming from this fallback."
+                    if llm_budget.effective_provider() != runtime.llm_provider
+                    else ""
+                )
+            ),
+        ),
         retrieval_top_k=ConfigField(value=runtime.retrieval_top_k, read_only=False),
         rerank_top_k=ConfigField(value=runtime.rerank_top_k, read_only=False),
         conversation_history_window=ConfigField(value=runtime.conversation_history_window, read_only=False),
@@ -885,6 +900,7 @@ class ConfigUpdateRequest(BaseModel):
     gemini_model: str | None = None
     openrouter_model: str | None = None
     openrouter_fallback_model: str | None = None
+    daily_budget_fallback_provider: str | None = None
     retrieval_top_k: int | None = None
     rerank_top_k: int | None = None
     conversation_history_window: int | None = None
@@ -970,6 +986,26 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
         # Empty is allowed here (unlike openrouter_model) - it's the documented
         # way to disable the fallback entirely (see _with_fallback in graph/nodes.py).
 
+    if payload.daily_budget_fallback_provider:
+        if payload.daily_budget_fallback_provider not in ALLOWED_LLM_PROVIDERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"daily_budget_fallback_provider must be one of: {', '.join(ALLOWED_LLM_PROVIDERS)}",
+            )
+        if payload.daily_budget_fallback_provider == "gemini" and not settings.gemini_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot set daily_budget_fallback_provider to 'gemini': GEMINI_API_KEY is not set.",
+            )
+        if payload.daily_budget_fallback_provider == "openrouter" and not settings.openrouter_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot set daily_budget_fallback_provider to 'openrouter': OPENROUTER_API_KEY is not set.",
+            )
+        # Empty string is the documented way to disable this fallback entirely
+        # (see llm_budget.effective_provider) - not validated against the
+        # allowlist above since it is not itself a provider choice.
+
     if payload.retrieval_top_k is not None and not 1 <= payload.retrieval_top_k <= MAX_RETRIEVAL_TOP_K:
         raise HTTPException(
             status_code=400, detail=f"retrieval_top_k must be between 1 and {MAX_RETRIEVAL_TOP_K}"
@@ -1011,6 +1047,8 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
         fields["openrouter_model"] = payload.openrouter_model
     if payload.openrouter_fallback_model is not None:
         fields["openrouter_fallback_model"] = payload.openrouter_fallback_model
+    if payload.daily_budget_fallback_provider is not None:
+        fields["daily_budget_fallback_provider"] = payload.daily_budget_fallback_provider
     if payload.retrieval_top_k is not None:
         fields["retrieval_top_k"] = payload.retrieval_top_k
     if payload.rerank_top_k is not None:

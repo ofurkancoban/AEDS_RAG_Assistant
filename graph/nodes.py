@@ -225,16 +225,22 @@ def _with_fallback(runnable, *, tools: list | None = None):
     the tool-bound model, with `tools` given separately to bind the same
     ones onto the fallback.
 
-    No-op unless the live provider is openrouter with a fallback model
-    configured. Applied BEFORE _with_resilience (i.e. _with_resilience wraps
-    the outside) - retries then cover the whole primary-then-fallback
-    attempt together, rather than exhausting all retries on the primary
-    before ever trying the fallback once.
+    No-op unless the EFFECTIVE provider (llm_budget.effective_provider() -
+    the live one, or the daily-budget fallback if that has taken over this
+    call) is openrouter with a fallback model configured. Checked against
+    the effective provider rather than the raw configured one so a call
+    that budget-fallback has already diverted to gemini does not also try
+    to wrap it in an unrelated openrouter fallback model. Applied BEFORE
+    _with_resilience (i.e. _with_resilience wraps the outside) - retries
+    then cover the whole primary-then-fallback attempt together, rather
+    than exhausting all retries on the primary before ever trying the
+    fallback once.
     """
+    from llm_budget import effective_provider
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
-    if config.llm_provider != "openrouter" or not config.openrouter_fallback_model:
+    if effective_provider() != "openrouter" or not config.openrouter_fallback_model:
         return runnable
     if config.openrouter_fallback_model == config.openrouter_model:
         # Falling back to itself would just repeat the same failure.
@@ -257,10 +263,15 @@ def _with_resilience(runnable):
     20/minute cap is easier to trip than Gemini's. No-op for the Ollama
     provider, which has no such quota to retry around. Must be applied as
     the LAST wrapping step (after bind_tools and _with_fallback, if either
-    applies) - the retry wrapper itself doesn't expose bind_tools."""
-    from runtime_config import get_runtime_config
+    applies) - the retry wrapper itself doesn't expose bind_tools.
 
-    if get_runtime_config().llm_provider not in ("gemini", "openrouter"):
+    Checked against the effective provider (see _with_fallback's docstring)
+    rather than the raw configured one, so a call diverted to gemini by the
+    daily-budget fallback gets gemini's retry policy for that call, not
+    whatever the nominally-configured provider's would have been."""
+    from llm_budget import effective_provider
+
+    if effective_provider() not in ("gemini", "openrouter"):
         return runnable
     from langchain_core.runnables.retry import ExponentialJitterParams
 
@@ -314,17 +325,22 @@ def get_llm() -> BaseChatModel:
     # temperature=0 favors precise, literal reuse of figures from the retrieved
     # context (ECTS counts, dates, etc) over paraphrased/aggregated restatements.
     #
-    # Reads the LIVE provider (runtime_config, admin-switchable), not
-    # settings.llm_provider directly - the cached getters below are keyed by
-    # model name, so a live switch just starts calling a different one of
-    # them, with no restart needed.
+    # Reads the EFFECTIVE provider (llm_budget.effective_provider), not
+    # settings.llm_provider directly - normally the live one (runtime_config,
+    # admin-switchable), but redirected to the configured daily-budget
+    # fallback provider once the live one's own daily ceiling is exhausted
+    # (see that function's docstring). The cached getters below are keyed by
+    # model name, so any switch just starts calling a different one of them,
+    # with no restart needed.
+    from llm_budget import effective_provider
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
-    if config.llm_provider == "gemini":
+    provider = effective_provider()
+    if provider == "gemini":
         return _get_gemini_llm_cached(config.gemini_model)
 
-    if config.llm_provider == "openrouter":
+    if provider == "openrouter":
         return _get_openrouter_llm_cached(config.openrouter_model)
 
     return _get_ollama_generation_llm()
@@ -335,13 +351,15 @@ def get_classifier_llm() -> BaseChatModel:
     # classifier - same provider selection as get_llm, minus the
     # generation-tuned num_ctx/keep_alive Ollama options, which don't apply to
     # these shorter, single-shot classification calls.
+    from llm_budget import effective_provider
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
-    if config.llm_provider == "openrouter":
+    provider = effective_provider()
+    if provider == "openrouter":
         return _get_openrouter_llm_cached(config.openrouter_model)
 
-    if config.llm_provider == "gemini":
+    if provider == "gemini":
         return _get_gemini_llm_cached(config.gemini_model)
 
     return _get_ollama_classifier_llm()

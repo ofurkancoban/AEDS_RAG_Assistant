@@ -115,6 +115,17 @@ class Settings(BaseSettings):
     # rest of the day at no saving.
     daily_llm_call_budget: int = -1
 
+    # Provider to fall back to for the rest of the day once the live
+    # provider's own daily_llm_call_budget is exhausted (see
+    # llm_budget.effective_provider) - transparently keeps answering
+    # instead of refusing every new question outright. Empty disables this;
+    # set to the same value as llm_provider (or leave it pointing at a
+    # provider with no configured key) to get the old refuse-outright
+    # behaviour back. Defaults to gemini: its free tier (450/day here) is
+    # normally barely touched, so it has real headroom to absorb overflow
+    # from a tighter provider like openrouter's free tier.
+    daily_budget_fallback_provider: str = "gemini"
+
     # Which provider serves embeddings: "local" (sentence-transformers, no
     # API/network call, no rate limit - see local_embedding_model), "gemini"
     # (API, gemini-embedding-001, 3072-dim) or "ollama" (bge-large via Ollama,
