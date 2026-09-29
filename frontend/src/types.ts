@@ -111,11 +111,35 @@ export interface OriginCount {
   origin: string;
   count: number;
   percent: number;
+  cache_hit_rate: number;
+}
+
+export interface DailyCount {
+  date: string;
+  count: number;
 }
 
 export interface OriginBreakdown {
   total_queries: number;
   by_origin: OriginCount[];
+  daily_totals: DailyCount[];
+}
+
+export interface ProviderUsageStatus {
+  provider: string;
+  usage_today: number;
+  daily_budget: number;
+}
+
+export interface SystemHealthCheckStatus {
+  check_name: string;
+  is_breached: boolean;
+  last_alerted_at: string | null;
+}
+
+export interface OpsStatus {
+  provider_usage: ProviderUsageStatus[];
+  system_health: SystemHealthCheckStatus[];
 }
 
 export interface ConfigField<T = unknown> {

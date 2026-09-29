@@ -29,6 +29,7 @@ from db.models import (
     QueryLog,
     Role,
     SubmissionStatus,
+    SystemHealthAlertState,
     User,
     get_session,
 )
@@ -1239,11 +1240,26 @@ class OriginCount(BaseModel):
     origin: str
     count: int
     percent: float
+    # Share of this origin's own queries served from the semantic cache
+    # (skipping the LLM pipeline entirely) - lets an admin see e.g. "the
+    # Telegram bot re-asks the same handful of questions far more than the
+    # main site does" rather than only a single blended cache_hit_rate.
+    cache_hit_rate: float
+
+
+class DailyCount(BaseModel):
+    date: str
+    count: int
 
 
 class OriginBreakdownOut(BaseModel):
     total_queries: int
     by_origin: list[OriginCount]
+    # Total query volume per calendar day (UTC) across all origins, oldest
+    # first - the trend line a single-window breakdown can't show, e.g.
+    # whether traffic is growing or a spike on one day is skewing the
+    # by-origin percentages above.
+    daily_totals: list[DailyCount]
 
 
 @router.get("/origin-stats", response_model=OriginBreakdownOut)
@@ -1260,12 +1276,78 @@ def get_origin_stats(
     rows = session.query(QueryLog).filter(QueryLog.created_at >= since).all()
 
     if not rows:
-        return OriginBreakdownOut(total_queries=0, by_origin=[])
+        return OriginBreakdownOut(total_queries=0, by_origin=[], daily_totals=[])
 
-    counter = Counter(_origin_label(r.origin) for r in rows)
     total = len(rows)
+    by_label: dict[str, list[QueryLog]] = {}
+    for row in rows:
+        by_label.setdefault(_origin_label(row.origin), []).append(row)
+
     by_origin = [
-        OriginCount(origin=label, count=count, percent=round(count / total, 3))
-        for label, count in counter.most_common()
+        OriginCount(
+            origin=label,
+            count=len(entries),
+            percent=round(len(entries) / total, 3),
+            cache_hit_rate=round(sum(1 for r in entries if r.served_from_cache) / len(entries), 3),
+        )
+        for label, entries in sorted(by_label.items(), key=lambda item: len(item[1]), reverse=True)
     ]
-    return OriginBreakdownOut(total_queries=total, by_origin=by_origin)
+
+    day_counter = Counter(row.created_at.strftime("%Y-%m-%d") for row in rows)
+    daily_totals = [DailyCount(date=d, count=c) for d, c in sorted(day_counter.items())]
+
+    return OriginBreakdownOut(total_queries=total, by_origin=by_origin, daily_totals=daily_totals)
+
+
+class ProviderUsageStatus(BaseModel):
+    provider: str
+    usage_today: int
+    daily_budget: int
+
+
+class SystemHealthCheckStatus(BaseModel):
+    check_name: str
+    is_breached: bool
+    last_alerted_at: datetime | None
+
+
+class OpsStatusOut(BaseModel):
+    provider_usage: list[ProviderUsageStatus]
+    system_health: list[SystemHealthCheckStatus]
+
+
+_TRACKED_PROVIDERS = ["gemini", "openrouter", "ollama"]
+
+
+@router.get("/ops-status", response_model=OpsStatusOut)
+def get_ops_status(
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Surfaces the two operational data points that, until now, only ever
+    reached an admin as a Telegram message: each provider's LLM usage
+    against its own daily budget (see llm_budget.py), and the VPS host
+    checks' current breach state (see scripts/system_health_check.py /
+    SystemHealthAlertState). Both already existed in the database - this is
+    the first place either is readable from the admin panel itself rather
+    than only from chat history with the bot."""
+    provider_usage = [
+        ProviderUsageStatus(
+            provider=provider,
+            usage_today=llm_budget.usage_today(provider),
+            daily_budget=llm_budget.daily_budget(provider),
+        )
+        for provider in _TRACKED_PROVIDERS
+    ]
+
+    checks = session.query(SystemHealthAlertState).order_by(SystemHealthAlertState.check_name).all()
+    system_health = [
+        SystemHealthCheckStatus(
+            check_name=row.check_name,
+            is_breached=row.is_breached,
+            last_alerted_at=row.last_alerted_at,
+        )
+        for row in checks
+    ]
+
+    return OpsStatusOut(provider_usage=provider_usage, system_health=system_health)

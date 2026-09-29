@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe } from 'lucide-react';
-import { AdminStats, ChatQueryResult, OriginBreakdown, UsageAnalytics } from '../types';
-import { getAnalytics, getOriginStats, getStats } from '../api/client';
+import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge } from 'lucide-react';
+import { AdminStats, ChatQueryResult, OpsStatus, OriginBreakdown, UsageAnalytics } from '../types';
+import { getAnalytics, getOpsStatus, getOriginStats, getStats } from '../api/client';
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
@@ -15,6 +15,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
   const [originStats, setOriginStats] = useState<OriginBreakdown | null>(null);
+  const [opsStatus, setOpsStatus] = useState<OpsStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Silent (no spinner) by default - only the manual Refresh button and the
@@ -23,14 +24,16 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const load = async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     try {
-      const [statsData, analyticsData, originData] = await Promise.all([
+      const [statsData, analyticsData, originData, opsData] = await Promise.all([
         getStats(),
         getAnalytics(),
         getOriginStats(),
+        getOpsStatus(),
       ]);
       setStats(statsData);
       setAnalytics(analyticsData);
       setOriginStats(originData);
+      setOpsStatus(opsData);
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
@@ -325,6 +328,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
                   <span className="font-semibold text-[var(--text-secondary)] truncate">{row.origin}</span>
                   <span className="font-mono font-bold text-[var(--text-muted)] shrink-0">
                     {row.count} ({Math.round(row.percent * 100)}%)
+                    <span className="text-[var(--text-faint)] ml-1.5">· {Math.round(row.cache_hit_rate * 100)}% cached</span>
                   </span>
                 </div>
                 <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10">
@@ -335,6 +339,93 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
                 </div>
               </div>
             ))}
+          </div>
+
+          {originStats.daily_totals.length > 1 && (
+            <div className="pt-2 space-y-1.5">
+              <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">
+                Daily volume
+              </span>
+              <div className="flex items-end gap-0.5 h-12">
+                {originStats.daily_totals.map((day) => {
+                  const max = Math.max(...originStats.daily_totals.map((d) => d.count));
+                  return (
+                    <div
+                      key={day.date}
+                      title={`${day.date}: ${day.count}`}
+                      className="flex-1 bg-accent-500/60 hover:bg-accent-500 rounded-t transition-all"
+                      style={{ height: `${Math.max(6, (day.count / max) * 100)}%` }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {opsStatus && (opsStatus.provider_usage.length > 0 || opsStatus.system_health.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
+            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+              <Gauge className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+              <span>LLM Budget by Provider</span>
+            </h2>
+            <div className="space-y-2.5">
+              {opsStatus.provider_usage.map((p) => {
+                const ratio = p.daily_budget > 0 ? p.usage_today / p.daily_budget : 0;
+                return (
+                  <div key={p.provider} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-[var(--text-secondary)] capitalize">{p.provider}</span>
+                      <span className="font-mono font-bold text-[var(--text-muted)]">
+                        {p.usage_today}{p.daily_budget > 0 ? ` / ${p.daily_budget}` : ' (unmetered)'}
+                      </span>
+                    </div>
+                    {p.daily_budget > 0 && (
+                      <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            ratio > 0.85 ? 'bg-rose-500' : ratio > 0.6 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, ratio * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
+            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+              <HeartPulse className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+              <span>VPS Host Health</span>
+            </h2>
+            {opsStatus.system_health.length === 0 ? (
+              <p className="text-[11px] text-[var(--text-faint)]">
+                No checks recorded yet - scripts/system_health_check.py runs every 15 minutes.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {opsStatus.system_health.map((check) => (
+                  <div
+                    key={check.check_name}
+                    className={`flex items-center justify-between text-[11px] rounded-xl px-3 py-2 border ${
+                      check.is_breached
+                        ? 'border-rose-500/30 bg-rose-500/10'
+                        : 'border-emerald-500/20 bg-emerald-500/5'
+                    }`}
+                  >
+                    <span className="font-semibold capitalize text-[var(--text-secondary)]">{check.check_name}</span>
+                    <span className={`font-mono font-bold ${check.is_breached ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {check.is_breached ? 'breached' : 'healthy'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

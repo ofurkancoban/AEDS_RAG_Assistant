@@ -70,3 +70,27 @@ def test_days_window_excludes_older_queries(client, admin_headers):
     response = client.get("/admin/origin-stats?days=30", headers=admin_headers)
     body = response.json()
     assert body["total_queries"] == 1
+
+
+def test_cache_hit_rate_is_reported_per_origin(client, admin_headers):
+    session = SessionLocal()
+    try:
+        session.add(QueryLog(question="a", thread_id="t3", origin="telegram", served_from_cache=True))
+        session.add(QueryLog(question="b", thread_id="t4", origin="telegram", served_from_cache=False))
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.get("/admin/origin-stats", headers=admin_headers)
+    by_origin = {row["origin"]: row for row in response.json()["by_origin"]}
+    assert by_origin["telegram"]["cache_hit_rate"] == 0.5
+
+
+def test_daily_totals_bucket_by_calendar_day(client, admin_headers):
+    _seed_query("telegram")
+    _seed_query("telegram", thread_id="t5")
+
+    response = client.get("/admin/origin-stats", headers=admin_headers)
+    daily_totals = response.json()["daily_totals"]
+    assert len(daily_totals) == 1
+    assert daily_totals[0]["count"] == 2
