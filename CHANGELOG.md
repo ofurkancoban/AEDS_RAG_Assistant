@@ -7,6 +7,24 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.4.0] - 2026-09-29
+### Added
+- A favicon (previously unset, so browser tabs showed a generic icon).
+### Changed
+- The contribution-detection pre-filter (deciding whether a chat message is
+  worth an LLM call to check for a correction/new fact) now uses a local
+  calibrated classifier (Laya, see `db/contribution_gate.py`) instead of a
+  regex/keyword heuristic. Measured against a real LLM oracle: higher
+  precision (fewer wasted LLM calls on non-contributions) for a small
+  recall cost, consistent across a hand-labelled set, real chat history,
+  and the production Gemini oracle on the VPS.
+### Fixed
+- The budget-fallback Telegram alert ("provider's daily budget is
+  exhausted...") could fire many times a day instead of once - its dedup
+  lived only in one process's memory, so every restart, cron script, or
+  one-off script re-sent it independently. Now deduped against the
+  persistent `BudgetFallbackEvent` record instead.
+
 ## [1.3.0] - 2026-09-28
 ### Added
 - A source that has passed its `valid_until` date is now flagged directly on
