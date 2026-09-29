@@ -19,6 +19,25 @@ HEALTH_URL="https://aeds-rag-assistant.ofurkan.co/health"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# docs/nginx-aeds-rag-assistant.conf is documentation, not something this
+# script deploys - nginx itself is edited by hand on the VPS. It drifted
+# silently out of sync with the live config for a long time (missing both
+# the security headers block and the rate-limit line entirely) before that
+# was noticed by chance. A non-fatal warning here, on every deploy, is a
+# much shorter feedback loop than "notice by chance" for something that
+# only matters at VPS-rebuild time.
+echo "==> Checking docs/nginx-aeds-rag-assistant.conf against the live nginx config"
+live_nginx_conf="$(ssh "root@${VPS_HOST}" "cat /etc/nginx/sites-available/aeds-rag-assistant" 2>/dev/null || true)"
+local_nginx_conf="$(awk '/^server \{/{found=1} found' docs/nginx-aeds-rag-assistant.conf)"
+if [ -z "$live_nginx_conf" ]; then
+  echo "    could not read the live nginx config over SSH, skipping the comparison"
+elif [ "$live_nginx_conf" != "$local_nginx_conf" ]; then
+  echo "    WARNING: docs/nginx-aeds-rag-assistant.conf has drifted from the live VPS config." >&2
+  echo "    Update it by hand: ssh root@${VPS_HOST} 'cat /etc/nginx/sites-available/aeds-rag-assistant'" >&2
+else
+  echo "    in sync"
+fi
+
 echo "==> Building frontend (same-origin API base, proxied by nginx)"
 (cd frontend && VITE_API_BASE_URL='' npm run build)
 
