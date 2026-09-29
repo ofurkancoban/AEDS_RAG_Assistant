@@ -28,6 +28,7 @@ going dark.
 """
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import update
@@ -104,6 +105,7 @@ def remaining(provider: str | None = None) -> int:
 
 
 _notified_fallback_day: str | None = None
+_notified_fallback_lock = threading.Lock()
 
 
 def _record_fallback_engaged(live: str, fallback: str) -> None:
@@ -113,34 +115,64 @@ def _record_fallback_engaged(live: str, fallback: str) -> None:
     budget fallback changes which provider is actually answering without
     the admin panel's live-provider display changing to say so on its own,
     so this is the only place that surfaces it - the same reasoning as
-    graph/nodes.py's model-level fallback getting its own alert."""
+    graph/nodes.py's model-level fallback getting its own alert.
+
+    Deduped against the BudgetFallbackEvent table itself, not just an
+    in-process flag: the flag alone (this module's previous approach)
+    reset to unset on every fresh process - a pm2 restart, a cron script,
+    or a one-off debugging script that imports this module - so any of
+    those importing "today's budget is already exhausted" state sent its
+    own duplicate alert, independent of whatever the long-running API
+    process had already sent. Checking the table instead makes today's
+    event count shared truth across every process. The module-level
+    _notified_fallback_day flag stays as a same-process fast path (skips a
+    DB round trip on the common case, a call after this process has
+    already recorded today's row), guarded by a lock so two threads in
+    the same process racing the check-then-set can't both fall through
+    (the concurrency.py module documents exactly this class of bug for
+    FastAPI's thread-pooled sync endpoints)."""
     global _notified_fallback_day
     today = _today()
     if _notified_fallback_day == today:
         return
-    _notified_fallback_day = today
 
-    used = usage_today(live)
+    with _notified_fallback_lock:
+        if _notified_fallback_day == today:
+            return
 
-    session = SessionLocal()
-    try:
-        session.add(BudgetFallbackEvent(day=today, from_provider=live, to_provider=fallback, usage_at_switch=used))
-        session.commit()
-    except Exception:
-        session.rollback()
-        logger.warning("Failed to record budget-fallback event", exc_info=True)
-    finally:
-        session.close()
+        session = SessionLocal()
+        try:
+            already_recorded = (
+                session.query(BudgetFallbackEvent.id).filter(BudgetFallbackEvent.day == today).first()
+                is not None
+            )
+            if already_recorded:
+                _notified_fallback_day = today
+                return
 
-    try:
-        from api.telegram_bot import _notify_admins
+            used = usage_today(live)
+            try:
+                session.add(
+                    BudgetFallbackEvent(day=today, from_provider=live, to_provider=fallback, usage_at_switch=used)
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                logger.warning("Failed to record budget-fallback event", exc_info=True)
+        finally:
+            session.close()
 
-        _notify_admins(
-            f"{live}'s daily budget is exhausted ({used} calls today) - "
-            f"falling back to {fallback} for the rest of the day."
-        )
-    except Exception:
-        logger.warning("Failed to send budget-fallback Telegram alert", exc_info=True)
+        _notified_fallback_day = today
+
+        try:
+            from api.telegram_bot import _notify_admins
+
+            _notify_admins(
+                f"{live}'s daily budget is exhausted ({used} calls today) - "
+                f"falling back to {fallback} for the rest of the day."
+            )
+        except Exception:
+            logger.warning("Failed to send budget-fallback Telegram alert", exc_info=True)
 
 
 def recent_fallback_events(limit: int = 20) -> list[dict]:
