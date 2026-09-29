@@ -41,13 +41,17 @@ response (this shipped once already, for `/version`).
 ## Scheduled jobs (crontab, all UTC)
 
 ```
-0 2 * * *   scripts/update_catalog.py    - refreshes the course catalog cache
-0 3 * * *   scripts/source_refresh.py    - checks source documents for changes, notifies on drift
-30 3 * * *  scripts/maintenance.py       - backs up app.db and data/chroma, prunes old checkpoints/history
-0 5 * * 0   scripts/eval_and_notify.py   - mines new regression cases from admin review decisions, then runs the golden-set quality eval and alerts on regression (Sundays only)
+0 2 * * *    scripts/update_catalog.py       - refreshes the course catalog cache
+0 3 * * *    scripts/source_refresh.py       - checks source documents for changes, notifies on drift
+30 3 * * *   scripts/maintenance.py          - backs up app.db and data/chroma, prunes old checkpoints/history
+0 5 * * 0    scripts/eval_and_notify.py      - mines new regression cases from admin review decisions, then runs the golden-set quality eval and alerts on regression (Sundays only)
+*/15 * * * * scripts/system_health_check.py  - checks VPS disk/memory/load, alerts on breach and on recovery
 ```
 
-All log to `data/backups/<script>.log`. `eval_and_notify.py` runs weekly
+All log to `data/backups/<script>.log`. `system_health_check.py` checks the
+shared VPS host itself (disk/memory/load), not just this app - a separate
+concern from every other alert in this project, which is about the
+application. `eval_and_notify.py` runs weekly
 rather than daily specifically because it spends real LLM quota against
 whichever provider is live (see its own docstring) - Sunday 05:00 UTC is
 chosen as a low-traffic hour so a full day's OpenRouter budget being spent
