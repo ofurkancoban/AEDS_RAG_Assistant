@@ -153,7 +153,10 @@ CONTRIBUTION_DETECTION_PROMPT = (
 
 
 class _BudgetCountingCallback(BaseCallbackHandler):
-    """Counts every request the chat model actually issues.
+    """Counts every request the chat model actually issues, against the
+    specific provider that client belongs to (see db/models.py's
+    ProviderDailyUsage - each provider keeps its own independent daily
+    count, not a total shared across whichever ones happened to be used).
 
     Attached to the model itself rather than wrapped around the call sites so
     that retries performed inside _with_resilience are counted too - a
@@ -162,10 +165,13 @@ class _BudgetCountingCallback(BaseCallbackHandler):
     is closest to its limit.
     """
 
+    def __init__(self, provider: str):
+        self._provider = provider
+
     def on_chat_model_start(self, serialized, messages, **kwargs) -> None:
         from llm_budget import record_call
 
-        record_call()
+        record_call(self._provider)
 
 
 @lru_cache(maxsize=4)
@@ -180,7 +186,7 @@ def _get_gemini_llm_cached(model_name: str) -> BaseChatModel:
         model=model_name,
         google_api_key=settings.gemini_api_key,
         temperature=0,
-        callbacks=[_BudgetCountingCallback()],
+        callbacks=[_BudgetCountingCallback("gemini")],
     )
 
 
@@ -202,7 +208,7 @@ def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
         # fallback model. 30s is generous for a real response and still
         # short enough that a hung primary fails over quickly.
         timeout=30,
-        callbacks=[_BudgetCountingCallback()],
+        callbacks=[_BudgetCountingCallback("openrouter")],
     )
 
 

@@ -644,18 +644,30 @@ def _switch_provider(provider: str) -> str:
 
 def _send_budget_status(chat_id: str) -> None:
     """Handles /budget: today's LLM call count against the live provider's
-    daily ceiling (see llm_budget.py) - the number that determines whether
-    the assistant is about to start refusing new questions."""
+    daily ceiling (see llm_budget.py, tracked independently per provider) -
+    the number that determines whether the assistant is about to start
+    refusing new questions. Also reports the effective provider (the one
+    actually answering) whenever a daily-budget fallback has taken over,
+    since that is otherwise invisible from this command alone."""
     import llm_budget
     from runtime_config import get_runtime_config
 
     provider = get_runtime_config().llm_provider
-    used = llm_budget.usage_today()
-    budget = llm_budget.daily_budget()
+    used = llm_budget.usage_today(provider)
+    budget = llm_budget.daily_budget(provider)
     if budget <= 0:
         text = f"Provider: {provider}\nUsed today: {used} (no daily ceiling)"
     else:
-        text = f"Provider: {provider}\nUsed today: {used}/{budget} ({llm_budget.remaining()} remaining)"
+        text = f"Provider: {provider}\nUsed today: {used}/{budget} ({llm_budget.remaining(provider)} remaining)"
+
+    effective = llm_budget.effective_provider()
+    if effective != provider:
+        effective_used = llm_budget.usage_today(effective)
+        effective_budget = llm_budget.daily_budget(effective)
+        text += (
+            f"\n\nBudget fallback active - actually answering via {effective} "
+            f"({effective_used}/{effective_budget} used today)."
+        )
     send_message(text, chat_id=chat_id)
 
 

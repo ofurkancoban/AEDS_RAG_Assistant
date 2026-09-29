@@ -270,17 +270,27 @@ class CachedAnswer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
-class DailyLlmUsage(Base):
-    """One row per calendar day counting LLM requests actually issued.
+class ProviderDailyUsage(Base):
+    """One row per (calendar day, provider) counting LLM requests actually
+    issued against that specific provider.
 
     Persisted rather than kept in memory because the quota it mirrors is an
     external daily allowance - a process restart must not make the system
     think it has a fresh budget when the provider disagrees.
+
+    Keyed by provider (not just day, as an earlier version of this table
+    was) because the daily-budget fallback (see llm_budget.effective_provider)
+    means more than one provider can genuinely serve requests on the same
+    day - a single shared counter could not tell "openrouter's real 45/day
+    quota is gone" apart from "gemini has barely been touched today", and
+    would block a perfectly healthy fallback provider on the strength of a
+    completely different provider's usage.
     """
 
-    __tablename__ = "daily_llm_usage"
+    __tablename__ = "provider_daily_usage"
 
     day: Mapped[str] = mapped_column(String, primary_key=True)  # UTC "YYYY-MM-DD"
+    provider: Mapped[str] = mapped_column(String, primary_key=True)
     call_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -304,6 +314,22 @@ class BudgetFallbackEvent(Base):
     # whatever daily_llm_call_budget was configured at the time.
     usage_at_switch: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class SystemHealthAlertState(Base):
+    """One row per host-level check (disk/memory/load - see
+    scripts/system_health_check.py), tracking whether it is currently
+    breached and when it was last alerted on. Persisted rather than kept in
+    memory so a cron-run process (a fresh Python interpreter every 15
+    minutes) still knows not to re-alert on an ongoing problem it already
+    reported, and knows to send a "recovered" message the run after a
+    breach clears."""
+
+    __tablename__ = "system_health_alert_state"
+
+    check_name: Mapped[str] = mapped_column(String, primary_key=True)
+    is_breached: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_alerted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class QueryLog(Base):

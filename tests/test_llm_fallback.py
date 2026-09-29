@@ -54,7 +54,7 @@ def test_no_fallback_when_the_daily_budget_fallback_has_diverted_away_from_openr
     gemini, wrapping it in an openrouter fallback model would mix two
     unrelated providers' fallback mechanisms."""
     import llm_budget
-    from db.models import DailyLlmUsage, SessionLocal
+    from db.models import ProviderDailyUsage, SessionLocal
 
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "gemini_api_key", "test-key")
@@ -68,7 +68,7 @@ def test_no_fallback_when_the_daily_budget_fallback_has_diverted_away_from_openr
 
     session = SessionLocal()
     try:
-        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
         session.commit()
     finally:
         session.close()

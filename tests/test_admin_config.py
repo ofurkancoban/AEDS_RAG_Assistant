@@ -143,7 +143,7 @@ def test_effective_provider_matches_llm_provider_when_no_fallback_is_active(clie
 
 def test_effective_provider_reflects_an_active_budget_fallback(client, admin_headers, monkeypatch):
     import llm_budget
-    from db.models import DailyLlmUsage, SessionLocal
+    from db.models import ProviderDailyUsage, SessionLocal
 
     monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
     monkeypatch.setattr(settings, "gemini_api_key", "test-key")
@@ -158,7 +158,7 @@ def test_effective_provider_reflects_an_active_budget_fallback(client, admin_hea
 
     session = SessionLocal()
     try:
-        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
         session.commit()
     finally:
         session.close()
@@ -172,7 +172,7 @@ def test_effective_provider_reflects_an_active_budget_fallback(client, admin_hea
 
 def test_budget_fallback_events_endpoint_reports_recorded_switches(client, admin_headers, monkeypatch):
     import llm_budget
-    from db.models import DailyLlmUsage, SessionLocal
+    from db.models import ProviderDailyUsage, SessionLocal
 
     monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
     monkeypatch.setattr(settings, "gemini_api_key", "test-key")
@@ -186,7 +186,7 @@ def test_budget_fallback_events_endpoint_reports_recorded_switches(client, admin
     )
     session = SessionLocal()
     try:
-        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
         session.commit()
     finally:
         session.close()

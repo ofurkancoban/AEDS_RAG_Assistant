@@ -1,4 +1,4 @@
-"""Global daily ceiling on LLM requests.
+"""Per-provider daily ceiling on LLM requests.
 
 The per-client rate limiter (api/rate_limit.py) stops one visitor from
 monopolising the quota, but it cannot bound TOTAL consumption - twenty
@@ -13,9 +13,18 @@ runs unless a tool answered directly, the contribution classifier runs only
 for messages that look like assertions, and _with_resilience retries on rate
 limits - every one of which spends real quota.
 
-When the budget is gone the assistant refuses new pipeline runs but continues
-serving cached answers, so it degrades to a smaller, still-useful service
-rather than going dark.
+Usage is tracked per (day, provider) - see db/models.py's
+ProviderDailyUsage - not as one shared count across whatever providers
+happened to be used. That distinction matters because of the daily-budget
+fallback below: if openrouter and gemini shared one counter, "gemini has
+room" could not be told apart from "openrouter's real quota is gone but
+gemini has barely been touched today", and a fallback would inherit a
+budget that was never really its own.
+
+When neither the live provider nor its configured fallback has room left,
+the assistant refuses new pipeline runs but continues serving cached
+answers, so it degrades to a smaller, still-useful service rather than
+going dark.
 """
 
 import logging
@@ -23,7 +32,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import update
 
-from db.models import BudgetFallbackEvent, DailyLlmUsage, SessionLocal
+from db.models import BudgetFallbackEvent, ProviderDailyUsage, SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +41,10 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def record_call() -> None:
-    """Count one issued LLM request. Never raises: a bookkeeping failure must
-    not take down the answer the user is waiting for."""
+def record_call(provider: str) -> None:
+    """Count one issued LLM request against `provider`. Never raises: a
+    bookkeeping failure must not take down the answer the user is waiting
+    for."""
     day = _today()
     session = SessionLocal()
     try:
@@ -42,54 +52,55 @@ def record_call() -> None:
         # requests increment atomically in SQLite instead of overwriting each
         # other's count.
         updated = session.execute(
-            update(DailyLlmUsage)
-            .where(DailyLlmUsage.day == day)
-            .values(call_count=DailyLlmUsage.call_count + 1)
+            update(ProviderDailyUsage)
+            .where(ProviderDailyUsage.day == day, ProviderDailyUsage.provider == provider)
+            .values(call_count=ProviderDailyUsage.call_count + 1)
         ).rowcount
         if not updated:
-            session.add(DailyLlmUsage(day=day, call_count=1))
+            session.add(ProviderDailyUsage(day=day, provider=provider, call_count=1))
         session.commit()
     except Exception:
         session.rollback()
-        logger.warning("Failed to record LLM call against the daily budget", exc_info=True)
+        logger.warning("Failed to record an LLM call against %s's daily budget", provider, exc_info=True)
     finally:
         session.close()
 
 
-def usage_today() -> int:
+def _live_provider() -> str:
+    from runtime_config import get_runtime_config
+
+    return get_runtime_config().llm_provider
+
+
+def usage_today(provider: str | None = None) -> int:
+    """Calls recorded today for `provider` - the live configured provider if
+    not given."""
+    if provider is None:
+        provider = _live_provider()
     session = SessionLocal()
     try:
-        row = session.get(DailyLlmUsage, _today())
+        row = session.get(ProviderDailyUsage, (_today(), provider))
         return row.call_count if row else 0
     finally:
         session.close()
 
 
-def _live_daily_budget() -> int:
-    """Like settings.effective_daily_llm_budget, but against the admin-
-    switchable runtime provider (see runtime_config.py) rather than the one
-    fixed in .env at process start - otherwise switching the provider live
-    left this ceiling stuck at whichever provider's number was baked in at
-    startup, which is actively dangerous for a tight quota (an admin
-    switching to openrouter mid-run would keep gemini's 450/day ceiling
-    instead of openrouter's real 45, with no protection until it started
-    failing with raw 429s)."""
+def daily_budget(provider: str | None = None) -> int:
+    """The raw daily ceiling for `provider` (the live configured provider if
+    not given) - 0 means unlimited, which remaining() alone cannot
+    distinguish from "no budget left" since it also reports 0 in that
+    case."""
     from config import daily_budget_for_provider, settings
-    from runtime_config import get_runtime_config
 
-    return daily_budget_for_provider(get_runtime_config().llm_provider, settings.daily_llm_call_budget)
-
-
-def daily_budget() -> int:
-    """Public wrapper on _live_daily_budget, for callers outside this module
-    (the Telegram /budget command) that need the raw ceiling itself - 0 means
-    unlimited, which remaining() alone cannot distinguish from "no budget
-    left" since it also reports 0 in that case."""
-    return _live_daily_budget()
+    if provider is None:
+        provider = _live_provider()
+    return daily_budget_for_provider(provider, settings.daily_llm_call_budget)
 
 
-def remaining() -> int:
-    return max(0, _live_daily_budget() - usage_today())
+def remaining(provider: str | None = None) -> int:
+    if provider is None:
+        provider = _live_provider()
+    return max(0, daily_budget(provider) - usage_today(provider))
 
 
 _notified_fallback_day: str | None = None
@@ -109,7 +120,7 @@ def _record_fallback_engaged(live: str, fallback: str) -> None:
         return
     _notified_fallback_day = today
 
-    used = usage_today()
+    used = usage_today(live)
 
     session = SessionLocal()
     try:
@@ -160,19 +171,16 @@ def recent_fallback_events(limit: int = 20) -> list[dict]:
 
 def effective_provider() -> str:
     """Which provider actually answers the next call: the live configured
-    one (runtime_config.llm_provider), unless its own daily budget is
+    one (runtime_config.llm_provider), unless ITS OWN daily budget is
     exhausted and RuntimeConfig.daily_budget_fallback_provider names a
-    different provider that still has headroom of its own - in which case
+    different provider that still has headroom of ITS OWN - in which case
     that fallback takes over for the rest of the day, rather than refusing
     every new question outright the moment the primary's ceiling is hit.
 
-    The daily counter this checks (DailyLlmUsage) is a single row per day,
-    not one per provider, so a fallback's own headroom check really asks
-    "has today's total call count - whatever mix of providers made those
-    calls - reached THIS provider's ceiling yet". That is a conservative
-    approximation, not an exact per-provider quota mirror, but it holds
-    because a provider switch (live or via this fallback) is a rare,
-    explicit event here, not routine traffic.
+    Each provider's usage is tracked independently (see module docstring),
+    so this is an exact check, not an approximation - a fallback's headroom
+    is really its own, unaffected by how much quota some other provider has
+    burned today.
 
     graph/nodes.py's get_llm()/get_classifier_llm(), _with_fallback, and
     _with_resilience all call this rather than reading
@@ -180,21 +188,16 @@ def effective_provider() -> str:
     switch to gemini this call also correctly skips openrouter's own
     model-level fallback and retry policy for that same call.
     """
-    from config import daily_budget_for_provider, settings
-    from runtime_config import get_runtime_config
+    live = _live_provider()
 
-    runtime = get_runtime_config()
-    live = runtime.llm_provider
-    used = usage_today()
-
-    live_budget = daily_budget_for_provider(live, settings.daily_llm_call_budget)
-    if live_budget <= 0 or used < live_budget:
+    if daily_budget(live) <= 0 or usage_today(live) < daily_budget(live):
         return live
 
-    fallback = runtime.daily_budget_fallback_provider
+    from runtime_config import get_runtime_config
+
+    fallback = get_runtime_config().daily_budget_fallback_provider
     if fallback and fallback != live:
-        fallback_budget = daily_budget_for_provider(fallback, settings.daily_llm_call_budget)
-        if fallback_budget <= 0 or used < fallback_budget:
+        if daily_budget(fallback) <= 0 or usage_today(fallback) < daily_budget(fallback):
             _record_fallback_engaged(live, fallback)
             return fallback
 
@@ -212,11 +215,10 @@ def has_headroom(estimated_calls: int = 3) -> bool:
     what the turn might cost rather than the single call that would trip it
     mid-answer, which would leave the user with a half-finished response.
     """
-    from config import daily_budget_for_provider, settings
-
-    budget = daily_budget_for_provider(effective_provider(), settings.daily_llm_call_budget)
+    provider = effective_provider()
+    budget = daily_budget(provider)
     if budget <= 0:
         # No ceiling configured - the usual case for a local model, which has
         # no external quota to protect.
         return True
-    return max(0, budget - usage_today()) >= estimated_calls
+    return remaining(provider) >= estimated_calls
