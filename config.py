@@ -218,6 +218,14 @@ class Settings(BaseSettings):
     # no .env change at all.
     telegram_extra_admin_chat_ids: str = ""
 
+    # Fernet key (cryptography.fernet.Fernet.generate_key()) used by
+    # scripts/maintenance.py to encrypt app.db/chroma snapshots at rest in
+    # data/backups/. Empty (the default) means backups are written
+    # unencrypted, same as before this existed - local dev and CI need no
+    # key, and an operator who has not set one yet still gets backups rather
+    # than the script refusing to run.
+    backup_encryption_key: str = ""
+
     @property
     def effective_daily_llm_budget(self) -> int:
         """Requests allowed per day for the provider fixed at process start

@@ -70,3 +70,22 @@ and `data/chroma` nightly into `data/backups/`, keeping the last 14 of each.
 These backups live on the same disk as the data they protect - they cover a
 bad migration or an accidental delete, not a full disk failure. Copy
 `data/backups/` off the VPS periodically for that.
+
+If `BACKUP_ENCRYPTION_KEY` is set (see `.env.example`), snapshots are
+written as `*.db.enc` / `*.tar.gz.enc` - readable only with that key, which
+matters once backups leave the VPS (e.g. copied to a laptop or another
+host), since the plaintext copy on the VPS itself is no more or less
+exposed than `app.db` already is. To restore one:
+
+```
+python -c "
+from cryptography.fernet import Fernet
+data = Fernet(b'<key>').decrypt(open('<file>.enc', 'rb').read())
+open('<file>', 'wb').write(data)
+"
+```
+
+Existing pre-encryption backups already in `data/backups/` are left as-is;
+this only applies to snapshots written after the key is set. Losing the key
+means losing every encrypted backup - keep it somewhere other than the VPS
+itself.

@@ -81,6 +81,30 @@ def checkpoint_created_at(checkpoint_id: str) -> datetime | None:
         return None
 
 
+def _encrypt_backup(path: Path) -> Path:
+    """Encrypts `path` with settings.backup_encryption_key (Fernet) and
+    replaces it with path.name + ".enc", removing the plaintext. Whole-file
+    Fernet rather than a streaming cipher - fine at this project's backup
+    sizes (single-digit MB; see scripts/maintenance.py's own docstring on
+    what app.db and data/chroma actually hold), and far simpler than
+    chunked AES-GCM for a low-traffic nightly cron job.
+
+    Generate a key with:
+        python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    and set it as BACKUP_ENCRYPTION_KEY. To restore: Fernet(key).decrypt(...)
+    the .enc file's bytes back to the original .db/.tar.gz before use.
+    """
+    from cryptography.fernet import Fernet
+
+    from config import settings
+
+    fernet = Fernet(settings.backup_encryption_key.encode())
+    encrypted_path = path.with_name(path.name + ".enc")
+    encrypted_path.write_bytes(fernet.encrypt(path.read_bytes()))
+    path.unlink()
+    return encrypted_path
+
+
 def _human(num_bytes: int) -> str:
     size = float(num_bytes)
     for unit in ("B", "KB", "MB", "GB"):
@@ -115,6 +139,9 @@ def snapshot(source: Path, keep: int, dry_run: bool) -> Path | None:
         connection.close()
 
     print(f"  {source.name}: {_human(source.stat().st_size)} -> {target.name} ({_human(target.stat().st_size)})")
+    if settings.backup_encryption_key:
+        target = _encrypt_backup(target)
+        print(f"    encrypted -> {target.name}")
     _rotate(source.stem, keep, dry_run)
     return target
 
@@ -146,6 +173,9 @@ def snapshot_directory(source: Path, stem: str, keep: int, dry_run: bool) -> Pat
         tar.add(source, arcname=source.name)
 
     print(f"  {source.name}: -> {target.name} ({_human(target.stat().st_size)})")
+    if settings.backup_encryption_key:
+        target = _encrypt_backup(target)
+        print(f"    encrypted -> {target.name}")
     _rotate(stem, keep, dry_run, suffix=".tar.gz")
     return target
 
@@ -158,7 +188,11 @@ def _rotate(stem: str, keep: int, dry_run: bool, suffix: str = ".db") -> None:
     on a misread flag is not a recoverable mistake. Names sort
     chronologically because the timestamp is fixed-width.
     """
-    snapshots = sorted(BACKUP_DIR.glob(f"{stem}-*{suffix}"))
+    # Trailing "*" so this matches both plain snapshots and their encrypted
+    # ".db.enc"/".tar.gz.enc" form - rotation must keep working across a
+    # BACKUP_ENCRYPTION_KEY being turned on or off between runs, not just
+    # clean up whichever form is currently being written.
+    snapshots = sorted(BACKUP_DIR.glob(f"{stem}-*{suffix}*"))
     stale = snapshots[:-keep] if keep > 0 else []
     for path in stale:
         if dry_run:

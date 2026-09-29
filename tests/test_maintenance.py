@@ -139,6 +139,89 @@ def test_a_directory_snapshot_is_a_restorable_tarball(tmp_path, monkeypatch):
     assert "chroma/subdir/nested.bin" in names
 
 
+def test_snapshot_is_encrypted_when_a_key_is_configured(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from config import settings
+
+    key = Fernet.generate_key()
+    monkeypatch.setattr(settings, "backup_encryption_key", key.decode())
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
+
+    source = tmp_path / "app.db"
+    connection = sqlite3.connect(str(source))
+    connection.execute("CREATE TABLE t (x INTEGER)")
+    connection.execute("INSERT INTO t VALUES (1)")
+    connection.commit()
+    connection.close()
+
+    target = maintenance.snapshot(source, keep=5, dry_run=False)
+
+    assert target is not None
+    assert target.name.endswith(".db.enc")
+    plaintext_copy = tmp_path / "backups" / target.name.removesuffix(".enc")
+    assert not plaintext_copy.exists()
+
+    decrypted = Fernet(key).decrypt(target.read_bytes())
+    restored = tmp_path / "restored.db"
+    restored.write_bytes(decrypted)
+    restored_conn = sqlite3.connect(str(restored))
+    try:
+        assert restored_conn.execute("SELECT x FROM t").fetchone()[0] == 1
+    finally:
+        restored_conn.close()
+
+
+def test_directory_snapshot_is_encrypted_when_a_key_is_configured(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from config import settings
+
+    key = Fernet.generate_key()
+    monkeypatch.setattr(settings, "backup_encryption_key", key.decode())
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
+
+    source = tmp_path / "chroma"
+    source.mkdir()
+    (source / "chroma.sqlite3").write_bytes(b"fake vector store contents")
+
+    target = maintenance.snapshot_directory(source, "chroma", keep=5, dry_run=False)
+
+    assert target is not None
+    assert target.name.endswith(".tar.gz.enc")
+    plaintext_copy = tmp_path / "backups" / target.name.removesuffix(".enc")
+    assert not plaintext_copy.exists()
+    Fernet(key).decrypt(target.read_bytes())  # raises if not valid ciphertext
+
+
+def test_no_encryption_when_no_key_is_configured(tmp_path, monkeypatch):
+    from config import settings
+
+    monkeypatch.setattr(settings, "backup_encryption_key", "")
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
+
+    source = tmp_path / "app.db"
+    sqlite3.connect(str(source)).close()
+
+    target = maintenance.snapshot(source, keep=5, dry_run=False)
+    assert target is not None
+    assert target.name.endswith(".db")
+    assert not target.name.endswith(".enc")
+
+
+def test_rotation_cleans_up_encrypted_snapshots(tmp_path, monkeypatch):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    monkeypatch.setattr(maintenance, "BACKUP_DIR", backups)
+    for stamp in ("20260101-000000", "20260102-000000", "20260103-000000"):
+        (backups / f"app-{stamp}.db.enc").write_bytes(b"")
+
+    maintenance._rotate("app", keep=2, dry_run=False, suffix=".db")
+
+    remaining = sorted(p.name for p in backups.glob("app-*.db.enc"))
+    assert remaining == ["app-20260102-000000.db.enc", "app-20260103-000000.db.enc"]
+
+
 def test_a_missing_directory_is_skipped_not_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(maintenance, "BACKUP_DIR", tmp_path / "backups")
     assert maintenance.snapshot_directory(tmp_path / "does-not-exist", "chroma", keep=5, dry_run=False) is None
