@@ -4,6 +4,23 @@ Not read by any code - this documents how the VPS is actually set up, for
 rebuilding it if it is ever lost, and so this knowledge doesn't live only in
 one person's shell history.
 
+## Secrets
+
+All real secrets (`JWT_SECRET`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`,
+`TELEGRAM_BOT_TOKEN`, `BACKUP_ENCRYPTION_KEY`) live only in `/root/AEDS_RAG_Assistant/.env`
+on the VPS - never in git (`.env` is gitignored, see `.env.example` for the
+documented list) and never touched by `scripts/deploy.sh` (excluded from its
+rsync, see the script). `.env` and `data/sqlite/*.db` (password hashes,
+chat history) are `600 root:root`.
+
+This is deliberately not a full secrets-manager setup (Vault, sops). The
+VPS is single-user - every process on it, this app included, already runs
+as root - so the actual threat model is "someone with root on the box",
+against which a secrets manager whose key also has to live readably
+somewhere on that same box buys little, while adding a real way to lock
+yourself out of a deploy if that key is lost. Revisit this if the VPS ever
+stops being single-tenant/single-admin.
+
 ## Deploying a code change
 
 `scripts/deploy.sh` from the repo root. Builds the frontend with the correct
