@@ -15,6 +15,7 @@ from langchain_ollama import ChatOllama
 from concurrency import once
 from config import settings
 from db.chroma_client import hybrid_search
+from db.contribution_gate import could_be_a_contribution
 from db.freshness import get_expired_source_ids
 from db.reranker import rerank
 from graph.state import RagState
@@ -1454,52 +1455,6 @@ def _looks_like_a_question(text: str) -> bool:
     return stripped.lower().startswith(question_starters)
 
 
-# Verbs/markers that signal the user is ASSERTING something rather than
-# searching. A correction or new fact needs a finite verb ("the deadline IS
-# June 1st", "they MOVED the exam"); a bare topic phrase typed into a search
-# box ("Applied Econometrics using GIS") has none.
-_ASSERTION_MARKERS = {
-    "is", "isn't", "are", "aren't", "was", "wasn't", "were", "weren't",
-    "has", "have", "had", "will", "won't", "should", "shouldn't", "must",
-    "can", "cannot", "changed", "moved", "updated", "replaced", "became",
-    "costs", "requires", "takes", "offers", "starts", "ends", "happens",
-    "not", "actually", "instead", "no", "wrong", "incorrect", "correction",
-}
-
-_ACKNOWLEDGEMENTS = {
-    "thanks", "thank you", "ok", "okay", "got it", "great", "cool", "nice",
-    "hello", "hi", "hey", "good morning", "good afternoon", "bye", "yes", "no",
-}
-
-_MIN_ASSERTION_WORDS = 4
-
-
-def _could_be_a_contribution(text: str) -> bool:
-    """Cheap pre-filter deciding whether a message is even worth spending an
-    LLM call to classify.
-
-    Every chat turn already costs 2 Gemini calls (tool router + generation)
-    against a per-day free-tier quota, and this classifier was firing a third
-    on messages the prompt itself defines as non-contributions - greetings,
-    acknowledgements, bare course names. Filtering those out here removes the
-    third call from the large majority of turns.
-
-    Deliberately biased toward skipping: a false negative only means the fact
-    isn't AUTO-flagged, and the user still has the explicit "Notify Admin"
-    button in the UI, whereas a false positive burns quota the user needs to
-    get answers at all.
-    """
-    stripped = text.strip().casefold().rstrip(".!")
-    if stripped in _ACKNOWLEDGEMENTS:
-        return False
-
-    words = re.findall(r"[a-z']+", stripped)
-    if len(words) < _MIN_ASSERTION_WORDS:
-        return False
-
-    return any(word in _ASSERTION_MARKERS for word in words)
-
-
 def detect_contribution_node(state: RagState) -> dict:
     """Classify whether the user's latest message asserts a correction or new
     fact about the programme, so it can be queued for admin review without the
@@ -1508,7 +1463,7 @@ def detect_contribution_node(state: RagState) -> dict:
     if last_user_message is None or _looks_like_a_question(last_user_message.content):
         return {"detected_contribution": None}
 
-    if not _could_be_a_contribution(last_user_message.content):
+    if not could_be_a_contribution(last_user_message.content):
         return {"detected_contribution": None}
 
     prompt = CONTRIBUTION_DETECTION_PROMPT.format(message=last_user_message.content)

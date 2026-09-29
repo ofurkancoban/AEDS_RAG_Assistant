@@ -188,6 +188,16 @@ class Settings(BaseSettings):
     # notice than letting a borderline one through, and the sample behind
     # these bounds is only five questions per side.
     retrieval_relevance_threshold: float = 0.05
+    # Minimum Laya "noul" probability for a chat message to be treated as a
+    # possible correction/new-fact contribution, worth an LLM call to extract
+    # (see db/contribution_gate.py). Measured on 74 hand-labelled English
+    # messages against a local-LLM oracle: precision 0.78 / recall 0.93 at
+    # this threshold (F1-optimal), versus precision 0.67 / recall 0.96 for
+    # the regex heuristic it replaced - fewer wasted LLM calls for a small
+    # recall cost, which fits this gate's asymmetry (a missed contribution
+    # still has the explicit "Notify Admin" button; a false positive burns a
+    # call from the daily LLM budget).
+    contribution_gate_threshold: float = 0.20
     # Briefly bumped to 6 to work around a chunk-quality problem (a messy,
     # unstructured source document ranked its own correct-answer chunk too
     # low), but that just traded one failure for another: it let more

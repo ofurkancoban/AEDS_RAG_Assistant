@@ -32,6 +32,9 @@ pydantic-settings==2.5.2
 sqlalchemy==2.0.35
 sentence-transformers==5.6.1
 torch==2.13.0
+# Fast local classifier for the contribution-detection pre-filter (see
+# db/contribution_gate.py) - not an LLM call, a calibrated yes/no decision.
+laya==0.3.21
 
 # Test suite (tests/test_*.py). Runs against a temporary database with the
 # answer pipeline stubbed, so it needs neither Ollama nor an ingested corpus -
