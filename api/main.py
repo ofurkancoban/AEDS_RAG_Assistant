@@ -20,6 +20,16 @@ from ingestion.chunker import scan_and_ingest_documents_folder
 # and nothing else in the app configures it.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    # traces_sample_rate=0: performance tracing is a separate, billed Sentry
+    # product this project has no use for - only error capture is wanted.
+    # send_default_pii=False: request bodies/headers can carry a student's
+    # question text, which must not leave this VPS for a third-party service
+    # without an explicit decision to allow that.
+    sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment, traces_sample_rate=0.0, send_default_pii=False)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -93,6 +103,20 @@ _last_alert_at: dict[str, float] = {}
 _NEVER_ALERTED = float("-inf")
 
 
+def _capture_to_sentry(exc: Exception) -> None:
+    """A thin, monkeypatchable wrapper around sentry_sdk.capture_exception -
+    a no-op whenever settings.sentry_dsn is empty (no init call was ever
+    made, see the top of this module), so tests never need a real DSN."""
+    if not settings.sentry_dsn:
+        return
+    try:
+        import sentry_sdk
+
+        sentry_sdk.capture_exception(exc)
+    except Exception:
+        _logger.exception("Failed to report exception to Sentry")
+
+
 @app.exception_handler(Exception)
 async def _handle_unexpected_error(request: Request, exc: Exception):
     """Catches any exception a route didn't handle itself (HTTPException has
@@ -100,8 +124,11 @@ async def _handle_unexpected_error(request: Request, exc: Exception):
     only visible by tailing pm2 logs on the VPS after a user reported a
     problem. Alerts to the same Telegram chat the source-refresh and review
     queue notifications already use, so a production error surfaces without
-    anyone having to go looking for it."""
+    anyone having to go looking for it. Also reported to Sentry (if
+    configured, see _capture_to_sentry) for the searchable, full-stack-trace
+    history a chat message cannot give."""
     _logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    _capture_to_sentry(exc)
 
     key = f"{request.url.path}:{type(exc).__name__}"
     now = time.monotonic()

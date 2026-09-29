@@ -23,6 +23,7 @@ beautifulsoup4==4.12.3
 requests==2.34.2
 python-jose[cryptography]==3.3.0
 cryptography==49.0.0
+sentry-sdk==2.71.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.12

@@ -126,3 +126,40 @@ def test_a_failed_telegram_send_does_not_break_the_response(monkeypatch):
     response = _handle("/path-e", RuntimeError("boom"))
 
     assert response.status_code == 500
+
+
+def test_sentry_is_not_called_when_no_dsn_is_configured(monkeypatch):
+    monkeypatch.setattr("api.telegram_bot.send_message", lambda *a, **k: None)
+    monkeypatch.setattr(settings, "sentry_dsn", "")
+    calls = []
+    monkeypatch.setattr("sentry_sdk.capture_exception", lambda exc: calls.append(exc))
+
+    _handle("/path-sentry-off", RuntimeError("boom"))
+
+    assert calls == []
+
+
+def test_sentry_captures_the_exception_when_a_dsn_is_configured(monkeypatch):
+    monkeypatch.setattr("api.telegram_bot.send_message", lambda *a, **k: None)
+    monkeypatch.setattr(settings, "sentry_dsn", "https://example@o0.ingest.sentry.io/0")
+    calls = []
+    monkeypatch.setattr("sentry_sdk.capture_exception", lambda exc: calls.append(exc))
+
+    exc = RuntimeError("boom")
+    _handle("/path-sentry-on", exc)
+
+    assert calls == [exc]
+
+
+def test_a_failed_sentry_capture_does_not_break_the_response(monkeypatch):
+    monkeypatch.setattr("api.telegram_bot.send_message", lambda *a, **k: None)
+    monkeypatch.setattr(settings, "sentry_dsn", "https://example@o0.ingest.sentry.io/0")
+
+    def _raise(exc):
+        raise ConnectionError("sentry unreachable")
+
+    monkeypatch.setattr("sentry_sdk.capture_exception", _raise)
+
+    response = _handle("/path-sentry-fail", RuntimeError("boom"))
+
+    assert response.status_code == 500

@@ -226,6 +226,14 @@ class Settings(BaseSettings):
     # than the script refusing to run.
     backup_encryption_key: str = ""
 
+    # Optional Sentry DSN (https://docs.sentry.io/product/sentry-basics/dsn-explainer/).
+    # Empty (the default) means api/main.py never calls sentry_sdk.init and
+    # every capture call becomes a no-op - local dev and CI need no DSN.
+    # Unhandled errors already alert to Telegram (see main.py's exception
+    # handler); Sentry adds a searchable, aggregated history of them with
+    # full stack traces, which a chat message cannot.
+    sentry_dsn: str = ""
+
     @property
     def effective_daily_llm_budget(self) -> int:
         """Requests allowed per day for the provider fixed at process start
