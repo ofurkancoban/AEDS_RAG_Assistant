@@ -141,6 +141,75 @@ def test_the_origin_header_is_recorded_on_both_the_log_and_the_cached_answer(cli
         session.close()
 
 
+def test_node_latencies_are_persisted_on_the_query_log(client, guest_headers, monkeypatch):
+    """graph/build_graph.py's per-node latency breakdown (result["node_latencies"])
+    used to only ever reach a log line - this is what lets the admin panel
+    show where time goes averaged over many turns instead of just the last
+    one (see /admin/node-latency-stats)."""
+    import json
+
+    from api import routes_chat
+    from db.models import QueryLog, SessionLocal
+
+    def fake_run_chat(thread_id: str, question: str, source_id_filter=None):
+        return {
+            "answer": STUB_ANSWER,
+            "sources": [],
+            "retrieval": [],
+            "answered": True,
+            "node_latencies": {"retrieve": 120.5, "generate": 480.0},
+        }
+
+    monkeypatch.setattr(routes_chat, "run_chat", fake_run_chat)
+
+    _ask(client, guest_headers, message="A question with real node latencies")
+
+    session = SessionLocal()
+    try:
+        log = session.query(QueryLog).order_by(QueryLog.id.desc()).first()
+        assert json.loads(log.node_latencies_json) == {"retrieve": 120.5, "generate": 480.0}
+    finally:
+        session.close()
+
+
+def test_a_cache_hit_records_no_node_latencies(client, guest_headers):
+    import json
+
+    from db import semantic_cache
+    from db.models import AnswerStatus, CachedAnswer, QueryLog, SessionLocal
+    from tests.conftest import STUB_EMBEDDING
+
+    question = "Which courses are compulsory this term?"
+    session = SessionLocal()
+    try:
+        session.add(
+            CachedAnswer(
+                question=question,
+                question_normalized=semantic_cache._normalize(question),
+                embedding=json.dumps(list(STUB_EMBEDDING)),
+                answer="Cached reply.",
+                original_answer="Cached reply.",
+                sources_json="[]",
+                retrieval_json="[]",
+                status=AnswerStatus.APPROVED,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    response = _ask(client, guest_headers, message=question)
+    assert response.json()["cached"] is True
+
+    session = SessionLocal()
+    try:
+        log = session.query(QueryLog).order_by(QueryLog.id.desc()).first()
+        assert log.served_from_cache is True
+        assert log.node_latencies_json is None
+    finally:
+        session.close()
+
+
 def test_no_origin_header_is_recorded_as_none(client, guest_headers):
     from db.models import QueryLog, SessionLocal
 

@@ -152,6 +152,19 @@ export interface RateLimitStats {
   by_limiter: RateLimitRejectionCount[];
 }
 
+export interface NodeLatencyStat {
+  node_name: string;
+  sample_count: number;
+  avg_ms: number;
+  p95_ms: number;
+}
+
+export interface NodeLatencyStats {
+  days: number;
+  total_turns: number;
+  by_node: NodeLatencyStat[];
+}
+
 export interface ConfigField<T = unknown> {
   value: T;
   read_only: boolean;

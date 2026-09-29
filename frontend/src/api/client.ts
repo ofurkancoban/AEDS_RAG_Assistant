@@ -5,6 +5,7 @@ import {
   ChatSource,
   IngestedDocumentInfo,
   AnswerStatus,
+  NodeLatencyStats,
   OpsStatus,
   OriginBreakdown,
   PendingSubmission,
@@ -323,6 +324,10 @@ export function getOpsStatus(): Promise<OpsStatus> {
 
 export function getRateLimitStats(days = 7): Promise<RateLimitStats> {
   return request(`/admin/rate-limit-stats?days=${days}`);
+}
+
+export function getNodeLatencyStats(days = 7): Promise<NodeLatencyStats> {
+  return request(`/admin/node-latency-stats?days=${days}`);
 }
 
 export interface StaffUser {

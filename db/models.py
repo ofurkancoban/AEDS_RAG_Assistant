@@ -360,6 +360,13 @@ class QueryLog(Base):
     source_ids: Mapped[str] = mapped_column(String, default="")
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     served_from_cache: Mapped[bool] = mapped_column(Boolean, default=False)
+    # JSON {node_name: milliseconds} from graph/build_graph.py's per-node
+    # latency logging (result["node_latencies"]) - NULL for a cache hit,
+    # since no pipeline node ran. Persisted here (rather than staying only
+    # in the log line _with_latency_logging already prints) so the admin
+    # panel can show where a slow turn's time actually went averaged over
+    # many turns, not just the very last one it happened to catch.
+    node_latencies_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # +1 / -1 from the thumbs control, NULL until the user rates it.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # See CachedAnswer.origin's docstring - same meaning, same caveats.

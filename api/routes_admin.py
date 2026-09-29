@@ -1392,3 +1392,57 @@ def get_rate_limit_stats(
         for name, count in sorted(totals.items(), key=lambda item: item[1], reverse=True)
     ]
     return RateLimitStatsOut(days=days, by_limiter=by_limiter)
+
+
+class NodeLatencyStat(BaseModel):
+    node_name: str
+    sample_count: int
+    avg_ms: float
+    p95_ms: float
+
+
+class NodeLatencyStatsOut(BaseModel):
+    days: int
+    total_turns: int
+    by_node: list[NodeLatencyStat]
+
+
+@router.get("/node-latency-stats", response_model=NodeLatencyStatsOut)
+def get_node_latency_stats(
+    days: int = 7,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Where a live pipeline turn's time actually goes, averaged over many
+    turns rather than read off the last one that happened to be looked at.
+    Built on QueryLog.node_latencies_json (graph/build_graph.py's per-node
+    latency logging, now persisted rather than only ever printed to a log
+    line) - a single overall latency_ms number cannot say whether a slow
+    turn was retrieval, the reranker, or the LLM call itself."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = (
+        session.query(QueryLog)
+        .filter(QueryLog.created_at >= since, QueryLog.node_latencies_json.isnot(None))
+        .all()
+    )
+
+    by_node: dict[str, list[float]] = {}
+    for row in rows:
+        for node_name, ms in json.loads(row.node_latencies_json).items():
+            by_node.setdefault(node_name, []).append(ms)
+
+    def _p95(values: list[float]) -> float:
+        ordered = sorted(values)
+        index = min(len(ordered) - 1, int(len(ordered) * 0.95))
+        return ordered[index]
+
+    stats = [
+        NodeLatencyStat(
+            node_name=node_name,
+            sample_count=len(values),
+            avg_ms=round(sum(values) / len(values), 1),
+            p95_ms=round(_p95(values), 1),
+        )
+        for node_name, values in sorted(by_node.items(), key=lambda item: sum(item[1]), reverse=True)
+    ]
+    return NodeLatencyStatsOut(days=days, total_turns=len(rows), by_node=stats)

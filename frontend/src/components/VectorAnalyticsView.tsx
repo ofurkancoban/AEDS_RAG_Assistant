@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge, ShieldAlert } from 'lucide-react';
-import { AdminStats, ChatQueryResult, OpsStatus, OriginBreakdown, RateLimitStats, UsageAnalytics } from '../types';
-import { getAnalytics, getOpsStatus, getOriginStats, getRateLimitStats, getStats } from '../api/client';
+import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge, ShieldAlert, Timer } from 'lucide-react';
+import { AdminStats, ChatQueryResult, NodeLatencyStats, OpsStatus, OriginBreakdown, RateLimitStats, UsageAnalytics } from '../types';
+import { getAnalytics, getNodeLatencyStats, getOpsStatus, getOriginStats, getRateLimitStats, getStats } from '../api/client';
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
@@ -17,6 +17,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const [originStats, setOriginStats] = useState<OriginBreakdown | null>(null);
   const [opsStatus, setOpsStatus] = useState<OpsStatus | null>(null);
   const [rateLimitStats, setRateLimitStats] = useState<RateLimitStats | null>(null);
+  const [nodeLatencyStats, setNodeLatencyStats] = useState<NodeLatencyStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Silent (no spinner) by default - only the manual Refresh button and the
@@ -25,18 +26,20 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const load = async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     try {
-      const [statsData, analyticsData, originData, opsData, rateLimitData] = await Promise.all([
+      const [statsData, analyticsData, originData, opsData, rateLimitData, nodeLatencyData] = await Promise.all([
         getStats(),
         getAnalytics(),
         getOriginStats(),
         getOpsStatus(),
         getRateLimitStats(),
+        getNodeLatencyStats(),
       ]);
       setStats(statsData);
       setAnalytics(analyticsData);
       setOriginStats(originData);
       setOpsStatus(opsData);
       setRateLimitStats(rateLimitData);
+      setNodeLatencyStats(nodeLatencyData);
     } catch (e) {
       console.error('Failed to load stats:', e);
     } finally {
@@ -468,6 +471,45 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
           <span>Pending submissions: <strong className="text-amber-600 dark:text-amber-300">{stats?.pending_submissions ?? '—'}</strong></span>
         </div>
       </div>
+
+      {nodeLatencyStats && nodeLatencyStats.by_node.length > 0 && (
+        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
+            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+              <Timer className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+              <span>Pipeline Latency by Node (last {nodeLatencyStats.days} days)</span>
+            </h2>
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
+              {nodeLatencyStats.total_turns} turns
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] -mt-2">
+            Where a live turn's time actually goes, averaged over every turn in the window - not
+            just the last one below.
+          </p>
+          <div className="space-y-2.5">
+            {nodeLatencyStats.by_node.map((row) => {
+              const maxAvg = Math.max(...nodeLatencyStats.by_node.map((r) => r.avg_ms));
+              return (
+                <div key={row.node_name} className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-[var(--text-secondary)]">{row.node_name}</span>
+                    <span className="font-mono font-bold text-[var(--text-muted)]">
+                      avg {Math.round(row.avg_ms)}ms · p95 {Math.round(row.p95_ms)}ms
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-accent-500 to-emerald-400 transition-all"
+                      style={{ width: `${Math.max(2, (row.avg_ms / maxAvg) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">

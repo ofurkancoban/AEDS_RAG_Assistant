@@ -156,6 +156,7 @@ def _log_query(
     latency_ms: int,
     served_from_cache: bool,
     origin: str | None = None,
+    node_latencies: dict[str, float] | None = None,
 ) -> int:
     """Record the turn and return the log id, which the client sends back with
     a thumbs rating so the two can be tied together."""
@@ -171,6 +172,7 @@ def _log_query(
         latency_ms=latency_ms,
         served_from_cache=served_from_cache,
         origin=origin,
+        node_latencies_json=json.dumps(node_latencies) if node_latencies else None,
     )
     session.add(entry)
     session.commit()
@@ -340,6 +342,7 @@ def chat(
         latency_ms=int((time.monotonic() - started) * 1000),
         served_from_cache=False,
         origin=origin,
+        node_latencies=result.get("node_latencies"),
     )
 
     return ChatResponse(
@@ -484,6 +487,7 @@ def chat_stream(
                 latency_ms=int((time.monotonic() - started) * 1000),
                 served_from_cache=False,
                 origin=origin,
+                node_latencies=data.get("node_latencies"),
             )
 
             done_payload = {
