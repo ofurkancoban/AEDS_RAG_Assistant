@@ -112,9 +112,20 @@ def _clean_state(monkeypatch):
 
     _cached_effective_config.cache_clear()
 
+    # Same reasoning as the cache above, for a different module-level flag:
+    # llm_budget's once-per-day dedup guard on the budget-fallback Telegram
+    # alert/DB record. Deleting BudgetFallbackEvent rows above does not
+    # reset this, so a test that triggers the fallback would otherwise
+    # leave later tests unable to trigger (and assert on) it again even
+    # though their own DB rows were already wiped.
+    import llm_budget
+
+    llm_budget._notified_fallback_day = None
+
     yield
 
     _cached_effective_config.cache_clear()
+    llm_budget._notified_fallback_day = None
 
 
 @pytest.fixture(autouse=True)

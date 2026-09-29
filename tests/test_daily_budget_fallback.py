@@ -95,3 +95,61 @@ def test_admin_notified_once_per_day_not_once_per_call(monkeypatch):
     assert len(calls) == 1
     assert "openrouter" in calls[0]
     assert "gemini" in calls[0]
+
+
+def test_a_fallback_engagement_is_recorded_once_per_day(monkeypatch):
+    monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr("api.telegram_bot._notify_admins", lambda *a, **k: None)
+    _reset(llm_provider="openrouter", daily_budget_fallback_provider="gemini")
+    _set_usage(45)
+
+    llm_budget.effective_provider()
+    llm_budget.effective_provider()  # same day - must not add a second row
+
+    events = llm_budget.recent_fallback_events()
+    assert len(events) == 1
+    assert events[0]["from_provider"] == "openrouter"
+    assert events[0]["to_provider"] == "gemini"
+    assert events[0]["usage_at_switch"] == 45
+    assert events[0]["day"] == llm_budget._today()
+
+
+def test_recent_fallback_events_are_newest_first(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from db.models import BudgetFallbackEvent
+
+    session = SessionLocal()
+    try:
+        session.add(BudgetFallbackEvent(
+            day="2026-01-01", from_provider="openrouter", to_provider="gemini",
+            usage_at_switch=45, created_at=datetime.now(timezone.utc) - timedelta(days=1),
+        ))
+        session.add(BudgetFallbackEvent(
+            day="2026-01-02", from_provider="openrouter", to_provider="gemini",
+            usage_at_switch=45, created_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    events = llm_budget.recent_fallback_events()
+    assert [e["day"] for e in events] == ["2026-01-02", "2026-01-01"]
+
+
+def test_active_chat_model_reflects_the_fallback_not_the_configured_provider(monkeypatch):
+    from runtime_config import active_chat_model
+
+    monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr("api.telegram_bot._notify_admins", lambda *a, **k: None)
+    _reset(
+        llm_provider="openrouter",
+        openrouter_model="stealth/space-bunny-alpha",
+        gemini_model="gemini-3.1-flash-lite",
+        daily_budget_fallback_provider="gemini",
+    )
+    _set_usage(45)
+
+    assert active_chat_model() == "gemini-3.1-flash-lite"

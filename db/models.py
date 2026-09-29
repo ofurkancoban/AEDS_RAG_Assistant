@@ -285,6 +285,27 @@ class DailyLlmUsage(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class BudgetFallbackEvent(Base):
+    """One row each time llm_budget.effective_provider() actually redirects
+    to the configured daily-budget fallback provider (see
+    RuntimeConfig.daily_budget_fallback_provider) - a persistent record of
+    when and why, since the in-process Telegram alert and the admin panel's
+    live-provider display are both only ever a snapshot of the current
+    moment, with nothing to look back at afterwards."""
+
+    __tablename__ = "budget_fallback_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[str] = mapped_column(String, index=True)  # UTC "YYYY-MM-DD"
+    from_provider: Mapped[str] = mapped_column(String)
+    to_provider: Mapped[str] = mapped_column(String)
+    # Total calls recorded for `day` at the moment the fallback engaged -
+    # the number that actually tripped it, for later comparison against
+    # whatever daily_llm_call_budget was configured at the time.
+    usage_at_switch: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class QueryLog(Base):
     """One row per question asked. Exists to answer two product questions that
     nothing else in the system can: which questions do users actually ask, and

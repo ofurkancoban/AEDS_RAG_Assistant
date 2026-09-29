@@ -121,6 +121,10 @@ export interface AdminConfig {
   /** Live-editable: which chat/classifier provider is active - takes effect
       on the next turn, no restart. */
   llm_provider: ConfigField<string>;
+  /** Read-only: which provider is ACTUALLY answering right now - differs
+      from llm_provider only while the daily-budget fallback has taken
+      over (see daily_budget_fallback_provider). */
+  effective_provider: ConfigField<string>;
   gemini_model: ConfigField<string>;
   openrouter_model: ConfigField<string | null>;
   openrouter_fallback_model: ConfigField<string | null>;
@@ -191,4 +195,14 @@ export interface VersionInfo {
 
 export interface VisitorCount {
   unique_visitors: number;
+}
+
+/** One calendar day the daily-budget fallback actually engaged (see
+    llm_budget.py) - one row per day it happened, not one per request. */
+export interface BudgetFallbackEvent {
+  day: string;
+  from_provider: string;
+  to_provider: string;
+  usage_at_switch: number;
+  created_at: string;
 }

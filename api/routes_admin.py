@@ -758,6 +758,11 @@ class ConfigOut(BaseModel):
     # llm_budget.py all re-check it against the live value on every call, no
     # restart needed (see runtime_config.py's module docstring).
     llm_provider: ConfigField
+    # Read-only: which provider is ACTUALLY answering right now
+    # (llm_budget.effective_provider), distinct from llm_provider above the
+    # moment a daily-budget fallback has taken over - see
+    # daily_budget_fallback_provider's own note for when the two disagree.
+    effective_provider: ConfigField
     gemini_model: ConfigField
     openrouter_model: ConfigField
     openrouter_fallback_model: ConfigField
@@ -812,6 +817,17 @@ def get_config(admin: User = Depends(require_admin)):
                 f"Allowed: {', '.join(ALLOWED_LLM_PROVIDERS)}. Only providers with a key "
                 f"configured in .env can be switched to: {', '.join(keyed_providers)}. "
                 "Takes effect on the next chat turn, no restart needed."
+            ),
+        ),
+        effective_provider=ConfigField(
+            value=llm_budget.effective_provider(),
+            read_only=True,
+            note=(
+                "Matches llm_provider unless its daily budget is exhausted and "
+                "daily_budget_fallback_provider has taken over for the rest of the day - "
+                "see that setting's own note, and the history below, for details."
+                if llm_budget.effective_provider() != runtime.llm_provider
+                else "Same as llm_provider - no budget fallback is currently active."
             ),
         ),
         gemini_model=ConfigField(
@@ -893,6 +909,22 @@ def get_config(admin: User = Depends(require_admin)):
         ),
         chunk_overlap=ConfigField(value=settings.chunk_overlap, read_only=True),
     )
+
+
+class BudgetFallbackEventOut(BaseModel):
+    day: str
+    from_provider: str
+    to_provider: str
+    usage_at_switch: int
+    created_at: datetime
+
+
+@router.get("/budget-fallback-events", response_model=list[BudgetFallbackEventOut])
+def get_budget_fallback_events(admin: User = Depends(require_admin)):
+    """History of every day the daily-budget fallback actually engaged - see
+    llm_budget.recent_fallback_events. One row per day it happened, not one
+    per request."""
+    return [BudgetFallbackEventOut(**event) for event in llm_budget.recent_fallback_events()]
 
 
 class ConfigUpdateRequest(BaseModel):

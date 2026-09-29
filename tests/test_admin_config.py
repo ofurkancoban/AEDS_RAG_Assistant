@@ -132,3 +132,76 @@ def test_daily_budget_fallback_provider_can_be_cleared(client, admin_headers, mo
     )
     assert response.status_code == 200
     assert response.json()["daily_budget_fallback_provider"]["value"] == ""
+
+
+def test_effective_provider_matches_llm_provider_when_no_fallback_is_active(client, admin_headers):
+    response = client.get("/admin/config", headers=admin_headers)
+    body = response.json()
+    assert body["effective_provider"]["value"] == body["llm_provider"]["value"]
+    assert body["effective_provider"]["read_only"] is True
+
+
+def test_effective_provider_reflects_an_active_budget_fallback(client, admin_headers, monkeypatch):
+    import llm_budget
+    from db.models import DailyLlmUsage, SessionLocal
+
+    monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr("api.telegram_bot._notify_admins", lambda *a, **k: None)
+
+    client.put(
+        "/admin/config",
+        headers=admin_headers,
+        json={"llm_provider": "openrouter", "daily_budget_fallback_provider": "gemini"},
+    )
+
+    session = SessionLocal()
+    try:
+        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.get("/admin/config", headers=admin_headers)
+    body = response.json()
+    assert body["llm_provider"]["value"] == "openrouter"
+    assert body["effective_provider"]["value"] == "gemini"
+    assert body["chat_model"]["value"] == body["gemini_model"]["value"]
+
+
+def test_budget_fallback_events_endpoint_reports_recorded_switches(client, admin_headers, monkeypatch):
+    import llm_budget
+    from db.models import DailyLlmUsage, SessionLocal
+
+    monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr("api.telegram_bot._notify_admins", lambda *a, **k: None)
+
+    client.put(
+        "/admin/config",
+        headers=admin_headers,
+        json={"llm_provider": "openrouter", "daily_budget_fallback_provider": "gemini"},
+    )
+    session = SessionLocal()
+    try:
+        session.add(DailyLlmUsage(day=llm_budget._today(), call_count=45))
+        session.commit()
+    finally:
+        session.close()
+
+    llm_budget.effective_provider()  # triggers and records the fallback
+
+    response = client.get("/admin/budget-fallback-events", headers=admin_headers)
+    assert response.status_code == 200
+    events = response.json()
+    assert len(events) == 1
+    assert events[0]["from_provider"] == "openrouter"
+    assert events[0]["to_provider"] == "gemini"
+    assert events[0]["usage_at_switch"] == 45
+
+
+def test_budget_fallback_events_endpoint_is_closed_to_visitors(client, guest_headers):
+    response = client.get("/admin/budget-fallback-events", headers=guest_headers)
+    assert response.status_code == 403

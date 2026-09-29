@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import update
 
-from db.models import DailyLlmUsage, SessionLocal
+from db.models import BudgetFallbackEvent, DailyLlmUsage, SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -95,26 +95,67 @@ def remaining() -> int:
 _notified_fallback_day: str | None = None
 
 
-def _notify_fallback_engaged(live: str, fallback: str) -> None:
-    """Best-effort, once per calendar day. A budget fallback changes which
-    provider is actually answering without the admin panel's live-provider
-    display changing to say so, so this is the only place that surfaces it
-    - the same reasoning as graph/nodes.py's model-level fallback getting
-    its own Telegram alert."""
+def _record_fallback_engaged(live: str, fallback: str) -> None:
+    """Best-effort, once per calendar day: writes a BudgetFallbackEvent row
+    (see db/models.py - the persistent record recent_fallback_events reads
+    back for the admin panel) and sends the matching Telegram alert. A
+    budget fallback changes which provider is actually answering without
+    the admin panel's live-provider display changing to say so on its own,
+    so this is the only place that surfaces it - the same reasoning as
+    graph/nodes.py's model-level fallback getting its own alert."""
     global _notified_fallback_day
     today = _today()
     if _notified_fallback_day == today:
         return
     _notified_fallback_day = today
+
+    used = usage_today()
+
+    session = SessionLocal()
+    try:
+        session.add(BudgetFallbackEvent(day=today, from_provider=live, to_provider=fallback, usage_at_switch=used))
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.warning("Failed to record budget-fallback event", exc_info=True)
+    finally:
+        session.close()
+
     try:
         from api.telegram_bot import _notify_admins
 
         _notify_admins(
-            f"{live}'s daily budget is exhausted ({usage_today()} calls today) - "
+            f"{live}'s daily budget is exhausted ({used} calls today) - "
             f"falling back to {fallback} for the rest of the day."
         )
     except Exception:
         logger.warning("Failed to send budget-fallback Telegram alert", exc_info=True)
+
+
+def recent_fallback_events(limit: int = 20) -> list[dict]:
+    """Most recent budget-fallback switches, newest first - what the admin
+    panel's history list reads. Each row is one calendar day's first (and
+    only recorded) engagement, not one per request."""
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(BudgetFallbackEvent)
+            .order_by(BudgetFallbackEvent.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "day": row.day,
+                "from_provider": row.from_provider,
+                "to_provider": row.to_provider,
+                "usage_at_switch": row.usage_at_switch,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ]
+    finally:
+        session.close()
 
 
 def effective_provider() -> str:
@@ -154,7 +195,7 @@ def effective_provider() -> str:
     if fallback and fallback != live:
         fallback_budget = daily_budget_for_provider(fallback, settings.daily_llm_call_budget)
         if fallback_budget <= 0 or used < fallback_budget:
-            _notify_fallback_engaged(live, fallback)
+            _record_fallback_engaged(live, fallback)
             return fallback
 
     return live

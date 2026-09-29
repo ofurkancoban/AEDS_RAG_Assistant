@@ -1,6 +1,7 @@
 import {
   AdminConfig,
   AdminStats,
+  BudgetFallbackEvent,
   ChatSource,
   IngestedDocumentInfo,
   AnswerStatus,
@@ -287,6 +288,10 @@ export function putConfig(payload: Partial<{
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+export function getBudgetFallbackEvents(): Promise<BudgetFallbackEvent[]> {
+  return request('/admin/budget-fallback-events');
 }
 
 export function getStats(): Promise<AdminStats> {

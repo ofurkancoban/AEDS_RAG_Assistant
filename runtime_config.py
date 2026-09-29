@@ -56,17 +56,23 @@ class EffectiveConfig:
 
 
 def active_chat_model() -> str:
-    """The model actually answering chat turns, against the LIVE provider
-    (admin-switchable, see EffectiveConfig.llm_provider) - not the one fixed
-    in .env at startup. Every caller that wants to *display* the chat model
-    must go through here rather than settings.llm_provider directly, or a
-    live switch away from the .env default would report a model that isn't
-    actually running.
+    """The model actually answering chat turns right now - against the
+    EFFECTIVE provider (llm_budget.effective_provider), not just the
+    configured live one (EffectiveConfig.llm_provider). Those two differ
+    exactly when the configured provider's own daily budget is exhausted
+    and a fallback has taken over for the rest of the day - without this,
+    the admin panel kept reporting "openrouter" as what's answering long
+    after it had actually stopped being true. Every caller that wants to
+    *display* the chat model must go through here rather than
+    settings.llm_provider or even EffectiveConfig.llm_provider directly.
     """
+    from llm_budget import effective_provider
+
     config = get_runtime_config()
-    if config.llm_provider == "gemini":
+    provider = effective_provider()
+    if provider == "gemini":
         return config.gemini_model
-    if config.llm_provider == "openrouter":
+    if provider == "openrouter":
         return config.openrouter_model
     return settings.ollama_llm_model
 

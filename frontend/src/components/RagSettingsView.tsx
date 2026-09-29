@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sliders, Layers, Sparkles, RotateCcw, Lock, Save, RefreshCw, Eye, Copy } from 'lucide-react';
-import { AdminConfig } from '../types';
-import { getConfig, putConfig } from '../api/client';
+import { AdminConfig, BudgetFallbackEvent } from '../types';
+import { getBudgetFallbackEvents, getConfig, putConfig } from '../api/client';
 import { ALLOWED_GEMINI_MODELS, ALLOWED_LLM_PROVIDERS } from '../api/constants';
 
 export const RagSettingsView: React.FC = () => {
@@ -14,6 +14,7 @@ export const RagSettingsView: React.FC = () => {
   // keystroke.
   const [openrouterModelDraft, setOpenrouterModelDraft] = useState('');
   const [openrouterFallbackModelDraft, setOpenrouterFallbackModelDraft] = useState('');
+  const [fallbackEvents, setFallbackEvents] = useState<BudgetFallbackEvent[]>([]);
 
   const load = async () => {
     setIsLoading(true);
@@ -23,6 +24,9 @@ export const RagSettingsView: React.FC = () => {
       setSystemPrompt(data.system_prompt_override.value || '');
       setOpenrouterModelDraft(data.openrouter_model.value || '');
       setOpenrouterFallbackModelDraft(data.openrouter_fallback_model.value || '');
+      // Best-effort: a history list is a nice-to-have, not worth failing the
+      // whole settings page load over.
+      getBudgetFallbackEvents().then(setFallbackEvents).catch(() => setFallbackEvents([]));
     } catch (e) {
       console.error('Failed to load config:', e);
     } finally {
@@ -170,6 +174,16 @@ export const RagSettingsView: React.FC = () => {
               {ALLOWED_LLM_PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
             <p className="text-[11px] text-[var(--text-faint)] italic">{config.llm_provider.note}</p>
+            {config.effective_provider.value !== config.llm_provider.value && (
+              <div className="flex items-start gap-2 text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 mt-1">
+                <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>
+                  Budget fallback active: {config.llm_provider.value}'s daily budget is exhausted, so
+                  questions are actually being answered by <strong>{config.effective_provider.value}</strong> right
+                  now instead.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Only a live control when Gemini is the active provider. Under a
@@ -264,6 +278,25 @@ export const RagSettingsView: React.FC = () => {
             </select>
             <p className="text-[11px] text-[var(--text-faint)] italic">{config.daily_budget_fallback_provider.note}</p>
           </div>
+
+          {fallbackEvents.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <label className="text-xs font-bold text-[var(--text-secondary)]">Fallback history</label>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {fallbackEvents.map((event, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-[11px] font-mono glass-well rounded-xl px-3 py-1.5"
+                  >
+                    <span className="text-[var(--text-secondary)]">
+                      {event.day}: {event.from_provider} → {event.to_provider}
+                    </span>
+                    <span className="text-[var(--text-faint)]">{event.usage_at_switch} calls</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
