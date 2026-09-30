@@ -869,7 +869,36 @@ def _extract_completed_codes(text: str) -> frozenset[str]:
     return frozenset(c.strip().lower() for c in match.group(1).split(",") if c.strip())
 
 
-def _compute_remaining_targets(exclude_codes: frozenset[str]) -> dict[str, int]:
+_CATEGORY_CODES_LINE_RE = re.compile(r"codes by category:\s*([^\n]*)", re.IGNORECASE)
+
+
+def _extract_completed_codes_by_category(text: str) -> dict[str, frozenset[str]]:
+    """Parses the ECTS Tracker widget's optional 'Codes by category:
+    economics: wir821, wir873; specialization: inf530, ...' line - the
+    student's OWN bucketing of each course, which can legitimately differ
+    from this catalog's single fixed category per course (e.g. a
+    cross-listed elective the student is counting toward Specialization even
+    though catalog.csv files it under Data Science). Absent for any caller
+    without this exact line, in which case the caller falls back to
+    _compute_remaining_targets's catalog-category behavior."""
+    match = _CATEGORY_CODES_LINE_RE.search(text)
+    if not match:
+        return {}
+    result: dict[str, frozenset[str]] = {}
+    for chunk in match.group(1).split(";"):
+        if ":" not in chunk:
+            continue
+        category, codes_part = chunk.split(":", 1)
+        category = category.strip().lower()
+        codes = frozenset(c.strip().lower() for c in codes_part.split(",") if c.strip())
+        if category and codes:
+            result[category] = codes
+    return result
+
+
+def _compute_remaining_targets(
+    exclude_codes: frozenset[str], codes_by_category: dict[str, frozenset[str]] | None = None
+) -> dict[str, int]:
     """Each category's remaining ECTS target after subtracting what the
     student has already completed/in-progress/planned, floored at 0 - so an
     already-satisfied elective category stops asking for more, and the
@@ -877,15 +906,32 @@ def _compute_remaining_targets(exclude_codes: frozenset[str]) -> dict[str, int]:
     Compulsory courses not yet in exclude_codes are still always included by
     _select_recommended_courses regardless of this target, since compulsory
     means mandatory independent of whether the category's ECTS count is
-    already met by other, elective, completions."""
+    already met by other, elective, completions.
+
+    When codes_by_category is supplied (the ECTS Tracker widget's own
+    per-category breakdown), it takes priority over this catalog's fixed
+    category field per course - the student's bucketing reflects which
+    requirement they're actually counting a flexible elective toward.
+    Without it, falls back to summing by this catalog's own category."""
     if not exclude_codes:
         return dict(_CATEGORY_ECTS_TARGETS)
-    completed_ects_by_category: dict[str, int] = {}
-    for course in get_catalog_courses():
-        if course["code"].lower() in exclude_codes:
-            completed_ects_by_category[course["category"]] = (
-                completed_ects_by_category.get(course["category"], 0) + course["ects"]
-            )
+
+    catalog = get_catalog_courses()
+
+    if codes_by_category:
+        ects_by_code = {c["code"].lower(): c["ects"] for c in catalog}
+        completed_ects_by_category = {
+            category: sum(ects_by_code.get(code, 0) for code in codes)
+            for category, codes in codes_by_category.items()
+        }
+    else:
+        completed_ects_by_category = {}
+        for course in catalog:
+            if course["code"].lower() in exclude_codes:
+                completed_ects_by_category[course["category"]] = (
+                    completed_ects_by_category.get(course["category"], 0) + course["ects"]
+                )
+
     return {
         category: max(0, target - completed_ects_by_category.get(category, 0))
         for category, target in _CATEGORY_ECTS_TARGETS.items()
@@ -1099,7 +1145,10 @@ def _distribute_into_terms(courses: list[dict], start_semester: str) -> list[tup
 
 
 def _compute_schedule_terms(
-    start_semester: str | None, single_term: bool = False, exclude_codes: frozenset[str] = frozenset()
+    start_semester: str | None,
+    single_term: bool = False,
+    exclude_codes: frozenset[str] = frozenset(),
+    codes_by_category: dict[str, frozenset[str]] | None = None,
 ) -> list[tuple[str, list[dict]]]:
     """The single source of truth for what a correct schedule looks like:
     every compulsory course, electives filled to each component's ECTS
@@ -1113,8 +1162,10 @@ def _compute_schedule_terms(
     exclude_codes (courses the student already has) reduces both the pool
     and each category's remaining target via _compute_remaining_targets, so
     the resulting schedule reflects what's actually left, not a from-scratch
-    full programme."""
-    targets = _compute_remaining_targets(exclude_codes)
+    full programme. codes_by_category, when available, overrides which
+    category each excluded course's ECTS counts against (see
+    _compute_remaining_targets)."""
+    targets = _compute_remaining_targets(exclude_codes, codes_by_category)
     selected = _select_recommended_courses(exclude_codes=exclude_codes, targets=targets)
     if not selected:
         return []
@@ -1260,7 +1311,10 @@ def _translate_to_english(text: str) -> str:
 
 
 def _build_progress_aware_schedule_answer(
-    question_text: str, completed_semesters: int, exclude_codes: frozenset[str] = frozenset()
+    question_text: str,
+    completed_semesters: int,
+    exclude_codes: frozenset[str] = frozenset(),
+    codes_by_category: dict[str, frozenset[str]] | None = None,
 ) -> str | None:
     """Builds the schedule answer for a request that we already know the
     user's progress for: a full multi-semester plan if they explicitly asked
@@ -1274,7 +1328,9 @@ def _build_progress_aware_schedule_answer(
     need for, or meaning to, indexing by a semester number the student never
     even had to state."""
     season = _extract_semester_preference(question_text)
-    full_terms = _compute_schedule_terms(season, single_term=False, exclude_codes=exclude_codes)
+    full_terms = _compute_schedule_terms(
+        season, single_term=False, exclude_codes=exclude_codes, codes_by_category=codes_by_category
+    )
     if not full_terms:
         return None
 
@@ -1321,7 +1377,10 @@ def retrieve_node(state: RagState) -> dict:
             # The ECTS Tracker widget already told us exactly which courses
             # the student has - no need to ask which semester they're
             # starting, that question only existed to approximate this.
-            answer_text = _build_progress_aware_schedule_answer(last_question, 0, exclude_codes=exclude_codes)
+            codes_by_category = _extract_completed_codes_by_category(last_question)
+            answer_text = _build_progress_aware_schedule_answer(
+                last_question, 0, exclude_codes=exclude_codes, codes_by_category=codes_by_category
+            )
             if answer_text:
                 return {"retrieved_docs": [], "direct_answer": answer_text, "awaiting_semester_number": False}
 

@@ -79,6 +79,48 @@ class TestComputeRemainingTargets:
         targets = nodes._compute_remaining_targets(frozenset({"mam"}))
         assert targets["thesis"] == 0
 
+    def test_codes_by_category_overrides_the_catalogs_own_category(self, monkeypatch):
+        # inf535/inf536 are filed under "datascience" in this catalog, but
+        # the student's own ECTS Tracker counts them toward "specialization"
+        # - a legitimate cross-listed-elective flexibility the catalog's
+        # single fixed category per course can't represent on its own.
+        monkeypatch.setattr(
+            nodes,
+            "get_catalog_courses",
+            lambda: [_course("inf535", "datascience", 6, compulsory=False)],
+        )
+        exclude = frozenset({"inf535"})
+        codes_by_category = {"specialization": frozenset({"inf535"})}
+        targets = nodes._compute_remaining_targets(exclude, codes_by_category)
+        assert targets["specialization"] == nodes._CATEGORY_ECTS_TARGETS["specialization"] - 6
+        assert targets["datascience"] == nodes._CATEGORY_ECTS_TARGETS["datascience"]
+
+    def test_without_codes_by_category_falls_back_to_catalog_category(self, monkeypatch):
+        monkeypatch.setattr(
+            nodes,
+            "get_catalog_courses",
+            lambda: [_course("inf535", "datascience", 6, compulsory=False)],
+        )
+        targets = nodes._compute_remaining_targets(frozenset({"inf535"}))
+        assert targets["datascience"] == nodes._CATEGORY_ECTS_TARGETS["datascience"] - 6
+        assert targets["specialization"] == nodes._CATEGORY_ECTS_TARGETS["specialization"]
+
+
+class TestExtractCompletedCodesByCategory:
+    def test_absent_line_returns_empty_dict(self):
+        assert nodes._extract_completed_codes_by_category("What should I take next semester?") == {}
+
+    def test_present_line_is_parsed_into_category_buckets(self):
+        text = (
+            "Codes by category: economics: wir821, wir873; specialization: inf530, inf536, inf535\n"
+            "What should I take next semester?"
+        )
+        result = nodes._extract_completed_codes_by_category(text)
+        assert result == {
+            "economics": frozenset({"wir821", "wir873"}),
+            "specialization": frozenset({"inf530", "inf536", "inf535"}),
+        }
+
 
 class TestSelectRecommendedCourses:
     def test_excluded_codes_never_reappear(self, monkeypatch):
@@ -154,3 +196,30 @@ class TestBuildProgressAwareScheduleAnswer:
         )
         assert answer is not None
         assert "wir821" in answer
+
+    def test_cross_listed_elective_with_codes_by_category_does_not_overrecommend(self, monkeypatch):
+        # Reproduces a real case: inf535 is catalogued as "datascience" here,
+        # but the student's own tracker counts it toward "specialization" -
+        # already fully covering that category. Without codes_by_category,
+        # this used to wrongly compute 12 ECTS still owed in specialization
+        # and recommend a superfluous elective; with it, nothing should be
+        # recommended for a fully-satisfied programme except the thesis.
+        catalog = [
+            _course("inf535", "datascience", 6, compulsory=False, offering="WiSe"),
+            _course("inf530", "specialization", 6, compulsory=False, offering="SoSe"),
+            _course("inf536", "datascience", 6, compulsory=False, offering="SoSe"),
+            _course("extra_specialization", "specialization", 6, compulsory=False, offering="WiSe"),
+            _course("mam", "thesis", 30, compulsory=True),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        exclude = frozenset({"inf535", "inf530", "inf536"})
+        codes_by_category = {"specialization": frozenset({"inf535", "inf530", "inf536"})}
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next semester?",
+            completed_semesters=0,
+            exclude_codes=exclude,
+            codes_by_category=codes_by_category,
+        )
+        assert answer is not None
+        assert "extra_specialization" not in answer.lower()
+        assert "mam" in answer.lower()
