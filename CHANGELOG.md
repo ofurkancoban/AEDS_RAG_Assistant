@@ -7,6 +7,18 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.0] - 2026-09-30
+### Added
+- German-language document questions now retrieve correctly. The corpus and
+  its embedding model stay English-only (still measured better for this
+  corpus than a multilingual model - see README), but a German question is
+  now translated to English before hybrid search/reranking, so it finds the
+  same chunks an equivalent English question would; the answer itself is
+  still generated in German. English retrieval is untouched - the
+  translation step is skipped entirely for English questions. The tool
+  router (deadlines, courses, curriculum, contacts) already handled German
+  natively and is unaffected.
+
 ## [1.6.1] - 2026-09-30
 ### Fixed
 - The source-draft preview added in 1.6.0 showed raw markdown as literal

@@ -113,7 +113,13 @@ SYSTEM_PROMPT = (
     "section numbers that don't match where the fact actually appears. Describe "
     "requirements and facts in plain language instead, organized under short "
     "descriptive headings of your own (e.g. 'Language requirements', 'Academic "
-    "background') rather than the document's legal numbering."
+    "background') rather than the document's legal numbering.\n\n"
+    # The corpus itself is English-only (see _translate_query_for_retrieval),
+    # so this is the only place German-language behavior is enforced for the
+    # generation step - retrieval already runs on a translated English query
+    # regardless of what language the user asked in.
+    "Answer in the same language the user's latest message is written in "
+    "(English or German), even though the quoted context below is in English."
 )
 
 CONTRIBUTION_DETECTION_PROMPT = (
@@ -1118,6 +1124,62 @@ def _build_retrieval_query(messages: list) -> str:
     return last_message.content
 
 
+# Cheap pre-filter before spending an LLM call on translation, same pattern
+# as db/contribution_gate.py's regex gate before its LLM extraction call.
+# Umlauts/ß are close to a sure signal on their own; plain stopwords need two
+# hits, since a couple of these ("was", "ist") also occur as English words or
+# substrings and a single hit is not reliable enough on its own.
+_GERMAN_STOPWORDS = {
+    "der", "die", "das", "und", "ist", "sind", "wann", "wie", "was", "warum",
+    "welche", "welcher", "welches", "kann", "muss", "müssen", "gibt", "für",
+    "über", "bewerbung", "frist", "kurse", "ich", "wer", "nicht", "auch",
+    "wenn", "oder", "sein", "eine", "einen", "einem", "man", "viele", "mehr",
+    "alle", "noch", "schon", "sehr", "nur", "uns",
+}
+
+
+def _looks_german(text: str) -> bool:
+    lowered = text.lower()
+    if any(ch in lowered for ch in "äöüß"):
+        return True
+    words = set(re.findall(r"[a-zà-ÿ]+", lowered))
+    return len(words & _GERMAN_STOPWORDS) >= 2
+
+
+def _translate_query_for_retrieval(query: str) -> str:
+    """The corpus and its embedding model (BAAI/bge-large-en-v1.5) are
+    English-only, on purpose - measured better for this corpus than a
+    multilingual model, see README - so a German query embedded as-is
+    matches English document chunks poorly, in both the vector and BM25
+    halves of hybrid_search. Translating the query before retrieval keeps
+    that measured retrieval quality for the majority-English traffic
+    untouched (nothing about the corpus or embedding model changes) while
+    still letting a German question find the same English chunks an
+    equivalent English question would. generate_node answers in the
+    original language regardless (see SYSTEM_PROMPT) - only the retrieval
+    query passes through this, never what the user sees.
+
+    Best-effort: translation failure falls back to the original query
+    rather than blocking the turn - a German query embedded verbatim still
+    has some chance of matching (shared proper nouns, ECTS, course codes),
+    which is strictly better than refusing to answer."""
+    if not _looks_german(query):
+        return query
+
+    prompt = (
+        "Translate this study-programme question from German to English. "
+        "Respond with only the translated question, nothing else.\n\n"
+        f"{query}"
+    )
+    try:
+        translated = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content
+        translated = translated.strip().strip('"')
+        return translated or query
+    except Exception:
+        logger.warning("Query translation failed, retrieving with the original text", exc_info=True)
+        return query
+
+
 def _build_progress_aware_schedule_answer(question_text: str, completed_semesters: int) -> str | None:
     """Builds the schedule answer for a request that we already know the
     user's progress for: a full multi-semester plan if they explicitly asked
@@ -1192,8 +1254,12 @@ def retrieve_node(state: RagState) -> dict:
     from runtime_config import get_runtime_config
 
     runtime = get_runtime_config()
-    docs = hybrid_search(query, k=runtime.retrieval_top_k, filter=filter_)
-    docs = rerank(query, docs, runtime.rerank_top_k)
+    # English-only past this point - the corpus and its embedding model are
+    # English (see _translate_query_for_retrieval), not the question itself,
+    # which generate_node still answers in whatever language it was asked in.
+    retrieval_query = _translate_query_for_retrieval(query)
+    docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
+    docs = rerank(retrieval_query, docs, runtime.rerank_top_k)
 
     # Relevance gate: hybrid search always returns its top k, however weak the
     # match, so without this the model is handed near-irrelevant chunks for an
