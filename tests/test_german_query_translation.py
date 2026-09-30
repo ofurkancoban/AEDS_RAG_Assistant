@@ -1,4 +1,4 @@
-"""graph.nodes._translate_query_for_retrieval: the corpus and its embedding
+"""graph.nodes._translate_to_english: the corpus and its embedding
 model are English-only on purpose (see README), so a German question is
 translated before hybrid_search/rerank rather than embedded as-is. Retrieval
 quality on English questions - the majority case - must stay untouched:
@@ -49,7 +49,7 @@ def test_an_english_query_is_never_sent_for_translation(monkeypatch):
 
     monkeypatch.setattr(nodes, "get_classifier_llm", _fail_if_called)
 
-    result = nodes._translate_query_for_retrieval("What is the application deadline?")
+    result = nodes._translate_to_english("What is the application deadline?")
 
     assert result == "What is the application deadline?"
 
@@ -62,7 +62,7 @@ def test_a_german_query_is_translated_before_retrieval(monkeypatch):
         lambda llm: type("Stub", (), {"invoke": lambda self, prompt: _FakeTranslation("What is the application deadline?")})(),
     )
 
-    result = nodes._translate_query_for_retrieval("Wann ist die Bewerbungsfrist?")
+    result = nodes._translate_to_english("Wann ist die Bewerbungsfrist?")
 
     assert result == "What is the application deadline?"
 
@@ -76,6 +76,6 @@ def test_a_failed_translation_falls_back_to_the_original_query(monkeypatch):
     monkeypatch.setattr(nodes, "_with_resilience", _raise)
 
     original = "Wann ist die Bewerbungsfrist?"
-    result = nodes._translate_query_for_retrieval(original)
+    result = nodes._translate_to_english(original)
 
     assert result == original

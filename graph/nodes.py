@@ -114,7 +114,7 @@ SYSTEM_PROMPT = (
     "requirements and facts in plain language instead, organized under short "
     "descriptive headings of your own (e.g. 'Language requirements', 'Academic "
     "background') rather than the document's legal numbering.\n\n"
-    # The corpus itself is English-only (see _translate_query_for_retrieval),
+    # The corpus itself is English-only (see _translate_to_english),
     # so this is the only place German-language behavior is enforced for the
     # generation step - retrieval already runs on a translated English query
     # regardless of what language the user asked in.
@@ -1146,38 +1146,45 @@ def _looks_german(text: str) -> bool:
     return len(words & _GERMAN_STOPWORDS) >= 2
 
 
-def _translate_query_for_retrieval(query: str) -> str:
-    """The corpus and its embedding model (BAAI/bge-large-en-v1.5) are
-    English-only, on purpose - measured better for this corpus than a
-    multilingual model, see README - so a German query embedded as-is
-    matches English document chunks poorly, in both the vector and BM25
-    halves of hybrid_search. Translating the query before retrieval keeps
-    that measured retrieval quality for the majority-English traffic
-    untouched (nothing about the corpus or embedding model changes) while
-    still letting a German question find the same English chunks an
-    equivalent English question would. generate_node answers in the
-    original language regardless (see SYSTEM_PROMPT) - only the retrieval
-    query passes through this, never what the user sees.
+def _translate_to_english(text: str) -> str:
+    """Two unrelated call sites need the same thing: German text translated
+    to English before it reaches an English-only downstream step, with the
+    original text (and its language) otherwise left untouched for whatever
+    the user actually sees.
 
-    Best-effort: translation failure falls back to the original query
-    rather than blocking the turn - a German query embedded verbatim still
-    has some chance of matching (shared proper nouns, ECTS, course codes),
-    which is strictly better than refusing to answer."""
-    if not _looks_german(query):
-        return query
+    - retrieve_node: the corpus and its embedding model (BAAI/bge-large-en-v1.5)
+      are English-only on purpose - measured better for this corpus than a
+      multilingual model, see README - so a German query embedded as-is
+      matches English document chunks poorly, in both the vector and BM25
+      halves of hybrid_search. generate_node still answers in whatever
+      language the question was asked in (see SYSTEM_PROMPT) - only the
+      retrieval query passes through this.
+    - detect_contribution_node: db/contribution_gate.py's Laya classifier
+      routes German text to its multilingual checkpoint, measured
+      substantially weaker than the English one on this task (missed real
+      German corrections in testing) - translating first means the gate
+      always runs on the strong English checkpoint. The extraction prompt
+      that follows a positive gate still sees the original message.
+
+    Best-effort: translation failure falls back to the original text rather
+    than blocking the turn - German text used as-is downstream still has
+    some chance of working (shared proper nouns, ECTS, course codes),
+    strictly better than refusing outright."""
+    if not _looks_german(text):
+        return text
 
     prompt = (
-        "Translate this study-programme question from German to English. "
-        "Respond with only the translated question, nothing else.\n\n"
-        f"{query}"
+        "Translate this message from German to English. It may be a question "
+        "or a statement. Respond with only the translation, nothing else.\n\n"
+        f"{text}"
     )
     try:
         translated = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content
         translated = translated.strip().strip('"')
-        return translated or query
+        return translated or text
     except Exception:
-        logger.warning("Query translation failed, retrieving with the original text", exc_info=True)
-        return query
+        logger.warning("Translation to English failed, using the original text", exc_info=True)
+        return text
 
 
 def _build_progress_aware_schedule_answer(question_text: str, completed_semesters: int) -> str | None:
@@ -1255,9 +1262,9 @@ def retrieve_node(state: RagState) -> dict:
 
     runtime = get_runtime_config()
     # English-only past this point - the corpus and its embedding model are
-    # English (see _translate_query_for_retrieval), not the question itself,
+    # English (see _translate_to_english), not the question itself,
     # which generate_node still answers in whatever language it was asked in.
-    retrieval_query = _translate_query_for_retrieval(query)
+    retrieval_query = _translate_to_english(query)
     docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
     docs = rerank(retrieval_query, docs, runtime.rerank_top_k)
 
@@ -1529,7 +1536,12 @@ def detect_contribution_node(state: RagState) -> dict:
     if last_user_message is None or _looks_like_a_question(last_user_message.content):
         return {"detected_contribution": None}
 
-    if not could_be_a_contribution(last_user_message.content):
+    # Laya's multilingual checkpoint (db/contribution_gate.py) measured
+    # substantially weaker than its English one on this task - translating
+    # first means the gate always runs on the strong checkpoint instead of
+    # missing real German corrections (see _translate_to_english). The
+    # extraction step below still sees the original message.
+    if not could_be_a_contribution(_translate_to_english(last_user_message.content)):
         return {"detected_contribution": None}
 
     prompt = CONTRIBUTION_DETECTION_PROMPT.format(message=last_user_message.content)

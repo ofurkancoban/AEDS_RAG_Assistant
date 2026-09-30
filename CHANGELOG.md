@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.1] - 2026-09-30
+### Fixed
+- German corrections/new-info messages are now caught by the auto-detection
+  gate. Laya (db/contribution_gate.py) routes German text to its
+  multilingual checkpoint, measured substantially weaker than its English
+  one on this task - missed real German corrections in testing, same as the
+  regex heuristic it replaced. The message is now translated to English
+  (reusing 1.7.0's translation helper) before it reaches the gate, so the
+  gate always runs on the strong checkpoint; the extraction step that
+  follows a positive gate still sees the original German message.
+
 ## [1.7.0] - 2026-09-30
 ### Added
 - German-language document questions now retrieve correctly. The corpus and
