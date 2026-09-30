@@ -353,6 +353,12 @@ class SourceChangeOut(BaseModel):
     last_checked_at: datetime | None = None
     last_changed_at: datetime
     diff: str
+    # Set only for the small AUTO_DRAFT_ELIGIBLE allowlist in
+    # scripts/source_refresh.py (see its module docstring) - the LLM's
+    # proposed replacement text, same one already offered via Telegram's
+    # "Approve draft"/"Reject draft" buttons. None for every other source,
+    # which only ever gets the plain Dismiss flow below.
+    draft: str | None = None
 
 
 @router.get("/source-changes", response_model=list[SourceChangeOut])
@@ -379,6 +385,7 @@ def list_source_changes(
             last_checked_at=d.last_checked_at,
             last_changed_at=d.last_changed_at,
             diff=d.source_diff,
+            draft=d.source_draft,
         )
         for d in documents
     ]
@@ -399,6 +406,48 @@ def dismiss_source_change(
     existing.source_diff = None
     session.commit()
     return {"filename": filename, "status": "dismissed"}
+
+
+@router.post("/source-changes/{filename}/approve-draft")
+def approve_source_draft(
+    filename: str,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Writes the LLM-drafted replacement over the curated file and
+    re-ingests it - the web-panel equivalent of Telegram's "Approve draft"
+    button (api/telegram_bot.py's "sdapp" action), same effect either way,
+    since both write to the same IngestedDocument.source_draft."""
+    existing = session.query(IngestedDocument).filter(IngestedDocument.filename == filename).first()
+    if existing is None or existing.source_draft is None:
+        raise HTTPException(status_code=404, detail="No pending draft for that filename")
+
+    path = settings.documents_dir / existing.filename
+    path.write_text(existing.source_draft, encoding="utf-8")
+    ingest_and_record_file(path, session)
+    existing.source_diff = None
+    existing.source_draft = None
+    session.commit()
+    return {"filename": filename, "status": "draft_approved"}
+
+
+@router.post("/source-changes/{filename}/reject-draft")
+def reject_source_draft(
+    filename: str,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Discards the draft without touching the curated file - the
+    web-panel equivalent of Telegram's "Reject draft" button ("sdrej").
+    The plain change flag (source_diff) is left in place, same as
+    Telegram's version: the source is still flagged for the ordinary
+    manual-dismiss review, only the auto-draft is gone."""
+    existing = session.query(IngestedDocument).filter(IngestedDocument.filename == filename).first()
+    if existing is None or existing.source_draft is None:
+        raise HTTPException(status_code=404, detail="No pending draft for that filename")
+    existing.source_draft = None
+    session.commit()
+    return {"filename": filename, "status": "draft_rejected"}
 
 
 @router.delete("/documents/{filename}")

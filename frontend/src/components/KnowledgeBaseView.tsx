@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { IngestedDocumentInfo, SourceChange } from '../types';
 import {
-  deleteDocument, dismissSourceChange, listDocuments, listSourceChanges, uploadDocument,
+  approveSourceDraft, deleteDocument, dismissSourceChange, listDocuments, listSourceChanges,
+  rejectSourceDraft, uploadDocument,
 } from '../api/client';
 
 /** Renders scripts/source_refresh.py's word-level diff ('[-removed]' /
@@ -74,6 +75,10 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
   const [sourceChanges, setSourceChanges] = useState<SourceChange[]>([]);
   const [isLoadingChanges, setIsLoadingChanges] = useState(false);
   const [dismissingFilename, setDismissingFilename] = useState<string | null>(null);
+  // Separate from dismissingFilename: approve/reject act on the draft only
+  // (see SourceChange.draft), a different, narrower action than dismissing
+  // the whole change, and a source can only ever have one in flight at once.
+  const [draftActionFilename, setDraftActionFilename] = useState<string | null>(null);
 
   const load = async () => {
     setIsLoading(true);
@@ -114,6 +119,38 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
       alert(e.message || 'Failed to dismiss');
     } finally {
       setDismissingFilename(null);
+    }
+  };
+
+  const handleApproveDraft = async (filename: string) => {
+    setDraftActionFilename(filename);
+    try {
+      await approveSourceDraft(filename);
+      // The draft is now the curated file on disk, and re-ingested - the
+      // whole change (diff + draft) is resolved, same as a dismiss.
+      setSourceChanges((prev) => prev.filter((c) => c.filename !== filename));
+      onCorpusChange?.();
+      load();
+    } catch (e: any) {
+      alert(e.message || 'Failed to approve draft');
+    } finally {
+      setDraftActionFilename(null);
+    }
+  };
+
+  const handleRejectDraft = async (filename: string) => {
+    setDraftActionFilename(filename);
+    try {
+      await rejectSourceDraft(filename);
+      // Only the draft is gone - the plain change stays, so it keeps
+      // showing here for the ordinary manual-dismiss review below.
+      setSourceChanges((prev) =>
+        prev.map((c) => (c.filename === filename ? { ...c, draft: null } : c))
+      );
+    } catch (e: any) {
+      alert(e.message || 'Failed to reject draft');
+    } finally {
+      setDraftActionFilename(null);
     }
   };
 
@@ -276,6 +313,45 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
                 <div className="bg-[var(--bg-inset)]/60 rounded-xl p-2.5 max-h-32 overflow-y-auto">
                   <DiffPreview diff={change.diff} />
                 </div>
+
+                {/* Only the small AUTO_DRAFT_ELIGIBLE allowlist ever has one
+                    (see scripts/source_refresh.py) - the same LLM-drafted
+                    replacement already offered via Telegram's "Approve
+                    draft"/"Reject draft" buttons, mirrored here. */}
+                {change.draft && (
+                  <div className="rounded-xl border border-accent-500/25 bg-accent-500/5 p-2.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-accent-600 dark:text-accent-400 uppercase tracking-wide">
+                        Auto-draft ready
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleRejectDraft(change.filename)}
+                          disabled={draftActionFilename === change.filename}
+                          className="flex items-center gap-1 text-[10px] font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Discard the draft, keep the change flagged for manual review"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Reject draft</span>
+                        </button>
+                        <button
+                          onClick={() => handleApproveDraft(change.filename)}
+                          disabled={draftActionFilename === change.filename}
+                          className="flex items-center gap-1 text-[10px] font-bold text-white bg-accent-600 hover:bg-accent-700 px-2 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Write this over the curated file and re-ingest it"
+                        >
+                          {draftActionFilename === change.filename
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Check className="w-3 h-3" />}
+                          <span>Approve draft</span>
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-[var(--text-secondary)]">
+                      {change.draft}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>

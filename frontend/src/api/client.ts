@@ -271,6 +271,19 @@ export function dismissSourceChange(filename: string) {
   return request(`/admin/source-changes/${encodeURIComponent(filename)}/dismiss`, { method: 'POST' });
 }
 
+/** Writes the LLM-drafted replacement over the curated file and re-ingests
+    it - same effect as Telegram's "Approve draft" button, for the small
+    set of sources that get one (SourceChange.draft is set). */
+export function approveSourceDraft(filename: string) {
+  return request(`/admin/source-changes/${encodeURIComponent(filename)}/approve-draft`, { method: 'POST' });
+}
+
+/** Discards the draft without touching the curated file - the source stays
+    flagged for the ordinary manual review below. */
+export function rejectSourceDraft(filename: string) {
+  return request(`/admin/source-changes/${encodeURIComponent(filename)}/reject-draft`, { method: 'POST' });
+}
+
 export function getConfig(): Promise<AdminConfig> {
   return request('/admin/config');
 }

@@ -87,6 +87,7 @@ export interface SourceChange {
   last_checked_at: string | null;
   last_changed_at: string;
   diff: string;
+  draft: string | null;
 }
 
 export interface QuestionCount {

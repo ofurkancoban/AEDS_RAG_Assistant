@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.6.0] - 2026-09-30
+### Added
+- The admin Knowledge Base panel's Source Changes section now shows the
+  LLM-drafted auto-update (for the small `AUTO_DRAFT_ELIGIBLE` allowlist in
+  `scripts/source_refresh.py`) with its own Approve draft / Reject draft
+  buttons, mirroring what was previously Telegram-only. Approving writes
+  the draft over the curated file and re-ingests it; rejecting discards
+  the draft and leaves the source flagged for the ordinary manual-dismiss
+  review.
+
 ## [1.5.0] - 2026-09-29
 ### Added
 - 16 more per-session welcome messages (now 27 total), same self-deprecating

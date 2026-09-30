@@ -12,3 +12,5 @@ frontend/dist/
 **/.DS_Store
 *.log
 .claude/
+.agents/
+skills-lock.json
