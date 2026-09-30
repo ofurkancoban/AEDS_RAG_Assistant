@@ -7,6 +7,27 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.2] - 2026-09-30
+### Fixed
+- Three issues found by a code-review pass over today's changes:
+  - `detect_contribution_node` could take an entire chat turn down with an
+    unhandled exception if Laya's model call failed, discarding an answer
+    `generate_node` had already produced - the old regex heuristic it
+    replaced could never throw. Now fails open (skips detection) like the
+    rest of this pipeline's best-effort bookkeeping.
+  - `_looks_german` misclassified some ordinary English questions as
+    German ("was", "die", "man" are German stopwords but also common
+    English words/verbs), triggering an unnecessary, query-altering
+    translation call - the opposite of 1.7.0's "English retrieval stays
+    untouched" goal. Dropped the three ambiguous words from the heuristic.
+  - The budget-fallback dedup fix in 1.4.0 closed the same-process race but
+    not a cross-process one (two separate processes - a restart racing a
+    cron script, say - could both pass the "already recorded today" check
+    before either commits). `BudgetFallbackEvent.day` now has a real unique
+    index as the backstop, with a one-time migration to collapse any
+    duplicate rows a pre-fix database already accumulated (SQLite refuses
+    to add a unique index over data that already violates it).
+
 ## [1.7.1] - 2026-09-30
 ### Fixed
 - German corrections/new-info messages are now caught by the auto-detection

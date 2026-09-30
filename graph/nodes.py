@@ -1129,11 +1129,21 @@ def _build_retrieval_query(messages: list) -> str:
 # Umlauts/ß are close to a sure signal on their own; plain stopwords need two
 # hits, since a couple of these ("was", "ist") also occur as English words or
 # substrings and a single hit is not reliable enough on its own.
+#
+# Deliberately excludes a few real German stopwords ("was", "die", "man")
+# that are also ordinary English words/verbs ("what WAS the deadline",
+# "did anyone DIE", "for a MAN who...") - found live: with them included,
+# two genuinely English questions each scored 2 hits and were misclassified
+# as German, triggering an unnecessary (and query-altering) translation call
+# despite the whole point of this heuristic being to leave English retrieval
+# untouched. Real German text almost always carries an unambiguous signal
+# too (an umlaut, or another word from this set), so dropping these three
+# costs little recall while removing the false-positive risk.
 _GERMAN_STOPWORDS = {
-    "der", "die", "das", "und", "ist", "sind", "wann", "wie", "was", "warum",
+    "der", "das", "und", "ist", "sind", "wann", "wie", "warum",
     "welche", "welcher", "welches", "kann", "muss", "müssen", "gibt", "für",
     "über", "bewerbung", "frist", "kurse", "ich", "wer", "nicht", "auch",
-    "wenn", "oder", "sein", "eine", "einen", "einem", "man", "viele", "mehr",
+    "wenn", "oder", "sein", "eine", "einen", "einem", "viele", "mehr",
     "alle", "noch", "schon", "sehr", "nur", "uns",
 }
 
@@ -1541,7 +1551,20 @@ def detect_contribution_node(state: RagState) -> dict:
     # first means the gate always runs on the strong checkpoint instead of
     # missing real German corrections (see _translate_to_english). The
     # extraction step below still sees the original message.
-    if not could_be_a_contribution(_translate_to_english(last_user_message.content)):
+    #
+    # could_be_a_contribution can raise (a Laya/model-runtime error has no
+    # handling of its own in db/contribution_gate.py), and this node runs
+    # AFTER generate_node in the graph - an uncaught exception here would
+    # take the whole turn down even though the actual answer was already
+    # produced. The old regex heuristic this replaced could never throw;
+    # failing open (skip detection, same as a negative gate) keeps that
+    # guarantee instead of costing the user their already-computed answer.
+    try:
+        is_contribution_candidate = could_be_a_contribution(_translate_to_english(last_user_message.content))
+    except Exception:
+        logger.warning("Contribution gate failed, skipping detection for this turn", exc_info=True)
+        return {"detected_contribution": None}
+    if not is_contribution_candidate:
         return {"detected_contribution": None}
 
     prompt = CONTRIBUTION_DETECTION_PROMPT.format(message=last_user_message.content)

@@ -492,6 +492,51 @@ def _add_missing_columns() -> None:
                 connection.execute(text(clause))
 
 
+def _dedupe_budget_fallback_events() -> None:
+    """Collapses any day that already has more than one BudgetFallbackEvent
+    row down to its earliest one, keyed by id (rowid order == insertion
+    order in SQLite).
+
+    Must run before _add_missing_indexes' unique index on `day` - creating
+    a unique index over data that already violates uniqueness fails outright
+    in SQLite, and this table genuinely had duplicates in production: the
+    in-process-only dedup llm_budget.py used before this fix let a pm2
+    restart or a one-off script re-record the same day's fallback event."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "budget_fallback_events" not in inspector.get_table_names():
+        return  # create_all handles a brand-new table; nothing to dedupe yet
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "DELETE FROM budget_fallback_events WHERE id NOT IN ("
+                "  SELECT MIN(id) FROM budget_fallback_events GROUP BY day"
+                ")"
+            )
+        )
+
+
+def _add_missing_indexes() -> None:
+    """Indexes that exist on the models but not yet in the database file -
+    the index equivalent of _add_missing_columns, for the same reason
+    (create_all() only creates brand-new tables, never alters existing
+    ones). CREATE UNIQUE INDEX IF NOT EXISTS needs no ALTER TABLE / table
+    rebuild in SQLite, so this is safe to run against a populated table -
+    unlike a column addition, as long as _dedupe_budget_fallback_events has
+    already run so the data does not itself violate the constraint."""
+    from sqlalchemy import text
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_budget_fallback_events_day_unique "
+                "ON budget_fallback_events(day)"
+            )
+        )
+
+
 def _backfill_guest_flags() -> None:
     """Mark pre-existing anonymous accounts as guests.
 
@@ -511,6 +556,8 @@ def _backfill_guest_flags() -> None:
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    _dedupe_budget_fallback_events()
+    _add_missing_indexes()
     _backfill_guest_flags()
 
 

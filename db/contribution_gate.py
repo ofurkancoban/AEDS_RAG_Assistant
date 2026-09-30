@@ -41,10 +41,13 @@ def could_be_a_contribution(text: str) -> bool:
     to trust the precision/recall numbers there, but directionally the same:
     fewer false positives than the regex gate at threshold >= 0.35).
 
-    Known gap, inherited unchanged from the regex gate it replaces: German
-    messages score worse (the multilingual checkpoint underperformed the
-    English one on this task in testing) - not a regression, just not yet
-    fixed either.
+    Its multilingual checkpoint underperformed the English one on this task
+    in testing (missed real German corrections) - graph/nodes.py's
+    detect_contribution_node works around this by translating the message
+    to English before calling this function, so this always runs the
+    stronger English checkpoint regardless of the message's language. A
+    direct caller that skips that translation step gets the weaker
+    multilingual checkpoint's accuracy instead.
     """
     result = _get_router().predict(text, _CONTRIBUTION_QUESTIONS)
     probability = result["answers"]["is_contribution"]["noul"]

@@ -32,6 +32,7 @@ import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 
 from db.models import BudgetFallbackEvent, ProviderDailyUsage, SessionLocal
 
@@ -151,11 +152,24 @@ def _record_fallback_engaged(live: str, fallback: str) -> None:
                 return
 
             used = usage_today(live)
+            lost_the_race = False
             try:
                 session.add(
                     BudgetFallbackEvent(day=today, from_provider=live, to_provider=fallback, usage_at_switch=used)
                 )
                 session.commit()
+            except IntegrityError:
+                # Another process (see the docstring above: a pm2 restart, a
+                # cron script, a one-off diagnostic script - all racing
+                # against the same day's already-empty table) committed its
+                # own row for `today` between this function's SELECT check
+                # and this INSERT - the unique index on `day`
+                # (db/models.py's _add_missing_indexes) is what turns that
+                # into this exception instead of a silent second row. That
+                # other process already sent the alert, so this one must not
+                # send a duplicate.
+                session.rollback()
+                lost_the_race = True
             except Exception:
                 session.rollback()
                 logger.warning("Failed to record budget-fallback event", exc_info=True)
@@ -163,6 +177,8 @@ def _record_fallback_engaged(live: str, fallback: str) -> None:
             session.close()
 
         _notified_fallback_day = today
+        if lost_the_race:
+            return
 
         try:
             from api.telegram_bot import _notify_admins
