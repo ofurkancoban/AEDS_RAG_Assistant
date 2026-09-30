@@ -23,7 +23,7 @@ ICON_EXPORT = """
 const si = require('simple-icons');
 const map = {react:'siReact', fastapi:'siFastapi', langchain:'siLangchain',
              huggingface:'siHuggingface', ollama:'siOllama', mistralai:'siMistralai',
-             googlegemini:'siGooglegemini', sqlite:'siSqlite'};
+             googlegemini:'siGooglegemini', sqlite:'siSqlite', openrouter:'siOpenrouter'};
 const out = {};
 for (const [k, v] of Object.entries(map)) {
     const i = si[v];
@@ -194,7 +194,7 @@ def build(icons: dict) -> str:
     p.append(icon(icons, "langchain", 1090, 424, 26))
     p.append(card(76, 436, 280, 62, "retrieve", "route → search → rerank → gate"))
     p.append(card(436, 436, 280, 62, "generate", "grounded in retrieved context"))
-    p.append(card(796, 436, 280, 62, "detect_contribution", "flags asserted facts for review"))
+    p.append(card(796, 436, 280, 62, "detect_contribution", "flags asserted facts for review (Laya)"))
     p.append(arrow(356, 467, 430, 467))
     p.append(arrow(716, 467, 790, 467))
 
@@ -206,12 +206,15 @@ def build(icons: dict) -> str:
     p.append(card(56, 640, 508, 62, "bge-reranker-base",
                   "cross-encoder · top 10 → top 4",
                   icon(icons, "huggingface", 74, 658, 26)))
-    p.append(card(56, 714, 246, 58, "ministral-3:3b",
+    p.append(card(56, 714, 161, 58, "ministral-3:3b",
                   "default · local",
-                  icon(icons, "ollama", 72, 730, 22) + icon(icons, "mistralai", 100, 732, 20)))
-    p.append(card(318, 714, 246, 58, "gemini-3.1-flash-lite",
-                  "optional · cloud",
-                  icon(icons, "googlegemini", 336, 730, 22)))
+                  icon(icons, "ollama", 64, 731, 17)))
+    p.append(card(229, 714, 161, 58, "gemini-3.1-flash-lite",
+                  "cloud",
+                  icon(icons, "googlegemini", 245, 730, 20)))
+    p.append(card(402, 714, 161, 58, "OpenRouter",
+                  "cloud · auto-fallback",
+                  icon(icons, "openrouter", 418, 730, 20)))
 
     # --- storage ------------------------------------------------------------
     p.append(lane(600, 536, 540, 250, "Storage"))
