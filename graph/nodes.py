@@ -851,6 +851,47 @@ _CATEGORY_ECTS_TARGETS = {
 }
 
 
+_CODES_LINE_RE = re.compile(r"codes already completed, in progress, or planned:[ \t]*([^\n]*)", re.IGNORECASE)
+
+
+def _extract_completed_codes(text: str) -> frozenset[str]:
+    """Parses the machine-readable line the ECTS Tracker's chat widget
+    appends to its injected course-context ('Codes already completed, in
+    progress, or planned: wir821, wir873, ...'), so the schedule-request
+    branch below can build a recommendation from the student's real
+    completed/in-progress/planned courses instead of a from-scratch,
+    full-programme plan. Absent for every caller that isn't that widget
+    (the overwhelming majority of traffic), in which case this returns an
+    empty set and the existing semester-number flow is unaffected."""
+    match = _CODES_LINE_RE.search(text)
+    if not match:
+        return frozenset()
+    return frozenset(c.strip().lower() for c in match.group(1).split(",") if c.strip())
+
+
+def _compute_remaining_targets(exclude_codes: frozenset[str]) -> dict[str, int]:
+    """Each category's remaining ECTS target after subtracting what the
+    student has already completed/in-progress/planned, floored at 0 - so an
+    already-satisfied elective category stops asking for more, and the
+    thesis target drops to 0 once its module code is in exclude_codes.
+    Compulsory courses not yet in exclude_codes are still always included by
+    _select_recommended_courses regardless of this target, since compulsory
+    means mandatory independent of whether the category's ECTS count is
+    already met by other, elective, completions."""
+    if not exclude_codes:
+        return dict(_CATEGORY_ECTS_TARGETS)
+    completed_ects_by_category: dict[str, int] = {}
+    for course in get_catalog_courses():
+        if course["code"].lower() in exclude_codes:
+            completed_ects_by_category[course["category"]] = (
+                completed_ects_by_category.get(course["category"], 0) + course["ects"]
+            )
+    return {
+        category: max(0, target - completed_ects_by_category.get(category, 0))
+        for category, target in _CATEGORY_ECTS_TARGETS.items()
+    }
+
+
 def _extract_semester_preference(text: str) -> str | None:
     lowered = text.lower()
     if "wise" in lowered or "winter" in lowered:
@@ -890,7 +931,9 @@ def _extract_semester_number(text: str) -> int | None:
 _COURSES_PER_TERM = 5
 
 
-def _select_recommended_courses() -> list[dict]:
+def _select_recommended_courses(
+    exclude_codes: frozenset[str] = frozenset(), targets: dict[str, int] | None = None
+) -> list[dict]:
     """Deterministic selection: every compulsory course is always included;
     electives are shuffled and then filled in until each component's
     official ECTS target is met, so repeated requests vary which electives
@@ -898,14 +941,25 @@ def _select_recommended_courses() -> list[dict]:
     asked to do this same arithmetic over dozens of records has reliably
     produced wrong subtotals and dropped the fixed thesis module entirely,
     so the selection itself is computed here; the model's job is only to
-    present it, not derive it."""
+    present it, not derive it.
+
+    exclude_codes drops any course the student already has (completed,
+    in-progress, or planned) from the pool entirely, and targets - normally
+    _compute_remaining_targets(exclude_codes) - is each category's
+    remaining ECTS need, so this naturally stops recommending the thesis
+    once its code is excluded and stops over-filling an already-satisfied
+    elective category."""
+    if targets is None:
+        targets = _CATEGORY_ECTS_TARGETS
     courses = get_catalog_courses()
+    if exclude_codes:
+        courses = [c for c in courses if c["code"].lower() not in exclude_codes]
     by_category: dict[str, list[dict]] = {}
     for course in courses:
         by_category.setdefault(course["category"], []).append(course)
 
     selected: list[dict] = []
-    for category, target in _CATEGORY_ECTS_TARGETS.items():
+    for category, target in targets.items():
         category_courses = by_category.get(category, [])
         if category == "thesis":
             selected.extend(category_courses)
@@ -1044,7 +1098,9 @@ def _distribute_into_terms(courses: list[dict], start_semester: str) -> list[tup
     return [(term_types[i], terms[i]) for i in range(len(term_types)) if terms[i]]
 
 
-def _compute_schedule_terms(start_semester: str | None, single_term: bool = False) -> list[tuple[str, list[dict]]]:
+def _compute_schedule_terms(
+    start_semester: str | None, single_term: bool = False, exclude_codes: frozenset[str] = frozenset()
+) -> list[tuple[str, list[dict]]]:
     """The single source of truth for what a correct schedule looks like:
     every compulsory course, electives filled to each component's ECTS
     target, split into terms of _COURSES_PER_TERM courses alternating
@@ -1052,8 +1108,14 @@ def _compute_schedule_terms(start_semester: str | None, single_term: bool = Fals
     Thesis as its own final term. Used both to build the LLM's context (so
     it has the exact right rules and data) and to validate the LLM's answer
     against (since the LLM has repeatedly gotten this arithmetic wrong even
-    when told the rules explicitly)."""
-    selected = _select_recommended_courses()
+    when told the rules explicitly).
+
+    exclude_codes (courses the student already has) reduces both the pool
+    and each category's remaining target via _compute_remaining_targets, so
+    the resulting schedule reflects what's actually left, not a from-scratch
+    full programme."""
+    targets = _compute_remaining_targets(exclude_codes)
+    selected = _select_recommended_courses(exclude_codes=exclude_codes, targets=targets)
     if not selected:
         return []
 
@@ -1197,20 +1259,29 @@ def _translate_to_english(text: str) -> str:
         return text
 
 
-def _build_progress_aware_schedule_answer(question_text: str, completed_semesters: int) -> str | None:
+def _build_progress_aware_schedule_answer(
+    question_text: str, completed_semesters: int, exclude_codes: frozenset[str] = frozenset()
+) -> str | None:
     """Builds the schedule answer for a request that we already know the
     user's progress for: a full multi-semester plan if they explicitly asked
     for one, otherwise just the single term that comes after the semesters
-    they've already completed (rather than always starting from semester 1)."""
+    they've already completed (rather than always starting from semester 1).
+
+    When exclude_codes is non-empty (the ECTS Tracker widget told us exactly
+    which courses the student already has), the schedule is already computed
+    over only what's remaining, so the very first term of it is the correct
+    "next semester" answer regardless of completed_semesters - there's no
+    need for, or meaning to, indexing by a semester number the student never
+    even had to state."""
     season = _extract_semester_preference(question_text)
-    full_terms = _compute_schedule_terms(season, single_term=False)
+    full_terms = _compute_schedule_terms(season, single_term=False, exclude_codes=exclude_codes)
     if not full_terms:
         return None
 
     if _looks_like_full_plan_request(question_text):
         return _format_schedule_terms(full_terms, single_term=False)
 
-    idx = min(max(completed_semesters, 0), len(full_terms) - 1)
+    idx = 0 if exclude_codes else min(max(completed_semesters, 0), len(full_terms) - 1)
     return _format_schedule_terms(full_terms[idx : idx + 1], single_term=True)
 
 
@@ -1245,6 +1316,15 @@ def retrieve_node(state: RagState) -> dict:
         }
 
     if _looks_like_schedule_request(last_question):
+        exclude_codes = _extract_completed_codes(last_question)
+        if exclude_codes:
+            # The ECTS Tracker widget already told us exactly which courses
+            # the student has - no need to ask which semester they're
+            # starting, that question only existed to approximate this.
+            answer_text = _build_progress_aware_schedule_answer(last_question, 0, exclude_codes=exclude_codes)
+            if answer_text:
+                return {"retrieved_docs": [], "direct_answer": answer_text, "awaiting_semester_number": False}
+
         known_semester = state.get("current_semester_number")
         if known_semester is None:
             return {
