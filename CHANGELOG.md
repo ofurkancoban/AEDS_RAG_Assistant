@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.3] - 2026-09-30
+### Fixed
+- The "what should I take next semester" schedule recommendation ignored
+  the ECTS Tracker widget's own record of which courses a student already
+  has, always building a from-scratch full-programme plan and indexing
+  into it by a stated semester number - so a student far enough along
+  landed on the thesis term regardless of what they'd actually completed.
+  Now skips the semester-number question entirely when that course record
+  is available and computes the schedule over only what's still
+  outstanding.
+
 ## [1.7.2] - 2026-09-30
 ### Fixed
 - Three issues found by a code-review pass over today's changes:
