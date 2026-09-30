@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.4] - 2026-09-30
+### Fixed
+- The schedule recommendation's remaining-ECTS math trusted only the
+  catalog's single fixed category per course, so a cross-listed elective
+  (e.g. Computational Intelligence I/II) that a student's own ECTS Tracker
+  counted toward a different, already-satisfied category still triggered
+  an unnecessary extra elective recommendation. Now honors the tracker's
+  own per-category bucketing when it's supplied, falling back to the
+  catalog's category otherwise.
+
 ## [1.7.3] - 2026-09-30
 ### Fixed
 - The "what should I take next semester" schedule recommendation ignored
