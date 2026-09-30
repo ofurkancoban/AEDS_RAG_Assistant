@@ -7,6 +7,14 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.6.1] - 2026-09-30
+### Fixed
+- The source-draft preview added in 1.6.0 showed raw markdown as literal
+  text - `##`/`###` markers running into the prose - in both the admin
+  panel (now rendered through the same markdown renderer chat answers use)
+  and the Telegram notification (which has no heading syntax at all;
+  headings now get a visible `▸` marker instead of being silently deleted).
+
 ## [1.6.0] - 2026-09-30
 ### Added
 - The admin Knowledge Base panel's Source Changes section now shows the

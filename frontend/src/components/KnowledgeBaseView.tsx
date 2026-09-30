@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   FileText, Trash2, Search, Upload, RefreshCw,
   CheckCircle2, Database, Loader2, Info, Files, X,
@@ -9,6 +11,7 @@ import {
   approveSourceDraft, deleteDocument, dismissSourceChange, listDocuments, listSourceChanges,
   rejectSourceDraft, uploadDocument,
 } from '../api/client';
+import { ANSWER_MARKDOWN_COMPONENTS } from './markdown';
 
 /** Renders scripts/source_refresh.py's word-level diff ('[-removed]' /
     '[+added]' tokens inline) as colored spans instead of raw brackets. */
@@ -347,9 +350,16 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
                         </button>
                       </div>
                     </div>
-                    <p className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-[var(--text-secondary)]">
-                      {change.draft}
-                    </p>
+                    {/* Rendered, not dumped as raw text - the draft is
+                        markdown (it replaces a curated .md file), so an
+                        admin reviewing it before approving needs to see its
+                        actual heading structure, not literal "##" characters
+                        in a wall of text. */}
+                    <div className="answer-prose max-w-none text-[11px] leading-relaxed max-h-56 overflow-y-auto text-[var(--text-secondary)]">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={ANSWER_MARKDOWN_COMPONENTS}>
+                        {change.draft}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 )}
               </div>

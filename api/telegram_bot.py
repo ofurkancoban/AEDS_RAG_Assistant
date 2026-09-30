@@ -275,6 +275,22 @@ def _truncate(text: str, limit: int = _CONTENT_PREVIEW_CHARS) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
+_HEADING_RE = re.compile(r"^#{1,6}\s*(.+)$", re.MULTILINE)
+
+
+def _flatten_headings(text: str) -> str:
+    """Source-refresh drafts (notify_source_draft) replace a whole curated
+    .md file, so unlike a chat answer they are mostly headings and short
+    lines. _strip_markdown's plain deletion just merges a heading's text
+    into the surrounding wall of prose with no break at all - fine for a
+    quick heads-up, unreadable for something an admin is meant to actually
+    review before approving. This gives each heading a visible marker
+    instead, applied before _strip_markdown/_truncate so their '#' deletion
+    has nothing left to match."""
+    text = _HEADING_RE.sub(lambda m: f"\n▸ {m.group(1).strip()}", text)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
 # --- Outbound notifications, one per review-queue kind -----------------
 
 def notify_expiring_documents(expiring: list[tuple[str, object]]) -> None:
@@ -310,7 +326,7 @@ def notify_source_draft(doc_id: int, filename: str, draft: str) -> None:
     Approving writes `draft` over the curated file and re-ingests it -
     reject just discards the draft and leaves the ordinary Dismiss-only flow
     from notify_source_change in place."""
-    text = f"Auto-draft ready for {filename} (from the source change above):\n\n{_truncate(draft)}"
+    text = f"Auto-draft ready for {filename} (from the source change above):\n\n{_truncate(_flatten_headings(draft))}"
     _notify_admins(
         text,
         {"inline_keyboard": [[_button("Approve draft", f"sdapp:{doc_id}"), _button("Reject draft", f"sdrej:{doc_id}")]]},
