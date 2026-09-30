@@ -851,18 +851,21 @@ _CATEGORY_ECTS_TARGETS = {
 }
 
 
-_CODES_LINE_RE = re.compile(r"codes already completed, in progress, or planned:[ \t]*([^\n]*)", re.IGNORECASE)
+_CODES_LINE_RE = re.compile(r"codes already completed or in progress:[ \t]*([^\n]*)", re.IGNORECASE)
 
 
 def _extract_completed_codes(text: str) -> frozenset[str]:
     """Parses the machine-readable line the ECTS Tracker's chat widget
-    appends to its injected course-context ('Codes already completed, in
-    progress, or planned: wir821, wir873, ...'), so the schedule-request
-    branch below can build a recommendation from the student's real
-    completed/in-progress/planned courses instead of a from-scratch,
-    full-programme plan. Absent for every caller that isn't that widget
-    (the overwhelming majority of traffic), in which case this returns an
-    empty set and the existing semester-number flow is unaffected."""
+    appends to its injected course-context ('Codes already completed or in
+    progress: wir821, wir873, ...'), so the schedule-request branch below
+    can build a recommendation from the student's real completed/in-progress
+    courses instead of a from-scratch, full-programme plan. Deliberately
+    excludes merely-planned courses - those are still legitimate candidates
+    to recommend (the student hasn't taken them yet, and compulsory ones in
+    particular should keep surfacing as a next-semester suggestion until
+    actually done). Absent for every caller that isn't that widget (the
+    overwhelming majority of traffic), in which case this returns an empty
+    set and the existing semester-number flow is unaffected."""
     match = _CODES_LINE_RE.search(text)
     if not match:
         return frozenset()
@@ -1062,10 +1065,15 @@ def _apply_term_pins(courses: list[dict]) -> list[dict]:
     candidates considered for a term (landing in the earliest term whose
     offering matches them) and pinned-late courses are the last candidates
     (landing in the latest matching term, after every other course of the
-    same offering has already been placed)."""
+    same offering has already been placed). Among the remaining, unpinned
+    courses, compulsory ones are moved ahead of electives (stable sort, so
+    the existing category interleaving order is otherwise preserved) - a
+    "next semester" recommendation should fill with mandatory modules first
+    whenever there's more outstanding coursework than fits in one term."""
     early = [c for c in courses if c["code"] in _EARLY_PINNED_CODES]
     late = [c for c in courses if c["code"] in _LATE_PINNED_CODES]
     rest = [c for c in courses if c["code"] not in _EARLY_PINNED_CODES and c["code"] not in _LATE_PINNED_CODES]
+    rest = sorted(rest, key=lambda c: not c["compulsory"])
     return early + rest + late
 
 

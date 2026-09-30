@@ -37,13 +37,13 @@ class TestExtractCompletedCodes:
         text = (
             "My ECTS Tracker progress (12/120 ECTS completed):\n"
             "Economics (12/36 ECTS) - completed: wir821 - Advanced Microeconomics\n"
-            "Codes already completed, in progress, or planned: WIR821, wir873, wir821\n"
+            "Codes already completed or in progress: WIR821, wir873, wir821\n"
             "What should I take next semester?"
         )
         assert nodes._extract_completed_codes(text) == frozenset({"wir821", "wir873"})
 
     def test_malformed_line_with_no_codes_returns_empty_set(self):
-        text = "Codes already completed, in progress, or planned: \nWhat should I take next?"
+        text = "Codes already completed or in progress: \nWhat should I take next?"
         assert nodes._extract_completed_codes(text) == frozenset()
 
 
@@ -120,6 +120,34 @@ class TestExtractCompletedCodesByCategory:
             "economics": frozenset({"wir821", "wir873"}),
             "specialization": frozenset({"inf530", "inf536", "inf535"}),
         }
+
+
+class TestApplyTermPins:
+    def test_compulsory_courses_are_moved_ahead_of_electives(self):
+        courses = [
+            _course("elec1", "economics", 6, compulsory=False),
+            _course("comp1", "economics", 6, compulsory=True),
+            _course("elec2", "empirical", 6, compulsory=False),
+            _course("comp2", "empirical", 6, compulsory=True),
+        ]
+        result = nodes._apply_term_pins(courses)
+        codes_in_order = [c["code"] for c in result]
+        assert codes_in_order.index("comp1") < codes_in_order.index("elec1")
+        assert codes_in_order.index("comp2") < codes_in_order.index("elec2")
+
+    def test_explicit_pins_still_take_precedence_over_compulsory_sort(self):
+        # wir895 is both compulsory and explicitly late-pinned - the late
+        # pin (a deliberate, explicit scheduling choice) must still win over
+        # the generic "compulsory first" rule.
+        courses = [
+            _course("wir895", "economics", 6, compulsory=True),
+            _course("comp1", "economics", 6, compulsory=True),
+            _course("wir894", "empirical", 6, compulsory=True),
+        ]
+        result = nodes._apply_term_pins(courses)
+        codes_in_order = [c["code"] for c in result]
+        assert codes_in_order[0] == "wir894"
+        assert codes_in_order[-1] == "wir895"
 
 
 class TestSelectRecommendedCourses:
