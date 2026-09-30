@@ -7,6 +7,22 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.7.5] - 2026-09-30
+### Fixed
+- The schedule recommendation dropped a course entirely once a student
+  marked it merely "planned" in the ECTS Tracker, even though a planned
+  course hasn't actually been taken yet and (especially if compulsory)
+  should keep surfacing as a real next-semester suggestion. Only completed
+  and in-progress courses are excluded now.
+### Changed
+- Among the remaining candidate courses for a term, compulsory ones now
+  sort ahead of electives, so a term with more outstanding work than fits
+  in one semester fills with mandatory modules first.
+- The ECTS Tracker widget's course-context line format changed from "Codes
+  already completed, in progress, or planned:" to "Codes already completed
+  or in progress:" (planned courses are parsed separately now, see above) -
+  requires the ECTS Tracker project to be deployed with the matching format.
+
 ## [1.7.4] - 2026-09-30
 ### Fixed
 - The schedule recommendation's remaining-ECTS math trusted only the
