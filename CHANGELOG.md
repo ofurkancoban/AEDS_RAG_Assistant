@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.8.1] - 2026-10-05
+### Changed
+- On mobile, the sidebar (Quick Academic Queries, Knowledge Base panel,
+  New conversation) is now a slide-over drawer, opened from a "Quick
+  queries" bar above the conversation, instead of a column stacked above
+  the chat. 1.8.0 already freed up the conversation's height; this gives
+  it the entire screen by default rather than sharing it with a second,
+  always-open panel. Unchanged on desktop, where the sidebar remains a
+  permanent column.
+
 ## [1.8.0] - 2026-10-05
 ### Fixed
 - The chat view was effectively unusable on a phone. Its footer (the

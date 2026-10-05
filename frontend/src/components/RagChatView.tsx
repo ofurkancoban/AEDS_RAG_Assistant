@@ -11,7 +11,7 @@ import { rateAnswer, streamChatMessage, submitFeedback } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import {
   Send, FileText, CheckCircle2,
-  Zap, RefreshCw, ShieldCheck, PlusCircle, X,
+  Zap, RefreshCw, ShieldCheck, PlusCircle, X, Menu,
   Plus, Copy, Timer,
   Check, ChevronRight, ChevronDown, Layers, ThumbsUp, ThumbsDown,
   // Quick Academic Queries - one per topic, see ACADEMIC_TOPICS below.
@@ -356,6 +356,13 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
   const [threadId, setThreadId] = useState<string | null>(null);
   const [ratings, setRatings] = useState<Record<string, 1 | -1>>({});
 
+  // Mobile only: the sidebar is a slide-over drawer there (closed by
+  // default) instead of a column sharing the screen with the conversation,
+  // which otherwise left too little height for the conversation to be
+  // usable. Irrelevant above the lg breakpoint, where the sidebar is a
+  // permanent column regardless of this flag.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const [isSuggestModalOpen, setIsSuggestModalOpen] = useState(false);
   const [suggestSourceId, setSuggestSourceId] = useState('general');
   const [suggestContent, setSuggestContent] = useState('');
@@ -616,11 +623,25 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
     // disclaimer's last line instead of beside the card.
     <div className="max-w-7xl mx-auto px-2 sm:px-4 pt-4 pb-10 sm:pb-4 h-full flex flex-col lg:flex-row gap-4 overflow-hidden">
 
-      {/* Left Sidebar. Capped on narrow screens, where the columns stack: it
-          is shrink-0 so the fixed-width desktop column keeps its width, and
-          without a cap that same rule would let it take the whole height and
-          crush the conversation below it. */}
-      <div className="w-full lg:w-80 max-h-[38vh] lg:max-h-none glass rounded-3xl p-4 flex flex-col justify-between shrink-0 overflow-y-auto">
+      {/* Backdrop for the mobile drawer only - desktop never sets
+          isSidebarOpen, so this never mounts there. */}
+      {isSidebarOpen && (
+        <div
+          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Left Sidebar. A permanent column on lg+; below that, a slide-over
+          drawer (fixed, off-canvas by default, translated in over the
+          conversation) instead of a stacked column - stacking left so little
+          height for the conversation that it was unusable. */}
+      <div
+        className={`fixed top-16 bottom-0 left-0 z-50 w-[82vw] max-w-[320px] lg:static lg:top-auto lg:z-auto lg:w-80 lg:max-w-none
+          glass rounded-r-3xl lg:rounded-3xl p-4 flex flex-col justify-between shrink-0 overflow-y-auto
+          transition-transform duration-300 ease-out lg:translate-x-0
+          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
 
         <div className="space-y-4">
           {/* The panel used to open with "Academic Chatbot / Verified RAG
@@ -629,12 +650,21 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
               survives here is what a visitor can act on. */}
           <div className="flex items-center gap-2 border-b border-accent-500/10 pb-3">
             <button
-              onClick={handleNewChat}
+              onClick={() => { handleNewChat(); setIsSidebarOpen(false); }}
               title="Start a new conversation"
               className="flex-1 px-3 py-2 glass-well hover:bg-accent-600 text-[var(--text-secondary)] hover:text-white rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs font-bold"
             >
               <Plus className="w-4 h-4" />
               <span>New conversation</span>
+            </button>
+            {/* Closes the drawer; a permanent column on lg+ has nothing to
+                close, so this button only exists below that breakpoint. */}
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              title="Close menu"
+              className="lg:hidden p-2 glass-well text-[var(--text-muted)] hover:text-[var(--text)] rounded-xl transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
 
@@ -670,7 +700,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
                 return (
                   <button
                     key={idx}
-                    onClick={() => handleRunQuery(topic.query)}
+                    onClick={() => { handleRunQuery(topic.query); setIsSidebarOpen(false); }}
                     disabled={isQuerying}
                     title={topic.query}
                     className="w-full glass-well hover:bg-[var(--bg-inset)]/80 hover:border-accent-500/40 px-2.5 py-1.5 rounded-xl text-left transition-all group flex items-center gap-2 cursor-pointer"
@@ -696,7 +726,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
         {isAdmin && onOpenAdminMode && (
           <div className="pt-3 border-t border-accent-500/10">
             <button
-              onClick={onOpenAdminMode}
+              onClick={() => { onOpenAdminMode(); setIsSidebarOpen(false); }}
               className="w-full bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30 text-[11px] font-extrabold px-3 py-2 rounded-2xl hover:bg-amber-500/30 transition-all cursor-pointer"
             >
               Admin Panel
@@ -711,11 +741,29 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
           scroll instead of stretching the page. */}
       <div className="flex-1 min-h-0 glass rounded-3xl flex flex-col justify-between overflow-hidden relative">
 
-        {/* No header here. It restated the assistant's name and tagline a
-            third time and cost 69px of an 800px window, and its one real
-            control (clear the thread) does the same thing as the sidebar's
-            New conversation button. The green "Online" dot went with it: it
-            was hard-coded, so it claimed a status nothing ever checked. */}
+        {/* No header here on lg+. It restated the assistant's name and
+            tagline a third time and cost 69px of an 800px window, and its
+            one real control (clear the thread) does the same thing as the
+            sidebar's New conversation button. The green "Online" dot went
+            with it: it was hard-coded, so it claimed a status nothing ever
+            checked.
+
+            Below lg, the sidebar is a drawer rather than a visible column,
+            so this bar is the only way to reach it - without it, "Quick
+            Academic Queries" and the Knowledge Base panel would be
+            unreachable on a phone. */}
+        <div className="lg:hidden flex items-center gap-2 px-4 pt-3.5 shrink-0">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            title="Quick queries and knowledge base"
+            className="p-2 glass-well text-[var(--text-secondary)] hover:text-accent-500 dark:hover:text-accent-400 rounded-xl transition-colors cursor-pointer"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+          <span className="text-[11px] font-extrabold text-[var(--text-muted)] uppercase tracking-wider">
+            Quick queries
+          </span>
+        </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
 
