@@ -58,8 +58,11 @@ export default function App() {
     // App shell: the page itself is exactly one viewport tall and never
     // scrolls. Anything longer than the space available scrolls inside <main>
     // instead, so the navbar stays put and the chat view can size itself to
-    // whatever is left rather than guessing.
-    <div className="h-screen bg-[var(--bg)] text-[var(--text)] font-sans selection:bg-accent-500 selection:text-white flex flex-col relative overflow-hidden">
+    // whatever is left rather than guessing. h-dvh, not h-screen (100vh):
+    // mobile Safari's address/tab bar shrinks and grows the real visible
+    // viewport, and 100vh is measured against the taller, bar-hidden case -
+    // h-screen content ran under the bar instead of shrinking to fit above it.
+    <div className="h-dvh bg-[var(--bg)] text-[var(--text)] font-sans selection:bg-accent-500 selection:text-white flex flex-col relative overflow-hidden">
 
       {/* Blurred color fields - the "light source" every glass panel in the
           app blurs and refracts. Glassmorphism reads as glass only when

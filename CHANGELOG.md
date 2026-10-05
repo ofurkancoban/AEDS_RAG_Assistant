@@ -7,6 +7,26 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.8.0] - 2026-10-05
+### Fixed
+- The chat view was effectively unusable on a phone. Its footer (the
+  "Suggested Queries" chips, the input box, and the disclaimer text) had a
+  large fixed height that, inside a mobile-sized chat card, left only
+  ~43px for the actual conversation - the welcome message and every answer
+  rendered into a sliver too short to show anything. The suggested-query
+  chips (which duplicate the sidebar's own Quick Academic Queries buttons)
+  are now hidden below the `sm` breakpoint, giving the conversation area
+  its height back.
+- The app shell used `h-screen` (100vh) for a layout meant to fill exactly
+  one viewport and never scroll. On mobile Safari, 100vh is measured
+  against the browser chrome's hidden state, so content could render
+  partly behind the address bar instead of shrinking to fit above it.
+  Switched to `h-dvh`, which tracks the real visible viewport.
+- The version and visitor-count badges are fixed to the viewport's bottom
+  corners; on mobile, where the chat column fills the viewport exactly,
+  they sat on top of the disclaimer's last line instead of beside the
+  card. Added bottom clearance on mobile only.
+
 ## [1.7.5] - 2026-09-30
 ### Fixed
 - The schedule recommendation dropped a course entirely once a student

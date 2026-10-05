@@ -610,7 +610,11 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-4 h-full flex flex-col lg:flex-row gap-4 overflow-hidden">
+    // Extra bottom clearance on mobile only: VersionBadge and VisitorCounter
+    // are fixed to the viewport's bottom corners, and on a phone this column
+    // fills the viewport exactly, so without it they sat on top of the
+    // disclaimer's last line instead of beside the card.
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 pt-4 pb-10 sm:pb-4 h-full flex flex-col lg:flex-row gap-4 overflow-hidden">
 
       {/* Left Sidebar. Capped on narrow screens, where the columns stack: it
           is shrink-0 so the fixed-width desktop column keeps its width, and
@@ -954,8 +958,14 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
               20rem AND parked in a horizontally scrolling row, so the only way
               to read a suggestion was to scroll sideways to a chip that was
               still cut off mid-sentence - which defeats the point of offering
-              an example question. */}
-          <div className="space-y-2">
+              an example question.
+
+              Hidden below sm: on a phone the sidebar's own Quick Academic
+              Queries already offers the same one-tap shortcuts, and this
+              second copy was costing roughly half the mobile chat card's
+              height - the actual conversation, including the welcome
+              message, had nowhere left to render. */}
+          <div className="hidden sm:block space-y-2">
             <span className="block text-accent-500 dark:text-accent-400 text-[10px] font-extrabold uppercase tracking-wider">
               Suggested Queries:
             </span>
