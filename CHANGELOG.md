@@ -7,6 +7,15 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.8.2] - 2026-10-05
+### Fixed
+- On mobile, the message input's placeholder text wrapped to a second line
+  that rendered clipped behind the Submit button - the textarea reserved
+  128px on the right for a "Submit" label + icon regardless of screen
+  width, leaving too little room for the placeholder to fit on one line.
+  The button is icon-only below `sm` (its "Submit" label still shows on
+  larger screens), so the textarea needs far less clearance there.
+
 ## [1.8.1] - 2026-10-05
 ### Changed
 - On mobile, the sidebar (Quick Academic Queries, Knowledge Base panel,

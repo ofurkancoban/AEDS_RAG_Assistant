@@ -1052,17 +1052,23 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
               }}
               placeholder="Ask about program structure, course requirements, or exam deadlines..."
               disabled={isQuerying}
-              className="w-full glass-well focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 rounded-2xl pl-4 pr-32 py-3.5 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none transition-all resize-none font-medium"
+              // pr-14 on mobile, not pr-32: the icon-only button there needs
+              // far less clearance, and the placeholder wrapped to a second
+              // line under the old, wider reservation - rows={1} never grew
+              // to fit it, so that second line sat clipped behind the
+              // button instead of being readable.
+              className="w-full glass-well focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 rounded-2xl pl-4 pr-14 sm:pr-32 py-3.5 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none transition-all resize-none font-medium"
             />
 
             <button
               onClick={() => handleRunQuery()}
               disabled={isQuerying || !queryInput.trim()}
-              className="absolute right-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 disabled:opacity-40 text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-md transition-all active:scale-95 cursor-pointer border border-accent-400/30"
+              title="Submit"
+              className="absolute right-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 disabled:opacity-40 text-white text-xs font-bold px-2.5 sm:px-4 py-2 rounded-xl flex items-center space-x-1.5 shadow-md transition-all active:scale-95 cursor-pointer border border-accent-400/30"
             >
               {isQuerying ? <RefreshCw className="w-4 h-4 animate-spin" /> : (
                 <>
-                  <span>Submit</span>
+                  <span className="hidden sm:inline">Submit</span>
                   <Send className="w-3.5 h-3.5" />
                 </>
               )}
