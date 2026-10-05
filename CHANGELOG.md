@@ -7,6 +7,30 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.8.4] - 2026-10-05
+### Fixed
+- Tapping the message box on iOS Safari zoomed the whole page in instead
+  of just opening the keyboard - Safari auto-zooms to focus any input
+  whose computed font-size is under 16px, and the box was 12px there. Now
+  16px on mobile (14px unchanged on `sm`+, where this doesn't trigger);
+  the placeholder keeps its smaller size on its own via `placeholder:`,
+  which Safari's zoom check does not look at. With the zoom gone, focusing
+  the box now does what it always should have: the keyboard opens and the
+  browser's native scroll-into-view brings the box up above it, instead of
+  the page jumping to a zoomed-in state first.
+
+## [1.8.3] - 2026-10-05
+### Fixed
+- The site loaded slowly on mobile. nginx was serving the frontend build
+  completely uncompressed and with no cache headers - the ~430KB JS bundle
+  and ~68KB CSS bundle went out at full size on every single visit, which
+  a desktop's fast, low-latency connection mostly hid but a cellular
+  connection did not. Added gzip for text/JS/CSS/SVG and a year-long
+  immutable cache for the hashed `/assets/` files (safe: Vite renames them
+  on every build), while `index.html` itself stays always-revalidated so
+  it keeps pointing at the right build. Measured on a simulated slow-4G
+  connection: full page load dropped to roughly a third of its prior time.
+
 ## [1.8.2] - 2026-10-05
 ### Fixed
 - On mobile, the message input's placeholder text wrapped to a second line

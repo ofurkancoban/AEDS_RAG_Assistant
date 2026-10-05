@@ -1057,7 +1057,14 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onOpenAdminMode, onQue
               // line under the old, wider reservation - rows={1} never grew
               // to fit it, so that second line sat clipped behind the
               // button instead of being readable.
-              className="w-full glass-well focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 rounded-2xl pl-4 pr-14 sm:pr-32 py-3.5 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none transition-all resize-none font-medium"
+              //
+              // text-base (16px), not text-xs, on mobile: iOS Safari zooms
+              // the whole page in on focus for any input whose font-size
+              // computes under 16px - that zoom, not a deliberate control,
+              // was what made the box "jump". The placeholder keeps the
+              // smaller size on its own via the placeholder: variant, which
+              // Safari's zoom check does not look at.
+              className="w-full glass-well focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 rounded-2xl pl-4 pr-14 sm:pr-32 py-3.5 text-base sm:text-sm placeholder:text-xs sm:placeholder:text-sm text-[var(--text)] placeholder-[var(--text-faint)] focus:outline-none transition-all resize-none font-medium"
             />
 
             <button
