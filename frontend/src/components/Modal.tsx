@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 interface ModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const Modal: React.FC<ModalProps> = ({
   maxWidth = 'sm:max-w-lg',
   children,
 }) => {
+  const { t } = useI18n();
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -62,7 +64,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.close}
             className="-mr-1.5 p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)] transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />

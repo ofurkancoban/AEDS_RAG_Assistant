@@ -16,3 +16,4 @@ frontend/dist/
 skills-lock.json
 # Local pre-redesign snapshots; the matching git tags (frontend-pre-redesign-*) keep them in history.
 frontend_backup_*/
+*.tsbuildinfo

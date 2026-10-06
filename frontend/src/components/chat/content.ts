@@ -1,10 +1,13 @@
+import { Lang, STRINGS } from '../../i18n';
+
 /* Sub-second answers come from the reviewed-answer store and are the point of
    it, so they are worth showing as such rather than as "0.4s". Everything else
    is rounded to a tenth up to a minute, then to whole seconds. */
-export function formatElapsed(ms: number): string {
-  if (ms < 1000) return 'instant';
+export function formatElapsed(ms: number, lang: Lang): string {
+  if (ms < 1000) return STRINGS[lang].instant;
   const seconds = ms / 1000;
-  return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+  const value = seconds < 60 ? seconds.toFixed(1) : String(Math.round(seconds));
+  return `${lang === 'de' ? value.replace('.', ',') : value}s`;
 }
 
 // One of these greets the visitor per session. They are jokes at the
@@ -165,6 +168,44 @@ Ask about courses, admissions, exams, or the thesis.`,
 If procrastination were a competitive sport, several of you would already have a Master's degree in it. Luckily, I don't judge, I just answer questions about the programme.
 
 Pick a common question below, or ask your own.`,
+];
+
+/* German counterparts for the German interface: the same jokes in spirit,
+   written for German rather than translated line by line. */
+export const WELCOME_MESSAGES_DE = [
+  `**Willkommen beim AEDS-Assistenten.**
+
+Anders als Ihr Ökonometrie-Modell neige ich nicht zum Overfitting. Fragen Sie mich zu Studienplan, Fristen, Prüfungen oder Masterarbeit, und ich zitiere die offiziellen Dokumente, statt zu improvisieren.`,
+
+  `**Hallo.**
+
+Ich habe jedes Modulhandbuch, jede Prüfungsordnung und jeden Flyer gelesen, damit Sie es nicht müssen. Angerechnet wird mir davon kein einziger ECTS-Punkt, was ich persönlich ungerecht finde.
+
+Was möchten Sie wissen?`,
+
+  `**Willkommen.**
+
+Ich verwechsle nie Korrelation mit Kausalität, vor allem weil ich nur die Dokumente zitiere und die Schlussfolgerungen Ihnen überlasse.
+
+Studienplan, Zulassung, Prüfungen, Masterarbeit: fragen Sie einfach.`,
+
+  `**AEDS-Assistent ist online.**
+
+Andere Chatbots erfinden Fakten mit voller Überzeugung. Ich halte mich streng an die Dokumente, was eine förmliche Art ist zu sagen: Lieber gebe ich zu, etwas nicht zu wissen, als etwas zu erfinden.
+
+Wählen Sie eine der häufigen Fragen oder tippen Sie / für alle Themen.`,
+
+  `**Schön, dass Sie da sind.**
+
+Ich kenne den Studienplan, die Prüfungsordnung, die Regeln zur Masterarbeit und jede Bewerbungsfrist. Wo Sie Ihren Studierendenausweis gelassen haben, weiß ich leider nicht.
+
+Womit kann ich helfen?`,
+
+  `**Guten Tag.**
+
+Mein Konfidenzintervall für Fragen außerhalb der Dokumente ist unendlich breit, deshalb sage ich dann ehrlich, dass ich es nicht weiß.
+
+Fragen Sie zu Studiengang, Universität oder Oldenburg.`,
 ];
 
 export function pickRandom<T>(options: T[]): T {

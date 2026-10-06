@@ -142,12 +142,16 @@ export async function streamChatMessage(
     onToken,
     onDone,
     onStage,
+    onContribution,
   }: {
     onToken: (text: string) => void;
     onDone: (data: any) => void;
     /** A step the backend has reached (see graph/progress.py): 'understanding',
         'searching', 'ranking', 'writing'. Never sent for a cached answer. */
     onStage?: (stage: string) => void;
+    /** Sent after 'done' when the message was auto-flagged as a correction
+        or new information for admin review. */
+    onContribution?: (type: string) => void;
   }
 ): Promise<void> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -187,8 +191,36 @@ export async function streamChatMessage(
       if (event === 'stage' && data) onStage?.(data.stage);
       else if (event === 'token' && data) onToken(data.text);
       else if (event === 'done' && data) onDone(data);
+      else if (event === 'contribution' && data) onContribution?.(data.auto_flagged_contribution);
     }
   }
+}
+
+export interface ThreadSummary {
+  thread_id: string;
+  /** The conversation's first question. */
+  title: string;
+  questions: number;
+  updated_at: string;
+}
+
+export interface ThreadTurn {
+  question: string;
+  answer: string;
+  asked_at: string;
+  query_log_id: number | null;
+  rating: 1 | -1 | null;
+  sources: ChatSource[];
+  retrieval: RetrievalDiagnostic[];
+}
+
+/** The caller's own recent conversations, newest first. */
+export function listThreads(): Promise<ThreadSummary[]> {
+  return request('/chat/threads');
+}
+
+export function getThread(threadId: string): Promise<ThreadTurn[]> {
+  return request(`/chat/threads/${encodeURIComponent(threadId)}`);
 }
 
 export function submitFeedback(payload: {
@@ -393,7 +425,7 @@ export function deleteUser(id: number) {
   return request(`/admin/users/${id}`, { method: 'DELETE' });
 }
 
-export function listAnswers(status: AnswerStatus | 'all' = 'pending'): Promise<ReviewedAnswer[]> {
+export function listAnswers(status: AnswerStatus | 'flagged' | 'all' = 'pending'): Promise<ReviewedAnswer[]> {
   return request(`/admin/answers?status_filter=${status}`);
 }
 

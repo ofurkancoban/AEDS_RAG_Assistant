@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import and_, case, or_
 from sqlalchemy.orm import Session
 
 import llm_budget
@@ -480,6 +481,10 @@ class AnswerOut(BaseModel):
     # Which frontend this came in through - see CachedAnswer.origin's
     # docstring. None for anything answered before this field existed.
     origin: str | None = None
+    # Thumbs-down ratings from students; flagged while one of them is newer
+    # than the last review (see CachedAnswer.is_flagged).
+    downvotes: int = 0
+    flagged: bool = False
 
 
 def _to_answer_out(row: CachedAnswer) -> AnswerOut:
@@ -500,6 +505,15 @@ def _to_answer_out(row: CachedAnswer) -> AnswerOut:
         reviewed_at=row.reviewed_at,
         injection_markers=injection_markers(f"{row.question}\n{row.answer}"),
         origin=row.origin,
+        downvotes=row.downvotes or 0,
+        flagged=row.is_flagged,
+    )
+
+
+def _flagged_clause():
+    return and_(
+        CachedAnswer.last_downvoted_at.is_not(None),
+        or_(CachedAnswer.reviewed_at.is_(None), CachedAnswer.last_downvoted_at > CachedAnswer.reviewed_at),
     )
 
 
@@ -514,16 +528,23 @@ def list_answers(
     Every question a student asks is recorded with the answer that was given,
     and stays unusable until reviewed. Approving one makes it the reply future
     askers get for the same question; rejecting keeps the record without ever
-    serving it again.
+    serving it again. Answers students rated unhelpful since their last review
+    come first in every view, and alone under status_filter=flagged.
     """
     query = session.query(CachedAnswer)
-    if status_filter != "all":
+    if status_filter == "flagged":
+        query = query.filter(_flagged_clause())
+    elif status_filter != "all":
         try:
             query = query.filter(CachedAnswer.status == AnswerStatus(status_filter))
         except ValueError:
             allowed = ", ".join(s.value for s in AnswerStatus)
-            raise HTTPException(status_code=400, detail=f"status_filter must be one of: {allowed}, all")
-    rows = query.order_by(CachedAnswer.created_at.desc()).limit(300).all()
+            raise HTTPException(status_code=400, detail=f"status_filter must be one of: {allowed}, flagged, all")
+    rows = (
+        query.order_by(case((_flagged_clause(), 0), else_=1), CachedAnswer.created_at.desc())
+        .limit(300)
+        .all()
+    )
     return [_to_answer_out(r) for r in rows]
 
 

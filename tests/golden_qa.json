@@ -359,9 +359,12 @@
       "Advanced Microeconomics"
     ],
     "expected_absent": [],
-    "notes": "Explicit sequencing rule from semester_planning_rules.md, independent of the schedule-recommendation code path.",
+    "notes": "Explicit sequencing rule from semester_planning_rules.md, independent of the schedule-recommendation code path. Either the catalog or semester_planning_rules is an acceptable source.",
     "expected_source_ids": [
-      "catalog"
+      [
+        "catalog",
+        "semester_planning_rules"
+      ]
     ]
   },
   {
@@ -602,5 +605,116 @@
       "Bachelor"
     ],
     "notes": "The single most-asked question in query_log (21 of 124 turns) and a suggestion chip. Broad on purpose: it checks the assistant can assemble a useful answer from several thesis rules rather than needing a narrow, single-fact question."
+  },
+  {
+    "id": "language-certificate-wording",
+    "question": "What language certificate do I need for admission?",
+    "expected_contains": [
+      "B2"
+    ],
+    "expected_absent": [
+      "Studienkolleg",
+      "course catalog"
+    ],
+    "notes": "Same fact as language-requirements-english, phrased as 'certificate'. That wording was routed to the course catalog's language filter (courses taught in a language) and answered from the catalog alone, and earlier pulled in German-taught programmes' requirements (DSH, Goethe C1) from the university-wide language page.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview",
+        "ZO_FMa_AEDS_EN",
+        "AEDS_website_language_requirements"
+      ]
+    ]
+  },
+  {
+    "id": "semester-contribution-amount",
+    "question": "How much is the semester contribution?",
+    "expected_contains": [
+      "457.90"
+    ],
+    "expected_absent": [],
+    "notes": "University-level fee from the uol.de fee page (winter semester 2026/2027 figures; update when the page changes).",
+    "expected_source_ids": [
+      [
+        "AEDS_website_semester_contribution"
+      ]
+    ]
+  },
+  {
+    "id": "semester-ticket-retrieval",
+    "question": "Where can I download my semester ticket?",
+    "expected_contains": [
+      "Stud.IP"
+    ],
+    "expected_absent": [],
+    "notes": "The ticket is paid with the semester fee but must be retrieved via the AStA link with a Stud.IP login. The how-to section was first missed because it never named the ticket.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_semester_ticket"
+      ]
+    ]
+  },
+  {
+    "id": "library-campus-routing",
+    "question": "Is the Wechloy library open on Saturday?",
+    "expected_contains": [
+      "closed"
+    ],
+    "expected_absent": [],
+    "notes": "Naming a campus (also a course location in the catalog) routed this to the course catalog, which then replaced the document search.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_library_opening_hours"
+      ]
+    ]
+  },
+  {
+    "id": "german-admission-ects",
+    "question": "Wie viele ECTS muss der vorherige Bachelorabschluss umfassen?",
+    "expected_contains": [
+      "180"
+    ],
+    "expected_absent": [
+      "Prüfungsausschuss",
+      "Asane-Otoo"
+    ],
+    "notes": "German admission question; was routed to the examinations office contact lookup and answered with the Examining Board chair.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_how_to_apply",
+        "AEDS_website_programme_overview",
+        "ZO_FMa_AEDS_EN"
+      ]
+    ]
+  },
+  {
+    "id": "professor-roster",
+    "question": "Which professors teach on this programme, and which courses do they teach?",
+    "expected_contains": [
+      "Helm"
+    ],
+    "expected_absent": [],
+    "notes": "Roster question; was routed to the full curriculum listing, which has no lecturer names, and answered 'no professors in the documents'.",
+    "expected_source_ids": [
+      [
+        "catalog"
+      ]
+    ]
+  },
+  {
+    "id": "german-studierendenwerk-rent",
+    "question": "Wie viel kostet ein Zimmer in einem Wohnheim des Studierendenwerks?",
+    "expected_contains": [
+      "EUR"
+    ],
+    "expected_absent": [],
+    "notes": "Translation for retrieval turned 'Studierendenwerk' into 'student union dormitory' and the search missed the housing documents.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_stw_accommodation",
+        "AEDS_website_accommodation",
+        "AEDS_website_stw_faq"
+      ]
+    ]
   }
 ]

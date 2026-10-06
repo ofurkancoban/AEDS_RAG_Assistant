@@ -1,16 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import {
   MessagesSquare, CheckCircle2, XCircle, Clock, Filter, Pencil,
-  RefreshCw, Trash2, Info, X, Save, Repeat,
+  RefreshCw, Trash2, Info, X, Save, Repeat, ThumbsDown,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ANSWER_MARKDOWN_COMPONENTS } from './markdown';
+import { CITE_PREFIX, linkifyCitations } from './chat/citations';
 import { InjectionWarning } from './InjectionWarning';
 import { AnswerStatus, ReviewedAnswer } from '../types';
 import { approveAnswer, deleteAnswer, listAnswers, rejectAnswer } from '../api/client';
 
-type FilterStatus = AnswerStatus | 'all';
+type FilterStatus = AnswerStatus | 'flagged' | 'all';
+
+const FILTER_LABEL: Record<FilterStatus, string> = {
+  pending: 'Pending',
+  flagged: 'Rated unhelpful',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  all: 'All',
+};
 
 const STATUS_STYLE: Record<AnswerStatus, string> = {
   pending: 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/30',
@@ -44,6 +53,22 @@ interface AnswerReviewViewProps {
   /** Lets the navbar badge refresh once an item leaves the queue. */
   onQueueChange?: () => void;
 }
+
+/* Reviewed answers keep the model's "[n]" passage citations. Drawn as the
+   same chips students see, but not clickable: an answer here only carries
+   its deduplicated source names, not the passage order the numbers index. */
+const REVIEW_MARKDOWN_COMPONENTS = {
+  ...ANSWER_MARKDOWN_COMPONENTS,
+  a: (props: React.ComponentProps<'a'>) => {
+    const href = props.href ?? '';
+    if (href.startsWith(CITE_PREFIX)) {
+      const n = href.slice(CITE_PREFIX.length);
+      return <span className="citation-chip !cursor-default" title={`Cites retrieved passage ${n}`}>{n}</span>;
+    }
+    const Anchor = ANSWER_MARKDOWN_COMPONENTS.a as React.ComponentType<React.ComponentProps<'a'>>;
+    return <Anchor {...props} />;
+  },
+};
 
 export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChange }) => {
   const [items, setItems] = useState<ReviewedAnswer[]>([]);
@@ -155,18 +180,18 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
 
       <div className="flex items-center glass p-2 rounded-2xl shadow-[var(--shadow-sm)]">
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          {(['pending', 'approved', 'rejected', 'all'] as FilterStatus[]).map((s) => (
+          {(['pending', 'flagged', 'approved', 'rejected', 'all'] as FilterStatus[]).map((s) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
-              className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 capitalize ${
+              className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 ${
                 filter === s
                   ? 'bg-accent-600/20 text-accent-600 dark:text-accent-300 border border-accent-500/40 font-semibold shadow-sm'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)]'
               }`}
             >
-              {s === 'all' ? <Filter className="w-3.5 h-3.5" /> : STATUS_ICON[s]}
-              <span>{s}{s === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
+              {s === 'all' ? <Filter className="w-3.5 h-3.5" /> : s === 'flagged' ? <ThumbsDown className="w-3.5 h-3.5" /> : STATUS_ICON[s]}
+              <span>{FILTER_LABEL[s]}{s === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
             </button>
           ))}
         </div>
@@ -213,6 +238,19 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {item.downvotes > 0 && (
+                      <span
+                        title={item.flagged ? 'Rated unhelpful since the last review' : 'Rated unhelpful before the last review'}
+                        className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                          item.flagged
+                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/30'
+                            : 'bg-[var(--bg-inset)] text-[var(--text-muted)] border-[var(--border)]'
+                        }`}
+                      >
+                        <ThumbsDown className="w-3 h-3" />
+                        {item.downvotes}
+                      </span>
+                    )}
                     {item.edited && (
                       <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30">
                         corrected
@@ -239,7 +277,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                 ) : (
                   <div className="glass-well rounded-2xl p-4">
                     <div className="answer-prose max-w-none text-xs text-[var(--text-secondary)]">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={ANSWER_MARKDOWN_COMPONENTS}>{item.answer}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={REVIEW_MARKDOWN_COMPONENTS}>{linkifyCitations(item.answer)}</ReactMarkdown>
                     </div>
                   </div>
                 )}

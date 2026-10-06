@@ -3,16 +3,20 @@ import { BookOpen, CheckCircle2, FileWarning, Loader2, PenLine } from 'lucide-re
 import { RetrievalDiagnostic } from '../../types';
 import { Modal } from '../Modal';
 import { describeSource, plainSnippet } from './citations';
+import { useI18n } from '../../i18n';
 
 export const ChunkDetailModal: React.FC<{
   chunk: RetrievalDiagnostic | null;
   onClose: () => void;
-}> = ({ chunk, onClose }) => (
+}> = ({ chunk, onClose }) => {
+  const { lang, t } = useI18n();
+  const source = chunk ? describeSource(chunk.source_id, lang) : null;
+  return (
   <Modal
     isOpen={chunk !== null}
     onClose={onClose}
-    eyebrow={chunk ? `Referenced passage · ${describeSource(chunk.source_id).kind}` : ''}
-    title={chunk ? describeSource(chunk.source_id).title : ''}
+    eyebrow={source ? `${t.referencedPassage} · ${source.kind}` : ''}
+    title={source ? source.title : ''}
     icon={<BookOpen className="w-4 h-4" />}
     maxWidth="sm:max-w-2xl"
   >
@@ -22,7 +26,7 @@ export const ChunkDetailModal: React.FC<{
         {chunk.expired_since && (
           <div className="flex items-start gap-2 text-[13px] font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-lg p-3">
             <FileWarning className="w-4 h-4 mt-px shrink-0" />
-            <span>This source describes a cycle that ended on {chunk.expired_since}. Any dates in it belong to a past cycle.</span>
+            <span>{t.pastCycle(chunk.expired_since)}</span>
           </div>
         )}
 
@@ -30,13 +34,13 @@ export const ChunkDetailModal: React.FC<{
           <dl className="grid grid-cols-2 gap-2">
             {chunk.rerank_score != null && (
               <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2">
-                <dt className="eyebrow">Rerank score</dt>
+                <dt className="eyebrow">{t.rerankScore}</dt>
                 <dd className="font-mono text-[15px] text-emerald-700 dark:text-emerald-400">{chunk.rerank_score.toFixed(3)}</dd>
               </div>
             )}
             {chunk.hybrid_score != null && (
               <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2">
-                <dt className="eyebrow">Hybrid score</dt>
+                <dt className="eyebrow">{t.hybridScore}</dt>
                 <dd className="font-mono text-[15px] text-accent-700 dark:text-accent-300">{chunk.hybrid_score.toFixed(4)}</dd>
               </div>
             )}
@@ -44,7 +48,7 @@ export const ChunkDetailModal: React.FC<{
         )}
 
         <figure className="space-y-1.5">
-          <figcaption className="eyebrow">Excerpt</figcaption>
+          <figcaption className="eyebrow">{t.excerpt}</figcaption>
           <blockquote className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-lg border-l-[3px] border-brass-400 bg-[var(--bg-subtle)] px-4 py-3 text-[15px] leading-relaxed text-[var(--text-secondary)]">
             {plainSnippet(chunk.snippet)}
           </blockquote>
@@ -52,7 +56,8 @@ export const ChunkDetailModal: React.FC<{
       </div>
     )}
   </Modal>
-);
+  );
+};
 
 interface SuggestKnowledgeModalProps {
   isOpen: boolean;
@@ -83,12 +88,14 @@ export const SuggestKnowledgeModal: React.FC<SuggestKnowledgeModalProps> = ({
   onContentChange,
   isSubmitting,
   successMessage,
-}) => (
+}) => {
+  const { t } = useI18n();
+  return (
   <Modal
     isOpen={isOpen}
     onClose={onClose}
-    eyebrow="Admin review queue"
-    title="Suggest a correction"
+    eyebrow={t.reviewQueue}
+    title={t.suggestCorrection}
     icon={<PenLine className="w-4 h-4" />}
   >
     {successMessage ? (
@@ -99,16 +106,15 @@ export const SuggestKnowledgeModal: React.FC<SuggestKnowledgeModalProps> = ({
     ) : (
       <form onSubmit={onSubmit} className="space-y-4">
         <p className="text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
-          Nothing you submit reaches the assistant's answers until the programme team has
-          reviewed and approved it.
+          {t.suggestIntro}
         </p>
 
         <fieldset className="space-y-1.5">
-          <legend className="text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">Type</legend>
+          <legend className="text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">{t.type}</legend>
           <div className="grid grid-cols-2 gap-2">
             {([
-              ['new_info', 'New information'],
-              ['correction', 'Correction'],
+              ['new_info', t.newInformation],
+              ['correction', t.correction],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -128,23 +134,23 @@ export const SuggestKnowledgeModal: React.FC<SuggestKnowledgeModalProps> = ({
         </fieldset>
 
         <label className="block space-y-1.5">
-          <span className="text-[13px] font-medium text-[var(--text-secondary)]">Related document or topic</span>
+          <span className="text-[13px] font-medium text-[var(--text-secondary)]">{t.relatedDocument}</span>
           <input
             type="text"
             value={sourceId}
             onChange={(e) => onSourceIdChange(e.target.value)}
-            placeholder="e.g. AEDS_website_exams_regulations"
+            placeholder={t.relatedPlaceholder}
             className={inputClass}
           />
         </label>
 
         <label className="block space-y-1.5">
-          <span className="text-[13px] font-medium text-[var(--text-secondary)]">What should the assistant know?</span>
+          <span className="text-[13px] font-medium text-[var(--text-secondary)]">{t.whatToKnow}</span>
           <textarea
             rows={4}
             value={content}
             onChange={(e) => onContentChange(e.target.value)}
-            placeholder="e.g. The Econometrics II resit exam takes place on Dec 12 at 14:00 in Room 402."
+            placeholder={t.whatToKnowPlaceholder}
             className={`${inputClass} resize-y min-h-[110px]`}
             required
           />
@@ -156,7 +162,7 @@ export const SuggestKnowledgeModal: React.FC<SuggestKnowledgeModalProps> = ({
             onClick={onClose}
             className="h-10 px-4 rounded-lg border border-[var(--border)] text-[14px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] transition-colors cursor-pointer"
           >
-            Cancel
+            {t.cancel}
           </button>
           <button
             type="submit"
@@ -164,10 +170,11 @@ export const SuggestKnowledgeModal: React.FC<SuggestKnowledgeModalProps> = ({
             className="h-10 px-5 flex items-center justify-center gap-2 rounded-lg bg-accent-700 hover:bg-accent-600 dark:bg-accent-600 dark:hover:bg-accent-500 disabled:opacity-60 text-white text-[14px] font-medium shadow-sm transition-colors cursor-pointer"
           >
             {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isSubmitting ? 'Submitting...' : 'Submit for review'}
+            {isSubmitting ? t.submitting : t.submitForReview}
           </button>
         </div>
       </form>
     )}
   </Modal>
-);
+  );
+};

@@ -166,9 +166,9 @@ def _has_passed_deadline(answer: str) -> bool:
     labelling to attach to - the chat UI needs this separate signal to show
     the same "this describes a closed cycle" warning on an answer that has no
     sources at all."""
-    from ingestion.deadlines import DEADLINE_PASSED_MARKER
+    from ingestion.deadlines import DEADLINE_PASSED_MARKER, DEADLINE_PASSED_MARKER_DE
 
-    return DEADLINE_PASSED_MARKER in answer
+    return DEADLINE_PASSED_MARKER in answer or DEADLINE_PASSED_MARKER_DE in answer
 
 
 def _looks_unanswered(answer: str) -> bool:
@@ -224,13 +224,20 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
 def stream_chat(
     thread_id: str, question: str, source_id_filter: str | None = None
 ) -> Iterator[tuple[str, dict]]:
-    """Yields ('stage', {'stage': str}) as the run reaches each user-visible
-    step (see graph/progress.py), ('token', {'text': str}) as the answer is
-    generated, followed by
-    exactly one final ('done', {'sources': [...], 'detected_contribution': ...})
-    once the graph run completes. Only tokens from the 'generate' node are
-    streamed - the classifier nodes' raw JSON output is never shown to the
-    user."""
+    """Yields, in order:
+      ('stage', {'stage': str})   as the run reaches each user-visible step
+                                  (see graph/progress.py);
+      ('token', {'text': str})    as the answer is generated;
+      ('done', {...})             as soon as the generate node finishes -
+                                  sources, final answer, latencies;
+      ('contribution', {'detected_contribution': dict | None})
+                                  once detect_contribution has run.
+
+    'done' used to wait for detect_contribution too, so an answer's sources
+    and actions appeared one classifier call (about 2s, more when its LLM is
+    busy) after the text had finished - for a check whose result the reader
+    never needs before reading the answer. Only tokens from the 'generate'
+    node are streamed; the classifier nodes' raw JSON is never shown."""
     from langchain_core.messages import HumanMessage
 
     graph = get_compiled_graph()
@@ -250,21 +257,52 @@ def stream_chat(
 
     def run_graph():
         try:
-            for message_chunk, metadata in graph.stream(
+            for mode, payload in graph.stream(
                 {
                     "messages": [HumanMessage(content=question)],
                     "source_id_filter": source_id_filter,
                 },
                 config=config,
-                stream_mode="messages",
+                stream_mode=["messages", "updates"],
             ):
-                if metadata.get("langgraph_node") == "generate" and message_chunk.content:
-                    events.put(("token", {"text": message_chunk.content}))
+                if mode == "messages":
+                    message_chunk, metadata = payload
+                    if metadata.get("langgraph_node") == "generate" and message_chunk.content:
+                        events.put(("token", {"text": message_chunk.content}))
+                else:
+                    for node, update in (payload or {}).items():
+                        events.put(("_update", (node, update or {})))
             events.put((_DONE, None))
         except BaseException as exc:  # re-raised on the consuming side
             events.put((_DONE, exc))
 
     threading.Thread(target=run_graph, name=f"chat-stream-{thread_id}", daemon=True).start()
+
+    # Built from THIS turn's node outputs rather than the checkpointed thread
+    # state, which also holds fields from earlier turns that this turn's nodes
+    # did not overwrite (time_sensitive is only ever set on the tool path, so
+    # a deadline question used to mark every later turn as time-sensitive).
+    turn: dict = {}
+    done_sent = False
+    detected = None
+
+    def done_payload() -> dict:
+        messages = turn.get("messages") or []
+        final_answer = messages[-1].content if messages else ""
+        docs = turn.get("retrieved_docs") or []
+        return {
+            "sources": _build_sources(docs),
+            # the generate node may have cleaned up the raw streamed tokens
+            # (stripped thinking tags, fabricated citations, etc) - this is the
+            # authoritative final text, which can differ from the concatenation
+            # of the 'token' events the client already displayed
+            "final_answer": final_answer,
+            "retrieval": _build_retrieval_diagnostics(docs),
+            "node_latencies": turn.get("node_latencies", {}),
+            "answered": not _looks_unanswered(final_answer),
+            "time_sensitive": bool(turn.get("time_sensitive")),
+            "has_expired_deadline": _has_passed_deadline(final_answer),
+        }
 
     while True:
         kind, data = events.get()
@@ -272,24 +310,17 @@ def stream_chat(
             if data is not None:
                 raise data
             break
+        if kind == "_update":
+            node, update = data
+            turn.update(update)
+            if node == "generate" and not done_sent:
+                done_sent = True
+                yield ("done", done_payload())
+            elif node == "detect_contribution":
+                detected = update.get("detected_contribution")
+            continue
         yield (kind, data)
 
-    final_state = graph.get_state({"configurable": {"thread_id": thread_id}}).values
-    final_answer = final_state["messages"][-1].content
-    yield (
-        "done",
-        {
-            "sources": _build_sources(final_state.get("retrieved_docs", [])),
-            "detected_contribution": final_state.get("detected_contribution"),
-            # the generate node may have cleaned up the raw streamed tokens
-            # (stripped thinking tags, fabricated citations, etc) - this is the
-            # authoritative final text, which can differ from the concatenation
-            # of the 'token' events the client already displayed
-            "final_answer": final_answer,
-            "retrieval": _build_retrieval_diagnostics(final_state.get("retrieved_docs", [])),
-            "node_latencies": final_state.get("node_latencies", {}),
-            "answered": not _looks_unanswered(final_answer),
-            "time_sensitive": bool(final_state.get("time_sensitive")),
-            "has_expired_deadline": _has_passed_deadline(final_answer),
-        },
-    )
+    if not done_sent:
+        yield ("done", done_payload())
+    yield ("contribution", {"detected_contribution": detected})

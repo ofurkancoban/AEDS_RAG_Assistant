@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 type Theme = 'light' | 'dark';
 
@@ -16,6 +17,7 @@ function getInitialTheme(): Theme {
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const { t } = useI18n();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -32,8 +34,8 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-      title={isDark ? 'Light theme' : 'Dark theme'}
+      aria-label={isDark ? t.switchToLight : t.switchToDark}
+      title={isDark ? t.lightTheme : t.darkTheme}
       className="flex items-center justify-center w-9 h-9 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)] transition-colors cursor-pointer"
     >
       {isDark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}

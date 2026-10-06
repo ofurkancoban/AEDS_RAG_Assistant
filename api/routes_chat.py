@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import llm_budget
@@ -13,6 +14,7 @@ from api.auth import get_current_user_or_guest
 from api.rate_limit import check_and_record, client_ip, get_chat_ip_limiter, get_chat_limiter
 from api.telegram_bot import notify_new_submission
 from db import semantic_cache
+from db.answer_flags import record_rating
 from db.models import ChatMessage, PendingSubmission, QueryLog, SubmissionType, User, get_session
 from graph.build_graph import is_cacheable_turn, run_chat, stream_chat
 
@@ -157,12 +159,17 @@ def _log_query(
     served_from_cache: bool,
     origin: str | None = None,
     node_latencies: dict[str, float] | None = None,
+    retrieval: list | None = None,
 ) -> int:
     """Record the turn and return the log id, which the client sends back with
     a thumbs rating so the two can be tied together."""
     source_ids = ",".join(
         sorted({s["source_id"] if isinstance(s, dict) else s.source_id for s in sources})
     )
+    evidence = {
+        "sources": [s if isinstance(s, dict) else s.model_dump() for s in sources],
+        "retrieval": [r if isinstance(r, dict) else r.model_dump() for r in (retrieval or [])],
+    }
     entry = QueryLog(
         question=question,
         thread_id=thread_id,
@@ -173,6 +180,8 @@ def _log_query(
         served_from_cache=served_from_cache,
         origin=origin,
         node_latencies_json=json.dumps(node_latencies) if node_latencies else None,
+        # default=str: expired_since arrives as a date object from the pipeline.
+        evidence_json=json.dumps(evidence, default=str),
     )
     session.add(entry)
     session.commit()
@@ -291,6 +300,7 @@ def chat(
             latency_ms=int((time.monotonic() - started) * 1000),
             served_from_cache=True,
             origin=origin,
+            retrieval=json.loads(hit.retrieval_json),
         )
         return ChatResponse(
             thread_id=thread_id,
@@ -343,6 +353,7 @@ def chat(
         served_from_cache=False,
         origin=origin,
         node_latencies=result.get("node_latencies"),
+        retrieval=result.get("retrieval", []),
     )
 
     return ChatResponse(
@@ -394,6 +405,7 @@ def chat_stream(
             latency_ms=int((time.monotonic() - started) * 1000),
             served_from_cache=True,
             origin=origin,
+            retrieval=json.loads(hit.retrieval_json),
         )
         cached_payload = {
             "thread_id": thread_id,
@@ -423,6 +435,7 @@ def chat_stream(
 
     def event_stream():
         answer_parts: list[str] = []
+        log_id = None
 
         for event_type, data in stream_chat(
             thread_id=thread_id,
@@ -437,29 +450,33 @@ def chat_stream(
                 yield f"event: token\ndata: {json.dumps(data)}\n\n"
                 continue
 
-            # data["final_answer"] is authoritative (may have cleaned-up content
-            # the raw streamed tokens didn't) - fall back to the raw
-            # concatenation only if it's missing for some reason
+            if event_type == "contribution":
+                # Arrives after 'done': detection runs once the answer is
+                # already on screen, so it no longer holds back the sources.
+                detected = data.get("detected_contribution")
+                if detected and check_and_record(_client_key(request, user)):
+                    submission = PendingSubmission(
+                        submitted_by_id=user.id,
+                        submission_type=SubmissionType(detected["type"]),
+                        source_id=payload.source_id_filter or "general",
+                        content=detected["content"],
+                    )
+                    session.add(submission)
+                    session.commit()
+                    notify_new_submission(
+                        submission.id, submission.submission_type.value, submission.source_id, submission.content
+                    )
+                    yield f"event: contribution\ndata: {json.dumps({'auto_flagged_contribution': detected['type']})}\n\n"
+                continue
+
+            # event_type == "done". data["final_answer"] is authoritative (may
+            # have cleaned-up content the raw streamed tokens didn't) - fall
+            # back to the raw concatenation only if it's missing for some reason
             full_answer = data.get("final_answer") or "".join(answer_parts)
             _record_turn(
                 session, thread_id=thread_id, user=user, question=payload.message, answer=full_answer
             )
-
-            auto_flagged_contribution = None
-            detected = data.get("detected_contribution")
-            if detected and check_and_record(_client_key(request, user)):
-                submission = PendingSubmission(
-                    submitted_by_id=user.id,
-                    submission_type=SubmissionType(detected["type"]),
-                    source_id=payload.source_id_filter or "general",
-                    content=detected["content"],
-                )
-                session.add(submission)
-                auto_flagged_contribution = detected["type"]
-
             session.commit()
-            if auto_flagged_contribution:
-                notify_new_submission(submission.id, submission.submission_type.value, submission.source_id, submission.content)
 
             # The streamed 'done' event carries the same fields run_chat
             # returns, so the shared store helper can be reused as-is - this
@@ -491,12 +508,16 @@ def chat_stream(
                 served_from_cache=False,
                 origin=origin,
                 node_latencies=data.get("node_latencies"),
+                retrieval=data.get("retrieval", []),
             )
 
             done_payload = {
                 "thread_id": thread_id,
                 "sources": data["sources"],
-                "auto_flagged_contribution": auto_flagged_contribution,
+                # Filled in by a later 'contribution' event when detection
+                # flags this message; null here for the same payload shape as
+                # a cached answer.
+                "auto_flagged_contribution": None,
                 "final_answer": full_answer,
                 "retrieval": data.get("retrieval", []),
                 "node_latencies": data.get("node_latencies", {}),
@@ -537,8 +558,7 @@ def rate_answer(
     if entry is None or entry.user_id != user.id:
         raise HTTPException(status_code=404, detail="No such query")
 
-    entry.rating = payload.rating
-    session.commit()
+    record_rating(session, entry, payload.rating)
 
 
 class SubmissionRequest(BaseModel):
@@ -570,3 +590,117 @@ def create_submission(
     session.refresh(submission)
     notify_new_submission(submission.id, submission.submission_type.value, submission.source_id, submission.content)
     return {"id": submission.id, "status": submission.status.value}
+
+
+class ThreadSummary(BaseModel):
+    thread_id: str
+    title: str
+    questions: int
+    updated_at: datetime
+
+
+class ThreadTurn(BaseModel):
+    question: str
+    answer: str
+    asked_at: datetime
+    query_log_id: int | None = None
+    rating: int | None = None
+    sources: list[SourceOut] = []
+    retrieval: list[RetrievedChunkOut] = []
+
+
+_RECENT_THREAD_LIMIT = 30
+
+
+@router.get("/threads", response_model=list[ThreadSummary])
+def list_threads(
+    user: User = Depends(get_current_user_or_guest),
+    session: Session = Depends(get_session),
+):
+    """The caller's own recent conversations, newest first, titled by their
+    first question. Only the caller's rows are ever read, so one identity
+    cannot see another's history."""
+    rows = (
+        session.query(
+            ChatMessage.thread_id,
+            func.min(ChatMessage.id),
+            func.count(ChatMessage.id),
+            func.max(ChatMessage.created_at),
+        )
+        .filter(ChatMessage.user_id == user.id, ChatMessage.role == "user")
+        .group_by(ChatMessage.thread_id)
+        .order_by(func.max(ChatMessage.created_at).desc())
+        .limit(_RECENT_THREAD_LIMIT)
+        .all()
+    )
+    first_ids = [first_id for _, first_id, _, _ in rows]
+    titles = dict(
+        session.query(ChatMessage.id, ChatMessage.content).filter(ChatMessage.id.in_(first_ids)).all()
+    ) if first_ids else {}
+    return [
+        ThreadSummary(thread_id=thread_id, title=titles.get(first_id, "")[:200], questions=count, updated_at=updated)
+        for thread_id, first_id, count, updated in rows
+    ]
+
+
+@router.get("/threads/{thread_id}", response_model=list[ThreadTurn])
+def get_thread(
+    thread_id: str,
+    user: User = Depends(get_current_user_or_guest),
+    session: Session = Depends(get_session),
+):
+    """Every turn of one of the caller's conversations, with the sources and
+    passages each answer was shown with, so it can be reopened and continued."""
+    messages = (
+        session.query(ChatMessage)
+        .filter(ChatMessage.thread_id == thread_id, ChatMessage.user_id == user.id)
+        .order_by(ChatMessage.id)
+        .all()
+    )
+    # 404 rather than 403 for someone else's thread, as with /feedback: the
+    # endpoint should not confirm that another user's thread exists.
+    if not messages:
+        raise HTTPException(status_code=404, detail="No such conversation")
+
+    logs = (
+        session.query(QueryLog)
+        .filter(QueryLog.thread_id == thread_id, QueryLog.user_id == user.id)
+        .order_by(QueryLog.id)
+        .all()
+    )
+
+    turns: list[ThreadTurn] = []
+    pending_question: ChatMessage | None = None
+    log_index = 0
+    for message in messages:
+        if message.role == "user":
+            pending_question = message
+            continue
+        if pending_question is None:
+            continue
+        # A turn writes its chat_history pair and its query_log row together,
+        # so the logs line up in order; matching on the question as well
+        # keeps one missing log row from shifting every later turn's sources.
+        log = None
+        for candidate_index in range(log_index, len(logs)):
+            if logs[candidate_index].question == pending_question.content:
+                log = logs[candidate_index]
+                log_index = candidate_index + 1
+                break
+        evidence = json.loads(log.evidence_json) if log and log.evidence_json else {}
+        sources = evidence.get("sources") or (
+            [{"source_id": source_id} for source_id in log.source_ids.split(",") if source_id] if log else []
+        )
+        turns.append(
+            ThreadTurn(
+                question=pending_question.content,
+                answer=message.content,
+                asked_at=pending_question.created_at,
+                query_log_id=log.id if log else None,
+                rating=log.rating if log else None,
+                sources=sources,
+                retrieval=evidence.get("retrieval", []),
+            )
+        )
+        pending_question = None
+    return turns

@@ -33,6 +33,9 @@ def _describe_days(count: int) -> str:
 # so it is appended once by the caller (see graph/nodes.py's _route_with_tools)
 # instead of being repeated inside every sentence.
 DEADLINE_PASSED_MARKER = "has already passed"
+# The same statement in a German answer: graph/nodes.py translates the
+# structured answer for a German question and is told to use exactly this.
+DEADLINE_PASSED_MARKER_DE = "ist bereits abgelaufen"
 
 NEXT_INTAKE_NOTE = (
     "Application dates are published separately for each intake, so check the programme "

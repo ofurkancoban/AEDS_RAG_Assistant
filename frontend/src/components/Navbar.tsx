@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
+import { LanguageToggle } from './LanguageToggle';
+import { useI18n } from '../i18n';
 import { BrandMark } from './BrandMark';
 import { PROGRAMME } from '../config/programme';
 
@@ -50,6 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenMenu,
 }) => {
   const { isAuthenticated, isAdmin, email, logout } = useAuth();
+  const { t } = useI18n();
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; badges?: React.ReactNode }[] = [
     { id: 'chat', label: 'Q&A Assistant', icon: MessageSquare },
@@ -89,8 +92,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         {onOpenMenu && (
           <button
             onClick={onOpenMenu}
-            aria-label="Open topics"
-            title="Topics"
+            aria-label={t.openTopics}
+            title={t.topics}
             className="lg:hidden ml-2 flex items-center justify-center w-10 h-10 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] cursor-pointer"
           >
             <Menu className="w-5 h-5" />
@@ -101,12 +104,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             desktop, so the two read as one column. */}
         <button
           onClick={() => setActiveTab('chat')}
-          className="flex items-center gap-2.5 h-14 px-3 lg:px-4 lg:w-[272px] lg:border-r border-[var(--border)] shrink-0 text-left cursor-pointer"
+          className="flex items-center gap-2.5 h-14 px-3 lg:px-4 lg:w-[272px] lg:border-r border-[var(--border)] min-w-0 lg:shrink-0 text-left cursor-pointer"
         >
           <BrandMark size={30} />
           <span className="leading-tight min-w-0">
-            <span className="flex items-center gap-2">
-              <span className="text-[15px] font-semibold text-[var(--text)] whitespace-nowrap">Student Assistant</span>
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="text-[15px] font-semibold text-[var(--text)] truncate">{t.studentAssistant}</span>
               {isAdmin && (
                 <span className="hidden sm:inline-flex items-center px-1.5 rounded border border-brass-500/40 bg-brass-50 dark:bg-brass-900/40 text-brass-700 dark:text-brass-300 text-[10px] font-semibold uppercase tracking-wider">
                   Admin
@@ -121,20 +124,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             programme selector goes once more than one programme is served. */}
         <div className="hidden md:flex items-center gap-2 ml-4 h-8 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] text-[13px] min-w-0">
           <GraduationCap className="w-4 h-4 text-accent-700 dark:text-accent-300 shrink-0" />
-          <span className="text-[var(--text-muted)]">Programme</span>
+          <span className="text-[var(--text-muted)]">{t.programme}</span>
           <span className="font-medium text-[var(--text)] truncate">
             {PROGRAMME.name} <span className="text-[var(--text-muted)] font-normal">({PROGRAMME.degree})</span>
           </span>
         </div>
         {chunkCount > 0 && (
           <span className="hidden xl:inline ml-3 font-mono text-[11px] text-emerald-700 dark:text-emerald-400">
-            {chunkCount.toLocaleString()} passages indexed
+            {t.passagesIndexed(chunkCount.toLocaleString())}
           </span>
         )}
 
         <div className="flex-1" />
 
         <div className="flex items-center gap-1.5 shrink-0">
+          <LanguageToggle />
           <ThemeToggle />
           {isAuthenticated ? (
             <>
@@ -144,21 +148,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <button
                 onClick={logout}
-                title="Log out"
+                title={t.logOut}
                 className="flex items-center gap-1.5 h-9 px-3 rounded-md border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] text-[13.5px] font-medium transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Log out</span>
+                <span className="hidden sm:inline">{t.logOut}</span>
               </button>
             </>
           ) : (
             <button
               onClick={onOpenLogin}
-              title="Staff sign-in"
+              title={t.staffSignIn}
               className="flex items-center gap-1.5 h-9 px-3 rounded-md bg-accent-800 hover:bg-accent-700 dark:bg-accent-600 dark:hover:bg-accent-500 text-white text-[13.5px] font-medium transition-colors cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
-              <span className="hidden sm:inline">Staff sign-in</span>
+              <span className="hidden sm:inline">{t.staffSignIn}</span>
             </button>
           )}
         </div>

@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     # golden set) but slower (12s median), which suits a fallback that only
     # runs when the primary is failing.
     openrouter_fallback_model: str = "dots-studio/dots-3-note-preview:free"
+    # Ask OpenRouter to use only provider endpoints that do not store or
+    # train on prompts (provider.data_collection = "deny"). Checked working
+    # with both models above on 2026-10-10.
+    openrouter_deny_data_collection: bool = True
 
     # Ceiling on LLM requests issued per calendar day, enforced in-app (see
     # llm_budget.py). 0 means no ceiling; leave it at -1 to derive one from the

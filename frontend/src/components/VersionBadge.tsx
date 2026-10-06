@@ -3,6 +3,7 @@ import { Sparkles } from 'lucide-react';
 import { VersionInfo } from '../types';
 import { getVersion } from '../api/client';
 import { Modal } from './Modal';
+import { useI18n } from '../i18n';
 
 /* Inline "v1.2.3 - What's new" link that opens the changelog. Lives in the
    sidebar footer rather than pinned to a viewport corner, where on a phone
@@ -10,6 +11,7 @@ import { Modal } from './Modal';
 export const VersionBadge: React.FC = () => {
   const [info, setInfo] = useState<VersionInfo | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     getVersion().then(setInfo).catch(() => setInfo(null));
@@ -23,18 +25,18 @@ export const VersionBadge: React.FC = () => {
       <button
         onClick={() => setIsOpen(true)}
         className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-muted)] hover:text-accent-600 dark:hover:text-accent-300 transition-colors cursor-pointer"
-        title="What's new"
+        title={t.whatsNew}
       >
         <span>v{info.version}</span>
         <span className="text-[var(--text-faint)]">·</span>
-        <span className="underline decoration-dotted underline-offset-2">What's new</span>
+        <span className="underline decoration-dotted underline-offset-2">{t.whatsNew}</span>
       </button>
 
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         eyebrow="Changelog"
-        title="What's new"
+        title={t.whatsNew}
         icon={<Sparkles className="w-4 h-4" />}
       >
         <ol className="space-y-6">

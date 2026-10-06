@@ -239,6 +239,10 @@ export interface ReviewedAnswer {
       for the bot, or null for a caller with no Origin header (a direct API
       call) or an answer logged before this field existed. */
   origin: string | null;
+  /** Thumbs-down ratings from students given this answer. */
+  downvotes: number;
+  /** Rated unhelpful since its last review; listed first. */
+  flagged: boolean;
 }
 
 export interface ChangelogEntry {
