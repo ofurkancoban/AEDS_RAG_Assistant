@@ -40,7 +40,7 @@ from config import settings
 
 MODELS_URL = "https://openrouter.ai/api/v1/models"
 FIELDS = ("openrouter_model", "openrouter_fallback_model")
-ENV_KEYS = {"OPENROUTER_MODEL", "OPENROUTER_FALLBACK_MODEL"}
+ENV_KEYS = {"OPENROUTER_MODEL", "OPENROUTER_FALLBACK_MODEL", "OPENROUTER_ROUTER_MODEL"}
 
 
 def available_models() -> set[str]:
@@ -104,6 +104,13 @@ def check(fix: bool, models: set[str] | None = None) -> tuple[list[str], list[st
             continue
         source = "admin panel" if stored[field] == effective else ".env or the code default"
         problems.append(f"{field} is '{effective}' (set via {source}), which OpenRouter no longer offers.")
+
+    # Code-only setting (no admin-panel value to clear). An unavailable
+    # router model still works - _with_fallback moves to the main model -
+    # but every question then pays for a failed call first.
+    router = settings.openrouter_router_model
+    if router and router not in models:
+        problems.append(f"openrouter_router_model is '{router}', which OpenRouter no longer offers.")
 
     return problems, actions
 

@@ -77,7 +77,7 @@ ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && .venv/bin/pip install -q -r require
 # after the code had moved on. Removed here, with a dated backup of the file
 # first, and only when such a line exists.
 echo "==> Removing OpenRouter model lines from the VPS .env (model choice is config.py + admin panel)"
-ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && if grep -qE '^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL)=' .env; then cp .env .env.bak-\$(date +%Y%m%d%H%M%S) && sed -i -E '/^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL)=/d' .env && echo '    removed (backup saved next to .env)'; else echo '    none present'; fi"
+ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && if grep -qE '^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL|OPENROUTER_ROUTER_MODEL)=' .env; then cp .env .env.bak-\$(date +%Y%m%d%H%M%S) && sed -i -E '/^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL|OPENROUTER_ROUTER_MODEL)=/d' .env && echo '    removed (backup saved next to .env)'; else echo '    none present'; fi"
 
 # Before the restart, so a cleared admin-panel value takes effect with it
 # (the running app caches its effective config).
