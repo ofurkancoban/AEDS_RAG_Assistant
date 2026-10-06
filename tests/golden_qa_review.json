@@ -31,7 +31,7 @@
     "needs_review": true,
     "notes": "Derived from admin rejection of answer #13. No corrected text exists, so expected_absent lists the hard facts from the rejected answer as candidates only - a human must delete any that were actually correct before this case is trustworthy. Admin note: (none)",
     "expected_source_ids": [
-      "MPO_AEDS_2023_EN",
+      "MPO_AEDS_2026_EN",
       "ZO_FMa_AEDS_EN"
     ]
   },
@@ -50,7 +50,7 @@
     "needs_review": true,
     "notes": "Derived from admin rejection of answer #14. No corrected text exists, so expected_absent lists the hard facts from the rejected answer as candidates only - a human must delete any that were actually correct before this case is trustworthy. Admin note: (none)",
     "expected_source_ids": [
-      "MPO_AEDS_2023_EN",
+      "MPO_AEDS_2026_EN",
       "Module_handbook_Applied_Economics_and_Data_Science_Master_Studiengang_SoSe2026_en_GB(3)",
       "catalog"
     ]

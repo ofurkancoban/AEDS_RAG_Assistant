@@ -28,8 +28,9 @@
     "notes": "Fixed fact from semester_planning_rules.md / catalog.",
     "expected_source_ids": [
       [
-        "MPO_AEDS_2023_EN",
-        "semester_planning_rules"
+        "MPO_AEDS_2026_EN",
+        "semester_planning_rules",
+        "AEDS_exam_regulations_2026_changes"
       ]
     ]
   },
@@ -307,10 +308,10 @@
       "fourth semester"
     ],
     "expected_absent": [],
-    "notes": "Fact from MPO_AEDS_2023_EN.pdf Section 9(1).",
+    "notes": "Fact from MPO_AEDS_2026_EN.pdf Section 9(1).",
     "expected_source_ids": [
       [
-        "MPO_AEDS_2023_EN",
+        "MPO_AEDS_2026_EN",
         "semester_planning_rules"
       ]
     ]
@@ -534,9 +535,9 @@
     "expected_absent": [
       "to f the"
     ],
-    "notes": "Fact from the newly-added MPO_AEDS_2023_EN.pdf (examination regulations, Section 8(1)). Also guards against a since-fixed bug where _strip_fabricated_citations mangled 'Section 8(1) of the ...' into '...8(1) o' + 'f the ...' by greedily consuming a stray letter from the following prose - 'to f the' only appears in the broken form ('According to f the'), not the correct 'According to of the'. Accepts any equivalent wording of \"two\" - the fact under test is the number of resits, not the phrasing.",
+    "notes": "Fact from the MPO_AEDS_2026_EN.pdf (examination regulations, Section 8(1)). Also guards against a since-fixed bug where _strip_fabricated_citations mangled 'Section 8(1) of the ...' into '...8(1) o' + 'f the ...' by greedily consuming a stray letter from the following prose - 'to f the' only appears in the broken form ('According to f the'), not the correct 'According to of the'. Accepts any equivalent wording of \"two\" - the fact under test is the number of resits, not the phrasing.",
     "expected_source_ids": [
-      "MPO_AEDS_2023_EN"
+      "MPO_AEDS_2026_EN"
     ]
   },
   {
@@ -566,7 +567,7 @@
     "notes": "Fact from the newly-added AEDS_website_theses_faq.md (generic, tagged in _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). The source FAQ states Bachelor's theses are 15 credits and most Master's are 30 - the Bachelor's number was deliberately excluded when curating this document and must never appear, while 30 corroborates the catalog/MPO's own thesis ECTS figure.",
     "expected_source_ids": [
       [
-        "MPO_AEDS_2023_EN",
+        "MPO_AEDS_2026_EN",
         "semester_planning_rules"
       ]
     ]
@@ -580,9 +581,9 @@
     "expected_absent": [
       "Bachelor"
     ],
-    "notes": "Corrected: MPO_AEDS_2023_EN.pdf Section 10(7) states examiners must assess the thesis within six weeks for this specific programme - a more specific, authoritative figure than AEDS_website_theses_faq.md's generic 'about eight weeks for most Master's programmes'. The programme-specific source should win per the generic-vs-specific guardrail (see _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). Originally miswritten expecting 'eight' without checking MPO's own text for this fact.",
+    "notes": "Corrected: MPO_AEDS_2026_EN.pdf Section 10(7) states examiners must assess the thesis within six weeks for this specific programme - a more specific, authoritative figure than AEDS_website_theses_faq.md's generic 'about eight weeks for most Master's programmes'. The programme-specific source should win per the generic-vs-specific guardrail (see _GENERIC_UNIVERSITY_WIDE_SOURCE_IDS). Originally miswritten expecting 'eight' without checking MPO's own text for this fact.",
     "expected_source_ids": [
-      "MPO_AEDS_2023_EN"
+      "MPO_AEDS_2026_EN"
     ]
   },
   {
@@ -714,6 +715,43 @@
         "AEDS_website_stw_accommodation",
         "AEDS_website_accommodation",
         "AEDS_website_stw_faq"
+      ]
+    ]
+  },
+  {
+    "id": "thesis-admission-ects-2026",
+    "question": "How many ECTS do I need before I can register for the Master's thesis?",
+    "expected_contains": [
+      "60"
+    ],
+    "expected_absent": [
+      "2 ECTS"
+    ],
+    "notes": "2026 regulations Section 9(2): at least 60 ECTS. The 2022/2023 English translations said '2 ECTS', contradicting the binding German text.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "removed-module-2026",
+    "question": "Is Business Intelligence II still a module in the examination regulations?",
+    "expected_contains": [
+      [
+        "no longer",
+        "not listed",
+        "removed",
+        "not included"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "inf607 is not in the 2026 Appendix 1; the answer should say so and not present it as a current elective.",
+    "expected_source_ids": [
+      [
+        "AEDS_exam_regulations_2026_changes",
+        "MPO_AEDS_2026_EN"
       ]
     ]
   }

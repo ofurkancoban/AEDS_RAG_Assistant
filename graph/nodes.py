@@ -775,9 +775,17 @@ _ROUTER_SYSTEM_PROMPT = (
     # catalog, and a library question naming one was routed to the catalog,
     # whose course hits then replaced the document search entirely.
     '- "When is the library on Campus Haarentor open?" / "How much is the semester '
-    'fee?" -> no tool (general document search) - university services, fees, the '
+    'fee?" / "What does the semester contribution include?" -> no tool (general '
+    "document search) - university services, fees and contributions, the "
     "semester ticket, housing and city life are document questions even when a "
-    "campus is named"
+    "campus is named; lookup_application_deadline is only for application dates\n"
+    # The course catalogue lists what is offered, not what the regulations
+    # allow: a module dropped from the 2026 regulations is still in Stud.IP,
+    # and the catalogue hit replaced the regulations in the answer.
+    '- "Is Econometrics II still part of the examination regulations?" / "What do '
+    'the examination regulations say about resits?" -> no tool (general document '
+    "search) - questions about the examination regulations are answered from the "
+    "regulations, not the course catalogue"
 )
 
 

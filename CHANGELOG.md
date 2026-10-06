@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.1] - 2026-10-11
+### Changed
+- The examination regulations of 04.09.2026 replace the 2023 version in
+  the knowledge base (MPO_AEDS_2026_EN.pdf; the 2023 file is removed so
+  the two cannot contradict each other). A curated note summarises what
+  changed: thesis admission now states 60 ECTS (the 2022/2023 English
+  translations said "2 ECTS", against the binding German text), seminar
+  papers are about 15-25 pages, and Appendix 1 drops seven modules and adds
+  new electives and "Topics in ..." modules. It tells students who started
+  earlier to ask the Examinations Office which version applies to them.
+
 ## [1.10.0] - 2026-10-10
 ### Added
 - Recent conversations. Each visitor's earlier conversations are listed in
