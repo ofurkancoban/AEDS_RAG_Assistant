@@ -995,5 +995,83 @@
         "AEDS_exam_regulations_2026_changes"
       ]
     ]
+  },
+  {
+    "id": "conversation-greeting",
+    "question": "hi",
+    "expected_contains": [
+      [
+        "programme",
+        "Programme"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
+      }
+    ],
+    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal."
+  },
+  {
+    "id": "conversation-how-are-you",
+    "question": "How are you?",
+    "expected_contains": [
+      [
+        "programme",
+        "Programme"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
+      }
+    ],
+    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal."
+  },
+  {
+    "id": "conversation-what-can-i-ask",
+    "question": "What else can I ask you?",
+    "expected_contains": [
+      [
+        "deadline",
+        "exam",
+        "thesis"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
+      }
+    ],
+    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal. Asked in Turkish in production ('Sana başka hangi soruları sorabilirim')."
+  },
+  {
+    "id": "conversation-german-greeting",
+    "question": "Hallo, was kannst du mir beantworten?",
+    "expected_contains": [
+      [
+        "Studiengang",
+        "Universität"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
+      }
+    ],
+    "notes": "German counterpart: the reply must be in German."
+  },
+  {
+    "id": "progress-on-track-without-data",
+    "question": "Am I on track to graduate, and what should I focus on to finish my degree?",
+    "expected_contains": [
+      "120"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
+      }
+    ],
+    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal. Sent by the ECTS Tracker without progress data; the general graduation requirements answer it, and the reranker scored this personal wording below the relevance gate."
   }
 ]

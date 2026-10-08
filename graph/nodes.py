@@ -1644,6 +1644,94 @@ class _SpeculativeRetrieval:
         return self._future.result()  # re-raises a worker exception here
 
 
+# Conversational messages, not questions about the programme. In production
+# "hi", "How are you?" and "what else can I ask you?" all got the "documents
+# do not contain information on that" refusal - the first thing a new user
+# sees. They now get a short welcome naming what the assistant covers, with
+# no LLM call.
+_GREETING = re.compile(
+    r"^(hi|hello|hey|hey there|hallo|moin|servus|good (morning|afternoon|evening)|"
+    r"guten (morgen|tag|abend)|merhaba|selam|naber)\b"
+)
+_HOW_ARE_YOU = re.compile(r"\b(how are you|how's it going|wie geht'?s|wie geht es dir|nasılsın)\b")
+_THANKS = re.compile(r"^(thanks|thank you|thx|danke|vielen dank|teşekkürler|teşekkür ederim)\b")
+_CAPABILITY = re.compile(
+    r"what (else )?can (i|you) (ask|do|answer|help)|what (else )?can you help|what do you know|"
+    r"was kannst du|wobei kannst du|was kann ich (dich )?fragen|was weißt du|hangi sorular"
+)
+
+_WELCOME = {
+    "en": (
+        "I'm the student assistant for the M.Sc. Applied Economics and Data Science at the "
+        "University of Oldenburg, and I answer from the programme's official documents. For example:\n\n"
+        "- **Programme:** application deadlines, admission and language requirements, compulsory "
+        "courses, exams and resits, the Master's thesis\n"
+        "- **University:** semester contribution, semester ticket, library, re-registration, leave of absence\n"
+        "- **Life in Oldenburg:** student housing, rent, canteen prices\n\n"
+        "Ask me a question, or pick a topic from the list."
+    ),
+    "de": (
+        "Ich bin der Studierenden-Assistent für den M.Sc. Applied Economics and Data Science an der "
+        "Universität Oldenburg und antworte auf Grundlage der offiziellen Dokumente des Studiengangs. "
+        "Zum Beispiel:\n\n"
+        "- **Studiengang:** Bewerbungsfristen, Zulassungs- und Sprachvoraussetzungen, Pflichtkurse, "
+        "Prüfungen und Wiederholungen, Masterarbeit\n"
+        "- **Universität:** Semesterbeitrag, Semesterticket, Bibliothek, Rückmeldung, Beurlaubung\n"
+        "- **Leben in Oldenburg:** Wohnheime, Mieten, Mensapreise\n\n"
+        "Stellen Sie mir eine Frage oder wählen Sie ein Thema aus der Liste."
+    ),
+}
+_OPENERS = {
+    "greeting": {"en": "Hi! ", "de": "Hallo! "},
+    "how_are_you": {"en": "Doing well, thanks for asking! ", "de": "Danke der Nachfrage, gut! "},
+    "thanks": {"en": "You're welcome! If anything else comes up: ", "de": "Gern geschehen! Falls noch etwas ist: "},
+    "capability": {"en": "", "de": ""},
+}
+
+
+def _conversational_reply(message: str) -> str | None:
+    """A welcome for a greeting, thanks or "what can you do" message; None
+    for anything that is (also) a real question. Greetings and thanks only
+    count when they are the whole message: "Hi, when is the deadline?" goes
+    through the normal pipeline."""
+    text = re.sub(r"[!?.,:;]+", " ", message.casefold()).strip()
+    words = text.split()
+    if not words or len(words) > 12:
+        return None
+    kind = None
+    if _CAPABILITY.search(text):
+        kind = "capability"
+    elif len(words) <= 5 and _HOW_ARE_YOU.search(text):
+        kind = "how_are_you"
+    elif len(words) <= 4 and _THANKS.search(text):
+        kind = "thanks"
+    elif len(words) <= 3 and _GREETING.search(text):
+        kind = "greeting"
+    if kind is None:
+        return None
+    lang = "de" if _looks_german(message) or re.search(r"\b(hallo|danke|moin|servus|guten)\b", text) else "en"
+    return _OPENERS[kind][lang] + _WELCOME[lang]
+
+
+# A personal progress question ("Am I on track to graduate?") scored below
+# the relevance gate (0.02) while "What do I need to graduate?" scored 0.99:
+# the reranker does not see that one asks the other. Retrieval is run on the
+# general question; the model still answers the student's own wording.
+_GRADUATION_PROGRESS = re.compile(
+    r"\bon track\b|\b(i|to) graduate\b|\bfinish (my|the) (degree|studies|programme|program)\b|"
+    r"\bcomplete my (degree|studies)\b|\bleft to (do|complete|finish)\b"
+)
+_GRADUATION_QUERY = "What are the requirements to graduate: total ECTS, ECTS per component and the Master's thesis?"
+
+
+def _retrieval_query_for(question: str, default: str) -> str:
+    if "ects tracker progress" in question.casefold():
+        return default
+    if _GRADUATION_PROGRESS.search(question.casefold()):
+        return _GRADUATION_QUERY
+    return default
+
+
 _SINGLE_COURSE_LISTING = re.compile(r"^Matching courses \(([12]) in total")
 
 
@@ -1672,6 +1760,9 @@ def warm_up_retrieval() -> None:
         config = get_runtime_config()
         docs = hybrid_search("How many ECTS credits does the programme have?", k=config.retrieval_top_k)
         rerank("How many ECTS credits does the programme have?", docs, config.rerank_top_k)
+        # The contribution gate's classifier loads on first use as well, which
+        # made the first message after a restart wait about 9s even for "hi".
+        could_be_a_contribution("When is the application deadline?")
         logger.info("retrieval warmed up in %.1fs", time.monotonic() - started)
     except Exception:
         logger.warning("retrieval warm-up failed; the first question will load the models", exc_info=True)
@@ -1740,6 +1831,11 @@ def retrieve_node(state: RagState) -> dict:
     # the model deciding, via native tool-calling, whether one of these
     # structured lookups answers the question - see _route_with_tools.
     progress.report_stage(progress.UNDERSTANDING)
+    conversational = _conversational_reply(last_question)
+    if conversational:
+        return {"retrieved_docs": [], "direct_answer": conversational, "awaiting_semester_number": False}
+
+    query = _retrieval_query_for(last_question, query)
     retrieval = _SpeculativeRetrieval(query, filter_)
     tool_result = _route_with_tools(last_question)
     if tool_result is not None:

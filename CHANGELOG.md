@@ -7,6 +7,24 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.10] - 2026-10-11
+### Fixed
+- Greetings, thanks and "what can I ask you?" got the "the programme's
+  documents do not contain information on that" refusal; in production
+  that was the reply to "hi", "How are you?" and "what else can I ask".
+  They now get a short welcome in the user's language (English or German)
+  naming what the assistant covers, with no LLM call. Real questions that
+  start with a greeting ("Hi, when is the deadline?") are unaffected.
+- "Am I on track to graduate?" was refused: the reranker scored that
+  personal wording below the relevance gate (0.02) although "What do I
+  need to graduate?" scored 0.99. Such questions now search for the
+  graduation requirements, and the answer gives them (120 ECTS, the
+  components, the thesis) while saying it cannot see the student's own
+  progress. Golden cases from these production messages: 0/5 -> 5/5 on
+  both models.
+- The contribution classifier is loaded during the startup warm-up too;
+  the first message after a restart waited about 9s for it.
+
 ## [1.10.9] - 2026-10-11
 ### Fixed
 - The first question after a restart no longer waits for the models to
