@@ -1636,6 +1636,21 @@ class _SpeculativeRetrieval:
         return self._future.result()  # re-raises a worker exception here
 
 
+_SINGLE_COURSE_LISTING = re.compile(r"^Matching courses \(([12]) in total")
+
+
+def _is_single_course_lookup(tool_result: dict) -> bool:
+    """A catalogue answer about one or two specific courses (a course looked
+    up by name), as opposed to a listing (compulsory courses, a language, a
+    professor's courses, the curriculum), which documents would not add to."""
+    if tool_result.get("direct_answer"):
+        return False
+    docs = tool_result.get("retrieved_docs") or []
+    return len(docs) == 1 and docs[0].metadata.get("source_id") == "catalog" and bool(
+        _SINGLE_COURSE_LISTING.match(docs[0].page_content)
+    )
+
+
 def retrieve_node(state: RagState) -> dict:
     query = _build_retrieval_query(state["messages"])
     filter_ = {"source_id": state["source_id_filter"]} if state.get("source_id_filter") else None
@@ -1702,6 +1717,19 @@ def retrieve_node(state: RagState) -> dict:
     retrieval = _SpeculativeRetrieval(query, filter_)
     tool_result = _route_with_tools(last_question)
     if tool_result is not None:
+        if _is_single_course_lookup(tool_result):
+            # The catalogue holds a course's code, credits, lecturer and
+            # language, but not its class types, contact hours or exam
+            # details - those are in the module handbook. Answering from the
+            # catalogue alone gave "the documents do not state" for exactly
+            # those questions, so the search that is already running is
+            # kept and its relevant passages go in after the catalogue entry.
+            docs = [
+                doc
+                for doc in retrieval.result()
+                if doc.metadata.get("_rerank_score", 0.0) >= settings.retrieval_relevance_threshold
+            ]
+            return {**tool_result, "retrieved_docs": tool_result["retrieved_docs"] + docs}
         retrieval.cancel()
         return tool_result
 
@@ -1790,11 +1818,23 @@ def generate_node(state: RagState) -> dict:
     # (one entry per retrieved doc, no dedup - see _build_retrieval_diagnostics),
     # so a "[2]" the model writes is exactly retrieval[1] in the web UI, which
     # renders it as a clickable citation.
+    # Two matched chunks of the same section share its parent_content; the
+    # section is given once, and the later passage keeps only its own text,
+    # so the numbering still matches the retrieval list.
+    seen_parents: set[str] = set()
+
+    def _passage_text(doc) -> str:
+        parent = doc.metadata.get("parent_content")
+        if parent and parent not in seen_parents:
+            seen_parents.add(parent)
+            return parent
+        return doc.page_content
+
     context = "\n\n".join(
         f"[{number}] [source: {doc.metadata.get('source_id', 'unknown')}"
         + _expiry_label(doc.metadata.get("source_id"), expired_sources)
         + "] "
-        + (doc.metadata.get("parent_content") or doc.page_content)
+        + _passage_text(doc)
         for number, doc in enumerate(retrieved_docs, start=1)
     )
 

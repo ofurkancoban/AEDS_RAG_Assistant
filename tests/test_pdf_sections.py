@@ -54,3 +54,11 @@ def test_module_handbook_continuation_pages_keep_their_module():
     capacity = next(c for c in chunks if "Module Capacity" in c.page_content)
     assert capacity.page_content.startswith("[Module handbook | wir874 - Advanced Microeconomics]")
     assert all("........" not in c.page_content for c in chunks)
+
+
+def test_a_short_section_is_given_whole_whichever_chunk_matched():
+    body = "\n".join(f"Line {i} of the module entry with some words." for i in range(60))
+    pages = [(1, "Header\nwir874 - Advanced Microeconomics\n" + body + "\nLecture 2 SoSe 28 h Exercises 2 SoSe 28 h")]
+    chunks = chunk_pdf(_docs(pages), "Module handbook", chunk_size=800, chunk_overlap=100)
+    assert len(chunks) > 1
+    assert all("Exercises 2" in c.metadata["parent_content"] for c in chunks)

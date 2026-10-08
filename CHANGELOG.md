@@ -7,6 +7,24 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.6] - 2026-10-11
+### Fixed
+- Questions about one course's details (contact hours, class types, how
+  it is taught) were routed to the course catalogue, which does not hold
+  them, and answered "the documents do not state". When the catalogue
+  finds one or two courses by name, the module-handbook search that runs
+  alongside is now kept and its relevant passages are added after the
+  catalogue entry; listings (compulsory courses, a professor's courses,
+  the curriculum) are unchanged and do not wait for it. Attribution cases
+  on apodex: 3/8 -> 8/8, then 4/4 with the change below. These answers take
+  a few seconds longer (the search result is awaited).
+- A PDF section up to 5000 characters (every regulation section but the
+  module list, nearly every module entry) is now given to the model whole,
+  whichever of its chunks matched: Computational Intelligence II was
+  answered "lecture only" because its exercises were in the module's
+  second chunk. A section matched twice is given once. Kilo/dots on the
+  catalogue and handbook cases: 12/13 -> 13/13.
+
 ## [1.10.5] - 2026-10-11
 ### Changed
 - PDFs are chunked by section instead of by page, and every chunk starts

@@ -36,6 +36,12 @@ _APPENDIX = re.compile(r"^(?:Appendix|Anlage)\s+\d+\s*[a-z]?\s*:?\s*\S.{0,100}$"
 # "wir874 - Advanced Microeconomics": a module in the module handbook.
 _MODULE = re.compile(r"^[a-z]{2,4}\d{3,4}[a-z]?\s+-\s+\S.{2,110}$")
 _PAGE_NUMBER = re.compile(r"^\s*\d+\s*(?:/\s*\d+)?\s*$")
+# A section up to this long is handed to the model whole (as parent_content,
+# like the Markdown sections in ingestion/chunker.py) whichever of its chunks
+# matched: a module-handbook entry's class types sat in its second chunk,
+# which ranked below the first, and the answer said "lecture only". Covers
+# every regulation section but the module list and nearly every module.
+PARENT_MAX_CHARS = 5000
 # Table-of-contents lines end in dot leaders and a page number.
 _DOT_LEADER = re.compile(r"\.{4,}")
 
@@ -117,11 +123,11 @@ def chunk_pdf(
     chunks = []
     for section in split_sections(pages):
         header = f"[{title} | {section['heading']}]" if section["heading"] else f"[{title}]"
-        for piece in splitter.split_text(section["text"]):
-            chunks.append(
-                Document(
-                    page_content=f"{header}\n{piece}",
-                    metadata={**base_metadata, "page": section["page"], "section": section["heading"]},
-                )
-            )
+        pieces = splitter.split_text(section["text"])
+        whole = f"{header}\n{section['text']}"
+        for piece in pieces:
+            metadata = {**base_metadata, "page": section["page"], "section": section["heading"]}
+            if len(pieces) > 1 and len(whole) <= PARENT_MAX_CHARS:
+                metadata["parent_content"] = whole
+            chunks.append(Document(page_content=f"{header}\n{piece}", metadata=metadata))
     return chunks

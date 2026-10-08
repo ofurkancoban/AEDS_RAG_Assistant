@@ -199,7 +199,7 @@ def ingest_file(path: Path, source_id: str | None = None) -> int:
 
 # Bumped when the way a file type is chunked changes, so the startup scan
 # re-ingests files whose bytes did not change (the recorded hash includes it).
-_CHUNKING_VERSION = {".pdf": "pdf-sections-v1"}
+_CHUNKING_VERSION = {".pdf": "pdf-sections-v2"}
 
 
 def _file_hash(path: Path) -> str:
