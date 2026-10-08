@@ -913,5 +913,87 @@
         "AEDS_exam_regulations_2026_changes"
       ]
     ]
+  },
+  {
+    "id": "handbook-wir874-contact-hours",
+    "question": "How many contact hours does the Advanced Microeconomics module have?",
+    "expected_contains": [
+      "56"
+    ],
+    "expected_absent": [
+      {
+        "regex": "(does not|doesn't|do not) (state|contain|specify|include|provide|mention)|not (stated|specified|available)|cannot answer"
+      }
+    ],
+    "notes": "Attribution: the fact is on a module-handbook continuation page that does not name the module, so a chunk without a section header cannot be tied to it. A refusal ('the context does not state the class types, e.g. lecture, exercise') used to pass on the words it lists, so refusals are forbidden.",
+    "expected_source_ids": [
+      [
+        "Module_handbook_Applied_Economics_and_Data_Science_Master_Studiengang_SoSe2026_en_GB(3)",
+        "catalog"
+      ]
+    ]
+  },
+  {
+    "id": "handbook-inf536-class-types",
+    "question": "What kinds of classes make up the Computational Intelligence II module?",
+    "expected_contains": [
+      "lecture",
+      "exercise"
+    ],
+    "expected_absent": [
+      {
+        "regex": "(does not|doesn't|do not) (state|contain|specify|include|provide|mention)|not (stated|specified|available)|cannot answer"
+      }
+    ],
+    "notes": "Attribution: the fact is on a module-handbook continuation page that does not name the module, so a chunk without a section header cannot be tied to it. A refusal ('the context does not state the class types, e.g. lecture, exercise') used to pass on the words it lists, so refusals are forbidden.",
+    "expected_source_ids": [
+      [
+        "Module_handbook_Applied_Economics_and_Data_Science_Master_Studiengang_SoSe2026_en_GB(3)",
+        "catalog"
+      ]
+    ]
+  },
+  {
+    "id": "handbook-wir894-teaching-format",
+    "question": "How is the Econometrics of Policy Evaluation module taught: lecture, seminar or exercises?",
+    "expected_contains": [
+      "lecture"
+    ],
+    "expected_absent": [
+      {
+        "regex": "(does not|doesn't|do not) (state|contain|specify|include|provide|mention)|not (stated|specified|available)|cannot answer"
+      }
+    ],
+    "notes": "Attribution: the fact is on a module-handbook continuation page that does not name the module, so a chunk without a section header cannot be tied to it. A refusal ('the context does not state the class types, e.g. lecture, exercise') used to pass on the words it lists, so refusals are forbidden.",
+    "expected_source_ids": [
+      [
+        "Module_handbook_Applied_Economics_and_Data_Science_Master_Studiengang_SoSe2026_en_GB(3)",
+        "catalog"
+      ]
+    ]
+  },
+  {
+    "id": "regulations-seminar-paper-length",
+    "question": "How long should a seminar paper be?",
+    "expected_contains": [
+      [
+        "30,000",
+        "30.000",
+        "30 000"
+      ],
+      [
+        "45,000",
+        "45.000",
+        "45 000"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "Attribution: the regulations' seminar-paper passage is cut so that it does not say it is about seminar papers. Naming the thesis length as a contrast is fine; the case checks the seminar figures are given.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
   }
 ]

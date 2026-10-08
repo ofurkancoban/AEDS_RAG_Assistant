@@ -7,6 +7,28 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.5] - 2026-10-11
+### Changed
+- PDFs are chunked by section instead of by page, and every chunk starts
+  with the document and section it belongs to, e.g. "[Examination
+  regulations 2026 | Section 5 Examination components]" or "[Module
+  handbook | wir874 - Advanced Microeconomics]". Chunks no longer cross a
+  section; the running header, page numbers and table-of-contents lines
+  repeated on every page are dropped. Before, a passage could start
+  mid-paragraph with nothing saying what it described (the seminar-paper
+  length was given as the thesis length), and module-handbook pages after
+  the first never named their module. Document titles come from a new
+  "title" field in sources.json. PDFs re-index once on the first restart
+  (the recorded file hash carries a chunking version).
+- Measured: context recall over the golden set 52/58 -> 53/58 with no
+  source-hit change; answers on the 21 PDF-based cases unchanged on both
+  models. New tests/eval_retrieval.py measures retrieval with no LLM calls.
+### Found
+- Questions about one course's details (contact hours, class types) are
+  routed to the course catalogue, which does not hold them, so the module
+  handbook is never searched and the answer is "not stated". Four new
+  golden cases cover this; they fail until it is fixed.
+
 ## [1.10.4] - 2026-10-11
 ### Fixed
 - "How long should my Master's thesis be?" was answered with the length

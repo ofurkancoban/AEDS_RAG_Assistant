@@ -37,11 +37,14 @@ def _load_source_manifest() -> dict:
     parsed = {}
     for filename, value in raw.items():
         if isinstance(value, str):
-            parsed[filename] = {"url": value, "valid_until": None}
+            parsed[filename] = {"url": value, "valid_until": None, "title": None}
         else:
             valid_until = value.get("valid_until")
             parsed[filename] = {
                 "url": value.get("url"),
+                # How the document is named in each chunk's context header
+                # (see ingestion/pdf_sections.py).
+                "title": value.get("title"),
                 "valid_until": (
                     datetime.strptime(valid_until, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                     if valid_until
@@ -117,11 +120,23 @@ def _chunk_markdown(documents: list[Document]) -> list[Document]:
     return chunks
 
 
+def document_title(filename: str) -> str:
+    """The document's name for chunk context headers: sources.json's
+    "title", or one derived from the file name."""
+    title = _load_source_manifest().get(filename, {}).get("title")
+    if title:
+        return title
+    stem = Path(filename).stem
+    words = " ".join(stem.replace("_", " ").replace("-", " ").split())
+    return words[:1].upper() + words[1:]
+
+
 def chunk_documents(
     documents: list[Document],
     source_id: str,
     source_url: str | None = None,
     is_markdown: bool = False,
+    pdf_title: str | None = None,
 ) -> list[Document]:
     # Table documents (from load_pdf's pdfplumber pass) are kept whole - splitting
     # a markdown table mid-row would scramble which value belongs to which
@@ -129,7 +144,16 @@ def chunk_documents(
     table_docs = [doc for doc in documents if doc.metadata.get("is_table")]
     text_docs = [doc for doc in documents if not doc.metadata.get("is_table")]
 
-    if is_markdown:
+    if pdf_title is not None:
+        from ingestion.pdf_sections import chunk_pdf
+
+        # Tables carry the document title too; which section a table sits in
+        # is not tracked, as a page can hold the end of one module and the
+        # start of the next.
+        for table in table_docs:
+            table.page_content = f"[{pdf_title}]\n{table.page_content}"
+        chunks = chunk_pdf(text_docs, pdf_title, settings.chunk_size, settings.chunk_overlap) + table_docs
+    elif is_markdown:
         chunks = _chunk_markdown(text_docs) + table_docs
     else:
         splitter = RecursiveCharacterTextSplitter(
@@ -156,7 +180,14 @@ def ingest_file(path: Path, source_id: str | None = None) -> int:
     source_id = source_id or path.stem
     source_url = _load_source_urls().get(path.name)
     documents = load_document(path)
-    chunks = chunk_documents(documents, source_id, source_url, is_markdown=path.suffix.lower() == ".md")
+    suffix = path.suffix.lower()
+    chunks = chunk_documents(
+        documents,
+        source_id,
+        source_url,
+        is_markdown=suffix == ".md",
+        pdf_title=document_title(path.name) if suffix == ".pdf" else None,
+    )
 
     texts = [chunk.page_content for chunk in chunks]
     metadatas = [chunk.metadata for chunk in chunks]
@@ -166,8 +197,15 @@ def ingest_file(path: Path, source_id: str | None = None) -> int:
     return len(chunks)
 
 
+# Bumped when the way a file type is chunked changes, so the startup scan
+# re-ingests files whose bytes did not change (the recorded hash includes it).
+_CHUNKING_VERSION = {".pdf": "pdf-sections-v1"}
+
+
 def _file_hash(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    version = _CHUNKING_VERSION.get(path.suffix.lower())
+    return f"{digest}:{version}" if version else digest
 
 
 def ingest_and_record_file(path: Path, session) -> int | None:
