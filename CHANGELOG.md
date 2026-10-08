@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.7] - 2026-10-11
+### Fixed
+- A question about one module's teaching format ("What kinds of classes
+  make up Computational Intelligence II?") was sometimes routed to the
+  full curriculum listing, which has no class types, so the module's
+  handbook entry was never added and production answered "not stated".
+  The router now treats a question about one named module as a course
+  lookup (3/3 on each probe question; curriculum and compulsory-course
+  questions unchanged).
+
 ## [1.10.6] - 2026-10-11
 ### Fixed
 - Questions about one course's details (contact hours, class types, how

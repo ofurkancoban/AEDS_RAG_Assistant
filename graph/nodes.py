@@ -785,7 +785,10 @@ def get_full_curriculum() -> str:
     about one specific attribute (professor, compulsory, language) - for
     those, use search_course_catalog instead. This listing has NO lecturer
     names, so it cannot answer who teaches anything: for "which professors
-    teach here" call search_course_catalog with no arguments. Do NOT use this tool for any
+    teach here" call search_course_catalog with no arguments. It is also not
+    for a question about ONE named module (how it is taught, its class types
+    or contact hours): look that module up with search_course_catalog's
+    course_name_or_abbreviation, which brings in its handbook entry. Do NOT use this tool for any
     question about a component/category's or the programme's total/target
     ECTS credits, or how ECTS are "distributed"/"broken down"/"split" across
     components or semesters - the courses actually offered in a category do
@@ -846,6 +849,11 @@ _ROUTER_SYSTEM_PROMPT = (
     '- "What are the application deadlines?" / "...for EU and German applicants?" -> '
     'lookup_application_deadline(entry_qualification="all")\n'
     '- "What courses are in the curriculum?" -> get_full_curriculum()\n'
+    # A question about one module's teaching format went to the curriculum
+    # listing, which has no class types, so its handbook entry was never added.
+    '- "How is Development Economics taught?" / "How many contact hours does '
+    'Applied Econometrics have?" -> search_course_catalog(course_name_or_abbreviation='
+    '"Development Economics") - one named module, not the curriculum listing\n'
     '- "What are the language requirements?" / "Which language certificate do I need?" '
     "-> no tool (general document search) - admission language requirements are "
     "not a course-language question\n"
