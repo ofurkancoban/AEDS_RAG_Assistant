@@ -35,6 +35,11 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     init_db()
     scan_and_ingest_documents_folder()
+    # Before the app reports healthy, so the first question after a deploy
+    # does not pay for loading the models (see warm_up_retrieval).
+    from graph.nodes import warm_up_retrieval
+
+    warm_up_retrieval()
     start_background_polling()
     yield
 

@@ -7,6 +7,14 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.9] - 2026-10-11
+### Fixed
+- The first question after a restart no longer waits for the models to
+  load: the embedding model, BM25 index and cross-encoder are loaded with
+  a warm-up search during startup, before the app reports healthy, so a
+  deploy's health check waits instead of a student. The first question
+  after a deploy took 33s (23.5s of it retrieval) against about 8s warm.
+
 ## [1.10.8] - 2026-10-11
 ### Changed
 - Faster reranking: the cross-encoder now scores hybrid search's best 10

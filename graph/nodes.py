@@ -1659,6 +1659,24 @@ def _is_single_course_lookup(tool_result: dict) -> bool:
     )
 
 
+def warm_up_retrieval() -> None:
+    """Load what the first question would otherwise wait for: the embedding
+    model, the BM25 index and the cross-encoder. Run at startup, before the
+    app reports healthy - after a deploy the first student's question took
+    33s, 23.5s of it in retrieval, against about 5s warm. Never raises: a
+    slow first answer is better than an app that does not start."""
+    started = time.monotonic()
+    try:
+        from runtime_config import get_runtime_config
+
+        config = get_runtime_config()
+        docs = hybrid_search("How many ECTS credits does the programme have?", k=config.retrieval_top_k)
+        rerank("How many ECTS credits does the programme have?", docs, config.rerank_top_k)
+        logger.info("retrieval warmed up in %.1fs", time.monotonic() - started)
+    except Exception:
+        logger.warning("retrieval warm-up failed; the first question will load the models", exc_info=True)
+
+
 def retrieve_node(state: RagState) -> dict:
     query = _build_retrieval_query(state["messages"])
     filter_ = {"source_id": state["source_id_filter"]} if state.get("source_id_filter") else None
