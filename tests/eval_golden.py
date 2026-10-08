@@ -87,7 +87,11 @@ def _normalize_for_matching(text: str) -> str:
 def _matches(term, haystack: str) -> bool:
     """A term is either a string, or a list of interchangeable alternatives
     (any one of which satisfies it) - used where several wordings are equally
-    correct, e.g. 'twice' vs 'two times'."""
+    correct, e.g. 'twice' vs 'two times' - or {"regex": pattern}, for a fact
+    that a plain substring cannot pin down: forbidding "20" also forbade
+    "120 ECTS" and every correct mention of another subject's 20 credits."""
+    if isinstance(term, dict):
+        return re.search(term["regex"], haystack) is not None
     if isinstance(term, list):
         return any(str(option).lower() in haystack for option in term)
     return str(term).lower() in haystack

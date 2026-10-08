@@ -64,3 +64,11 @@ def test_contribution_flagging_is_checked_separately_from_the_answer():
     assert check_case(flagged, {"expected_contribution": "new_info"}) == []
     assert check_case(flagged, {"expected_contribution": None}) != []
     assert check_case(_result(), {"expected_contribution": None}) == []
+
+
+def test_a_regex_term_pins_a_fact_a_substring_cannot():
+    case = {"expected_absent": [{"regex": r"econometrics[^.\n]{0,40}\b(10|20)\b"}]}
+    fine = {"answer": "Econometrics: 5 ECTS. Economics: 20 ECTS. The programme has 120 ECTS.", "retrieval": []}
+    wrong = {"answer": "Econometrics: at least 20 ECTS.", "retrieval": []}
+    assert check_case(fine, case) == []
+    assert check_case(wrong, case) != []

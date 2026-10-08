@@ -25,12 +25,13 @@
       "30"
     ],
     "expected_absent": [],
-    "notes": "Fixed fact from semester_planning_rules.md / catalog.",
+    "notes": "Fixed fact from the 2026 regulations, semester_planning_rules.md and the course catalogue (the router may answer from the catalogue, which states 30 ECTS for the thesis module).",
     "expected_source_ids": [
       [
         "MPO_AEDS_2026_EN",
         "semester_planning_rules",
-        "AEDS_exam_regulations_2026_changes"
+        "AEDS_exam_regulations_2026_changes",
+        "catalog"
       ]
     ]
   },
@@ -290,10 +291,14 @@
       "5"
     ],
     "expected_absent": [
-      "10",
-      "20"
+      {
+        "regex": "econometrics[^.\\n]{0,40}\\b(10|20)\\b"
+      },
+      {
+        "regex": "\\b(10|20)\\s*(ects\\s*)?(credits?\\s*)?(credit points\\s*)?in\\s+econometrics"
+      }
     ],
-    "notes": "The uniquely distinct value (5) in the four-subject prerequisites list - a strict test that no other subject's number (10 or 20) leaked in instead.",
+    "notes": "The uniquely distinct value (5) in the four-subject prerequisites list. Fails only if 10 or 20 is attributed to Econometrics; listing the other subjects' correct figures (Economics 20 ECTS) is fine.",
     "expected_source_ids": [
       [
         "AEDS_website_how_to_apply",

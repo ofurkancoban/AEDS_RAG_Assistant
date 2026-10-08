@@ -7,6 +7,22 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.4] - 2026-10-11
+### Fixed
+- "How long should my Master's thesis be?" was answered with the length
+  of a seminar paper (30,000-45,000 characters, about 15-25 pages). The
+  regulations' passage on seminar papers is cut so that it does not say
+  what it is about, and the 2026 changes note listed the seminar-paper
+  figure prominently. The thesis FAQ and the changes note now state the
+  thesis length (at most 200,000 characters, about 80 pages) next to a
+  plain note that the shorter figure is for seminar papers. Found by the
+  weekly golden-set run on 2026-10-11 (61/64).
+- Golden set: a case that forbade "10" and "20" anywhere in the answer
+  also failed correct answers listing other subjects' credits (and any
+  "120 ECTS"); terms can now be regular expressions, and the case only
+  fails when 10 or 20 is attributed to Econometrics. The thesis-credits
+  case accepts the course catalogue as a source, as it states 30 ECTS.
+
 ## [1.10.3] - 2026-10-11
 ### Fixed
 - An exhausted OpenRouter quota no longer takes the site down. When the
