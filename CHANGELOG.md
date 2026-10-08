@@ -22,8 +22,10 @@ to keep in sync).
   components, the thesis) while saying it cannot see the student's own
   progress. Golden cases from these production messages: 0/5 -> 5/5 on
   both models.
-- The contribution classifier is loaded during the startup warm-up too;
-  the first message after a restart waited about 9s for it.
+- (Reverted the same day) Loading the contribution classifier during the
+  startup warm-up took the process to 7.8 GB, past pm2's 4.5 GB ceiling,
+  and production restarted in a loop for a few minutes; the warm-up loads
+  only the retrieval models again.
 
 ## [1.10.9] - 2026-10-11
 ### Fixed

@@ -1760,9 +1760,9 @@ def warm_up_retrieval() -> None:
         config = get_runtime_config()
         docs = hybrid_search("How many ECTS credits does the programme have?", k=config.retrieval_top_k)
         rerank("How many ECTS credits does the programme have?", docs, config.rerank_top_k)
-        # The contribution gate's classifier loads on first use as well, which
-        # made the first message after a restart wait about 9s even for "hi".
-        could_be_a_contribution("When is the application deadline?")
+        # Not the contribution gate's classifier: loading it here took the
+        # process to 7.8 GB during startup, past pm2's 4.5 GB ceiling, and
+        # production restarted in a loop (2026-10-11).
         logger.info("retrieval warmed up in %.1fs", time.monotonic() - started)
     except Exception:
         logger.warning("retrieval warm-up failed; the first question will load the models", exc_info=True)
