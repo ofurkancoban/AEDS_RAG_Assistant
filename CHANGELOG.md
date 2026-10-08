@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.8] - 2026-10-11
+### Changed
+- Faster reranking: the cross-encoder now scores hybrid search's best 10
+  candidates (it returns 15) and reads each up to 256 tokens. On the VPS
+  that took the step from 9.0s to 4.5s median with the same golden-set
+  context recall (53/58), source hits (49/50) and off-topic scores. Two
+  smaller rerankers were measured and rejected: MiniLM-L6 (1.9s, but
+  51/58 and 47/50) and mxbai-xsmall (slower on this CPU). Settings:
+  rerank_max_candidates, reranker_max_length.
+
 ## [1.10.7] - 2026-10-11
 ### Fixed
 - A question about one module's teaching format ("What kinds of classes

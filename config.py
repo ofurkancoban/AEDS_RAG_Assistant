@@ -211,6 +211,15 @@ class Settings(BaseSettings):
     # fine-grained distinctions (e.g. which specific exam rule or ECTS figure
     # among several similar-looking chunks actually answers the question).
     reranker_model: str = "BAAI/bge-reranker-base"
+    # The cross-encoder is the slowest step of a turn on the VPS CPU. Scoring
+    # only hybrid search's best 10 candidates (it returns 15) and reading
+    # each up to 256 tokens took it from 9.0s to 4.5s median there, with the
+    # same golden-set context recall (53/58) and source hits (49/50) and the
+    # same off-topic scores. Measured 2026-10-11 against no limit, 10
+    # candidates alone (5.9s), 256 tokens alone (6.3s, 52/58) and two small
+    # models (MiniLM-L6 1.9s but 51/58 and 47/50; mxbai-xsmall slower).
+    rerank_max_candidates: int = 10
+    reranker_max_length: int = 256
     # Minimum cross-encoder score the best retrieved chunk must reach before
     # the pipeline will answer from documents at all. Below it, retrieval is
     # treated as having found nothing relevant.

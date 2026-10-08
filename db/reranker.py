@@ -26,7 +26,8 @@ def get_reranker() -> CrossEncoder:
     # Loaded once and kept resident (like the Ollama models via keep_alive) -
     # this is a ~560M param cross-encoder, reloading it per request would add
     # several seconds of latency to every query.
-    return CrossEncoder(settings.reranker_model, device=_select_device())
+    kwargs = {"max_length": settings.reranker_max_length} if settings.reranker_max_length > 0 else {}
+    return CrossEncoder(settings.reranker_model, device=_select_device(), **kwargs)
 
 
 def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
@@ -39,6 +40,10 @@ def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
     topically-similar candidates that hybrid_search's pool still contains."""
     if not docs:
         return docs
+    if settings.rerank_max_candidates > 0:
+        # hybrid_search returns its pool best-first (fused rank), so the cut
+        # keeps its strongest candidates; see config.rerank_max_candidates.
+        docs = docs[: settings.rerank_max_candidates]
 
     pairs = [(query, doc.page_content) for doc in docs]
     scores = get_reranker().predict(pairs)
