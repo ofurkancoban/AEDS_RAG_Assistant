@@ -45,7 +45,7 @@ def test_structured_answer_is_translated_for_a_german_question(monkeypatch):
         def invoke(self, _messages):
             return _Response()
 
-    monkeypatch.setattr(nodes, "_with_resilience", lambda runnable: _Router())
+    monkeypatch.setattr(nodes, "_with_resilience", lambda runnable, **kw: _Router())
     monkeypatch.setattr(nodes, "_with_fallback", lambda runnable, **kw: runnable)
     monkeypatch.setattr(nodes, "get_classifier_llm", lambda: type("L", (), {"bind_tools": lambda self, tools: self})())
 

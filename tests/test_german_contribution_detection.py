@@ -57,7 +57,7 @@ def test_the_extraction_prompt_still_sees_the_original_german_text(monkeypatch):
             captured_prompts.append(prompt)
             return _FakeResponse()
 
-    monkeypatch.setattr(nodes, "_with_resilience", lambda llm: llm)
+    monkeypatch.setattr(nodes, "_with_resilience", lambda llm, **kw: llm)
     monkeypatch.setattr(nodes, "_with_fallback", lambda llm, tools=None: llm)
     monkeypatch.setattr(nodes, "get_classifier_llm", lambda: _FakeLLM())
 

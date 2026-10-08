@@ -40,7 +40,7 @@ def _prompt_for(monkeypatch, docs):
             return AIMessage(content="answer")
 
     monkeypatch.setattr(nodes, "get_llm", lambda: Recording())
-    monkeypatch.setattr(nodes, "_with_resilience", lambda llm: llm)
+    monkeypatch.setattr(nodes, "_with_resilience", lambda llm, **kw: llm)
     monkeypatch.setattr(nodes, "get_expired_source_ids", lambda: {})
 
     generate_node({"retrieved_docs": docs, "messages": [HumanMessage(content="a question")]})

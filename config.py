@@ -17,11 +17,13 @@ def daily_budget_for_provider(provider: str, explicit: int) -> int:
     is set to something >= 0. The observed free-tier cap for
     gemini-3.1-flash-lite was 500/day, so 450 leaves margin for the retries
     _with_resilience makes (which also spend quota). openrouter's ":free"
-    models are capped at 50/day with no purchased credits (see config.py's
-    openrouter_api_key field) - 45 leaves the same retry margin; if the
-    account has bought credits and is really on the 1000/day tier, set
-    DAILY_LLM_CALL_BUDGET explicitly rather than relying on this
-    conservative default. Local models are unmetered - their real
+    models are capped per account at 50/day, or 1000/day once $10 of credits
+    have ever been bought. This account is on the 1000 tier (the 429 of
+    2026-10-10 reported X-RateLimit-Limit: 1000), so 900; the old default of
+    45 assumed the 50 tier and moved production to Gemini after about 15
+    questions a day. The counter only sees this server's own calls, so
+    graph/nodes.py's _with_resilience also reacts to OpenRouter's own
+    "per day" 429 (llm_budget.mark_exhausted). Local models are unmetered - their real
     constraint is CPU throughput, which the per-client rate limiter and the
     hardware already bound.
     """
@@ -30,7 +32,7 @@ def daily_budget_for_provider(provider: str, explicit: int) -> int:
     if provider == "gemini":
         return 450
     if provider == "openrouter":
-        return 45
+        return 900
     return 0
 
 
@@ -111,6 +113,20 @@ class Settings(BaseSettings):
     # train on prompts (provider.data_collection = "deny"). Checked working
     # with both models above on 2026-10-10.
     openrouter_deny_data_collection: bool = True
+    # Where OpenRouter-style requests go. Production always uses OpenRouter.
+    # Local evaluation can point this at another OpenAI-compatible gateway
+    # with the same model ids (tests/eval_golden.py --gateway kilo) so that
+    # test runs do not spend the free-model daily quota production lives on:
+    # OpenRouter counts that quota per account, so a second key would not
+    # help (2026-10-10 a day of evals used all 1000 requests and the live
+    # site stopped answering).
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Bearer token for a non-OpenRouter openrouter_base_url. The OpenRouter
+    # key is never sent to any other host; empty means anonymous.
+    openrouter_gateway_api_key: str = ""
+    # Client-side pacing for a gateway with an hourly cap (Kilo's free tier:
+    # 200 requests per hour per IP). 0 means no pacing.
+    openrouter_requests_per_hour: int = 0
     # Model for the tool-calling router only (which structured lookup, if
     # any, answers a question). Empty means openrouter_model. The router
     # decides what the answer is built from, so a wrong call is costly, and

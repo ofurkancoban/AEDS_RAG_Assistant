@@ -754,5 +754,159 @@
         "MPO_AEDS_2026_EN"
       ]
     ]
+  },
+  {
+    "id": "precedence-thesis-grading-deadline",
+    "question": "How soon after I hand in my Master's thesis do the examiners have to grade it?",
+    "expected_contains": [
+      [
+        "six weeks",
+        "6 weeks"
+      ]
+    ],
+    "expected_absent": [
+      "eight weeks",
+      "8 weeks"
+    ],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-colloquium",
+    "question": "Is there an oral exam or colloquium after the Master's thesis?",
+    "expected_contains": [
+      "colloquium",
+      [
+        "compulsory",
+        "mandatory",
+        "required"
+      ]
+    ],
+    "expected_absent": [
+      "some programmes",
+      "not all"
+    ],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-writing-period",
+    "question": "How much time do I have to write the Master's thesis?",
+    "expected_contains": [
+      [
+        "five months",
+        "5 months"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-credit-points",
+    "question": "How many credit points do I get for the Master's thesis?",
+    "expected_contains": [
+      "30"
+    ],
+    "expected_absent": [
+      "most Master's programmes",
+      "varies by programme"
+    ],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes",
+        "catalog"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-grade-disagreement",
+    "question": "How is my thesis grade calculated if the two examiners give different grades?",
+    "expected_contains": [
+      "2.0"
+    ],
+    "expected_absent": [
+      "weighted"
+    ],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-length",
+    "question": "How long should my Master's thesis be?",
+    "expected_contains": [
+      [
+        "200,000",
+        "200.000",
+        "80 pages"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-failed-thesis",
+    "question": "What happens if my Master's thesis is graded as a fail?",
+    "expected_contains": [
+      "once",
+      [
+        "new topic",
+        "different topic"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
+  },
+  {
+    "id": "precedence-thesis-extension",
+    "question": "Can I get more time for my Master's thesis?",
+    "expected_contains": [
+      [
+        "four weeks",
+        "4 weeks"
+      ]
+    ],
+    "expected_absent": [],
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "expected_source_ids": [
+      [
+        "MPO_AEDS_2026_EN",
+        "AEDS_exam_regulations_2026_changes"
+      ]
+    ]
   }
 ]

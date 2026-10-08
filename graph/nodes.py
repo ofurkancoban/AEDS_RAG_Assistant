@@ -3,6 +3,7 @@ import logging
 import random
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from functools import lru_cache
@@ -233,6 +234,32 @@ def _openrouter_extra_body(purpose: str) -> dict:
     return body
 
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+@lru_cache(maxsize=1)
+def _gateway_rate_limiter():
+    """One limiter for every client in the process, so the hourly cap holds
+    across the router, generation and translation calls together."""
+    if settings.openrouter_requests_per_hour <= 0:
+        return None
+    from langchain_core.rate_limiters import InMemoryRateLimiter
+
+    return InMemoryRateLimiter(
+        requests_per_second=settings.openrouter_requests_per_hour / 3600,
+        check_every_n_seconds=0.5,
+        max_bucket_size=1,
+    )
+
+
+def _gateway_api_key() -> str:
+    """The OpenRouter key only ever goes to OpenRouter; any other gateway
+    gets its own key, or none."""
+    if settings.openrouter_base_url.rstrip("/") == OPENROUTER_BASE_URL:
+        return settings.openrouter_api_key
+    return settings.openrouter_gateway_api_key or "anonymous"
+
+
 @lru_cache(maxsize=8)
 def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> BaseChatModel:
     # OpenRouter is OpenAI-API-compatible, so ChatOpenAI pointed at its base
@@ -241,8 +268,9 @@ def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> 
 
     return ChatOpenAI(
         model=model_name,
-        api_key=settings.openrouter_api_key,
-        base_url="https://openrouter.ai/api/v1",
+        api_key=_gateway_api_key(),
+        base_url=settings.openrouter_base_url,
+        rate_limiter=_gateway_rate_limiter(),
         temperature=0,
         extra_body=_openrouter_extra_body(purpose),
         # openai's client otherwise defaults to a 600s timeout - fine for a
@@ -310,7 +338,27 @@ def _with_fallback(
     return runnable.with_fallbacks([fallback])
 
 
-def _with_resilience(runnable):
+_RETRY_ATTEMPTS = 6
+
+
+def _retry_delay(attempt: int) -> float:
+    """Exponential backoff with jitter: about 20s, 40s, 80s, then 90s."""
+    return min(90.0, 20.0 * 2 ** (attempt - 1)) + random.uniform(0, 5)
+
+
+def _is_daily_quota_error(exc: Exception) -> bool:
+    """A 429 that says the provider's DAILY allowance is spent (OpenRouter:
+    "free-models-per-day"; Gemini: "...PerDay..."), as opposed to a
+    per-minute limit that clears by waiting. Retrying the daily kind only
+    makes the user wait: it will not clear before the next UTC day."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status != 429:
+        return False
+    text = str(exc).lower()
+    return "per-day" in text or "per day" in text or "perday" in text
+
+
+def _with_resilience(runnable, rebuild=None):
     """Wraps a metered-provider Runnable with a much longer retry backoff
     than the library's own hardcoded policy (langchain_google_genai's
     _chat_with_retry is hardcoded to only 2 attempts with a max 60s wait -
@@ -326,18 +374,44 @@ def _with_resilience(runnable):
     Checked against the effective provider (see _with_fallback's docstring)
     rather than the raw configured one, so a call diverted to gemini by the
     daily-budget fallback gets gemini's retry policy for that call, not
-    whatever the nominally-configured provider's would have been."""
+    whatever the nominally-configured provider's would have been.
+
+    A daily-quota 429 is not retried: the provider is marked exhausted for
+    the rest of the UTC day (llm_budget.mark_exhausted), and if a fallback
+    provider takes over, the same call is made once more on a client from
+    `rebuild` - which re-reads the effective provider, so it returns the
+    fallback provider's model. Call sites pass the expression that built
+    `runnable` as `rebuild`.
+    """
+    from langchain_core.runnables import RunnableLambda
+
     from llm_budget import effective_provider
 
-    if effective_provider() not in ("gemini", "openrouter"):
+    provider = effective_provider()
+    if provider not in ("gemini", "openrouter"):
         return runnable
-    from langchain_core.runnables.retry import ExponentialJitterParams
 
-    return runnable.with_retry(
-        retry_if_exception_type=(Exception,),
-        stop_after_attempt=6,
-        exponential_jitter_params=ExponentialJitterParams(initial=20, max=90, exp_base=2, jitter=5),
-    )
+    def call(input, config):
+        current, switched, attempt = runnable, False, 0
+        while True:
+            try:
+                return current.invoke(input, config)
+            except Exception as exc:
+                if _is_daily_quota_error(exc):
+                    import llm_budget
+
+                    fell_back = llm_budget.mark_exhausted(provider, detail=str(exc)[:120])
+                    if fell_back and rebuild is not None and not switched:
+                        current, switched, attempt = rebuild(), True, 0
+                        continue
+                    raise
+                attempt += 1
+                if attempt >= _RETRY_ATTEMPTS:
+                    raise
+                logger.warning("LLM call failed (attempt %d of %d), retrying", attempt, _RETRY_ATTEMPTS, exc_info=True)
+                time.sleep(_retry_delay(attempt))
+
+    return RunnableLambda(call)
 
 
 # num_ctx is set explicitly because Ollama's default context window (2048-4096)
@@ -816,10 +890,11 @@ def _route_with_tools(question: str) -> dict | None:
     expressed via native tool-calling instead of string-matching. Returns None
     (falls through to generic retrieval) if the model doesn't call a tool, or
     if the tool it calls turns up nothing useful."""
-    router_llm, router_model = get_router_llm()
-    llm_with_tools = _with_resilience(
-        _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
-    )
+    def build_router():
+        router_llm, router_model = get_router_llm()
+        return _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
+
+    llm_with_tools = _with_resilience(build_router(), rebuild=build_router)
     try:
         response = llm_with_tools.invoke(
             [SystemMessage(content=_ROUTER_SYSTEM_PROMPT), HumanMessage(content=question)]
@@ -1444,7 +1519,9 @@ def _translate_to_english(text: str) -> str:
         f"{text}"
     )
     try:
-        translated = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content
+        translated = _with_resilience(
+            _with_fallback(get_classifier_llm()), rebuild=lambda: _with_fallback(get_classifier_llm())
+        ).invoke(prompt).content
         translated = translated.strip().strip('"')
         return translated or text
     except Exception:
@@ -1467,7 +1544,9 @@ def _translate_answer_to_german(text: str) -> str:
         f"{text}"
     )
     try:
-        translated = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content.strip()
+        translated = _with_resilience(
+            _with_fallback(get_classifier_llm()), rebuild=lambda: _with_fallback(get_classifier_llm())
+        ).invoke(prompt).content.strip()
         # Long dashes are not used anywhere in the interface's copy.
         translated = re.sub(r"\s*[\u2013\u2014]\s*", " - ", translated)
         return translated or text
@@ -1819,7 +1898,10 @@ def generate_node(state: RagState) -> dict:
     # no override has been saved.
     system_prompt = runtime.system_prompt_override or SYSTEM_PROMPT
 
-    llm = _with_resilience(_with_fallback(get_llm(), purpose="generation"))
+    llm = _with_resilience(
+        _with_fallback(get_llm(), purpose="generation"),
+        rebuild=lambda: _with_fallback(get_llm(), purpose="generation"),
+    )
     response = llm.invoke(
         [SystemMessage(content=system_prompt), *prior_messages, context_message, state["messages"][-1]]
     )
@@ -1974,7 +2056,9 @@ def detect_contribution_node(state: RagState) -> dict:
     # This extraction handles the fence, and was measured working where the
     # wrapper was not.
     try:
-        raw = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content
+        raw = _with_resilience(
+            _with_fallback(get_classifier_llm()), rebuild=lambda: _with_fallback(get_classifier_llm())
+        ).invoke(prompt).content
         match = re.search(r"\{.*\}", raw, re.DOTALL)
         parsed = json.loads(match.group(0) if match else raw)
     except Exception:

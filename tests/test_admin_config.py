@@ -160,7 +160,7 @@ def test_effective_provider_reflects_an_active_budget_fallback(client, admin_hea
 
     session = SessionLocal()
     try:
-        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=900))
         session.commit()
     finally:
         session.close()
@@ -188,7 +188,7 @@ def test_budget_fallback_events_endpoint_reports_recorded_switches(client, admin
     )
     session = SessionLocal()
     try:
-        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=900))
         session.commit()
     finally:
         session.close()
@@ -201,7 +201,7 @@ def test_budget_fallback_events_endpoint_reports_recorded_switches(client, admin
     assert len(events) == 1
     assert events[0]["from_provider"] == "openrouter"
     assert events[0]["to_provider"] == "gemini"
-    assert events[0]["usage_at_switch"] == 45
+    assert events[0]["usage_at_switch"] == 900
 
 
 def test_budget_fallback_events_endpoint_is_closed_to_visitors(client, guest_headers):

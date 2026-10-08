@@ -68,7 +68,7 @@ def test_no_fallback_when_the_daily_budget_fallback_has_diverted_away_from_openr
 
     session = SessionLocal()
     try:
-        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=45))
+        session.add(ProviderDailyUsage(day=llm_budget._today(), provider="openrouter", call_count=900))
         session.commit()
     finally:
         session.close()
