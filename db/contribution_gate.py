@@ -23,7 +23,11 @@ def _get_router():
     # checkpoints at once instead of stalling the first non-English message.
     from laya import Router
 
-    return Router(preload=True)
+    # preload=False loads only the checkpoint a message needs (the English
+    # one: detect_contribution_node translates first). preload=True loaded
+    # every checkpoint, 4.6 GB on the VPS against 2.5 GB, and with the
+    # retrieval models (2.9 GB) took the process past pm2's memory ceiling.
+    return Router(preload=False)
 
 
 # Openers that make a message a question or a request rather than a claim.

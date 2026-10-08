@@ -42,3 +42,11 @@ def test_the_welcome_needs_no_llm_call(monkeypatch):
 ])
 def test_personal_progress_questions_search_the_graduation_requirements(question, rewritten):
     assert (nodes._retrieval_query_for(question, "DEFAULT") == nodes._GRADUATION_QUERY) is rewritten
+
+
+def test_small_talk_skips_contribution_detection(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    monkeypatch.setattr(nodes, "could_be_a_contribution", lambda text: pytest.fail("gate ran"))
+    state = {"messages": [HumanMessage(content="thanks a lot"), AIMessage(content="You're welcome!")]}
+    assert nodes.detect_contribution_node(state) == {"detected_contribution": None}

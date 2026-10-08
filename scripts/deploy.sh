@@ -85,10 +85,13 @@ echo "==> Checking the configured OpenRouter models still exist"
 ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && PYTHONPATH=. .venv/bin/python scripts/check_llm_models.py --fix" || \
   echo "    WARNING: a configured model is still unavailable - see above, and switch it in the admin panel." >&2
 
-# The app holds the embedding model and the reranker in memory, about
-# 2.9 GB steady with a 3.2 GB peak. The ceiling is a safety net against a
-# leak on a box with no swap, not a budget: pm2 restarts the app past it.
-PM2_MAX_MEMORY="4500M"
+# The app holds the embedding model and the reranker (2.9 GB) and, once a
+# message that is not a question arrives, the contribution classifier
+# (2.5 GB): about 5.4 GB steady, 6.2 GB peak, measured 2026-10-11. The
+# ceiling is a safety net against a leak on a box with no swap (12 GB, with
+# other apps on it), not a budget: pm2 restarts the app past it. 4.5 GB was
+# below the classifier's footprint and put production in a restart loop.
+PM2_MAX_MEMORY="7500M"
 
 echo "==> Restarting pm2 (memory ceiling ${PM2_MAX_MEMORY})"
 ssh "root@${VPS_HOST}" "source ~/.nvm/nvm.sh 2>/dev/null; pm2 restart ${PM2_APP_NAME} --max-memory-restart ${PM2_MAX_MEMORY} && pm2 save"

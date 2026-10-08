@@ -2187,6 +2187,10 @@ def detect_contribution_node(state: RagState) -> dict:
     last_user_message = state["messages"][-2] if len(state["messages"]) >= 2 else None
     if last_user_message is None or _looks_like_a_question(last_user_message.content):
         return {"detected_contribution": None}
+    # "hi" or "thanks" cannot be a contribution, and running the gate on
+    # them loaded its classifier for nothing (see db/contribution_gate.py).
+    if _conversational_reply(last_user_message.content):
+        return {"detected_contribution": None}
 
     # Laya's multilingual checkpoint (db/contribution_gate.py) measured
     # substantially weaker than its English one on this task - translating

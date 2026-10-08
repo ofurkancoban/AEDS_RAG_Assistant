@@ -7,6 +7,18 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.11] - 2026-10-11
+### Fixed
+- Production restarted in a loop for about 25 minutes. pm2's memory
+  ceiling (4.5 GB, set in 1.10.0) was below what the app needs once a
+  message that is not a question loads the contribution classifier: the
+  retrieval models take 2.9 GB and the classifier, preloading every Laya
+  checkpoint, another 4.6 GB on the VPS. It now loads only the checkpoint
+  it uses (2.5 GB), greetings and thanks skip contribution detection
+  altogether, and the ceiling is 7.5 GB (about 5.4 GB steady, 6.2 GB peak
+  measured). The ceiling was raised by hand on the VPS to end the loop
+  before this release.
+
 ## [1.10.10] - 2026-10-11
 ### Fixed
 - Greetings, thanks and "what can I ask you?" got the "the programme's
