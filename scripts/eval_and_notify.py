@@ -36,7 +36,9 @@ overnight budget reset means Monday morning starts unaffected):
         scripts/eval_and_notify.py >> data/backups/eval_golden.log 2>&1
 """
 
+import json
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -66,24 +68,46 @@ def main() -> int:
             f"trimming). Pull tests/golden_qa_review.json and commit it."
         )
 
-    provider = get_runtime_config().llm_provider
+    config = get_runtime_config()
+    provider = config.llm_provider
     cases = load_cases()
 
-    all_passed = run(cases, verbose=False)
+    with tempfile.TemporaryDirectory() as tmp:
+        report_path = Path(tmp) / "report.json"
+        all_passed = run(cases, verbose=False, report_path=report_path)
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    failed = [row["id"] for row in report if not row.get("passed")]
+    passed = len(report) - len(failed)
+    _record_run(provider, config.openrouter_model if provider == "openrouter" else None, passed, len(report), failed)
 
     if not all_passed:
-        # run() already printed which cases failed and why - this message is
-        # deliberately just a pointer to "go look", not a duplicate of that
-        # detail, since eval_golden.py's own retrieval report is much more
-        # useful for actually diagnosing it than anything that fits in a chat
-        # message.
+        # The ids say what to look at; run() already printed why each failed,
+        # and eval_golden.py --verbose shows the full answers.
+        shown = ", ".join(failed[:10]) + (f" and {len(failed) - 10} more" if len(failed) > 10 else "")
         _notify_admins(
-            f"Golden-set eval failed against the live provider ({provider}). "
-            f"Run `PYTHONPATH=. python -m tests.eval_golden --verbose` to see "
-            f"which cases regressed and why."
+            f"Golden-set eval: {passed}/{len(report)} passed against the live provider "
+            f"({provider}). Failed: {shown}. Details: data/backups/eval_golden.log, or "
+            f"`PYTHONPATH=. python -m tests.eval_golden --verbose`."
         )
 
     return 0 if all_passed else 1
+
+
+def _record_run(provider: str, model: str | None, passed: int, total: int, failed: list[str]) -> None:
+    """Kept for the admin panel's trend; a failure to record never fails
+    the run itself."""
+    from db.models import EvalRun, SessionLocal
+
+    session = SessionLocal()
+    try:
+        session.add(EvalRun(provider=provider, model=model, passed=passed, total=total, failed_ids_json=json.dumps(failed)))
+        session.commit()
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        print(f"could not record the eval run: {exc}")
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

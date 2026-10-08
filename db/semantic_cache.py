@@ -58,6 +58,19 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b))
 
 
+def is_reusable_question(question: str) -> bool:
+    """Whether an answer to this message could be served to someone else.
+    Not for a student's own progress (the ECTS Tracker sends their completed
+    modules; two such messages read alike, so another student could be given
+    a plan built on someone else's record) or for small talk, which is
+    answered without a model anyway and only filled the review queue."""
+    from graph.nodes import _conversational_reply
+
+    if "ects tracker progress" in question.casefold():
+        return False
+    return _conversational_reply(question) is None
+
+
 def lookup(session: Session, question: str, embedding: list[float]) -> CachedAnswer | None:
     """Find a reviewed answer for this question, or None.
 

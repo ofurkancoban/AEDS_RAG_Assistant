@@ -25,6 +25,7 @@ from db.models import (
     AnswerStatus,
     CachedAnswer,
     ChatMessage,
+    EvalRun,
     IngestedDocument,
     PendingSubmission,
     QueryLog,
@@ -485,9 +486,13 @@ class AnswerOut(BaseModel):
     # than the last review (see CachedAnswer.is_flagged).
     downvotes: int = 0
     flagged: bool = False
+    # How many times students asked this question (query_log, compared the
+    # way the cache compares questions), so the most-asked answers can be
+    # reviewed first - they are the ones an approval helps most.
+    asked_count: int = 0
 
 
-def _to_answer_out(row: CachedAnswer) -> AnswerOut:
+def _to_answer_out(row: CachedAnswer, asked_count: int = 0) -> AnswerOut:
     sources = sorted({s.get("source_id", "") for s in json.loads(row.sources_json or "[]")})
     return AnswerOut(
         id=row.id,
@@ -507,6 +512,7 @@ def _to_answer_out(row: CachedAnswer) -> AnswerOut:
         origin=row.origin,
         downvotes=row.downvotes or 0,
         flagged=row.is_flagged,
+        asked_count=asked_count,
     )
 
 
@@ -545,7 +551,13 @@ def list_answers(
         .limit(300)
         .all()
     )
-    return [_to_answer_out(r) for r in rows]
+    from db.semantic_cache import _normalize
+
+    asked = Counter(_normalize(question) for (question,) in session.query(QueryLog.question).all())
+    out = [_to_answer_out(r, asked.get(r.question_normalized, 0)) for r in rows]
+    # Flagged first (as ordered above), then the most-asked.
+    out.sort(key=lambda a: (not a.flagged, -a.asked_count))
+    return out
 
 
 class AnswerReviewRequest(BaseModel):
@@ -1475,6 +1487,36 @@ class NodeLatencyStatsOut(BaseModel):
     days: int
     total_turns: int
     by_node: list[NodeLatencyStat]
+
+
+class EvalRunOut(BaseModel):
+    created_at: datetime
+    provider: str
+    model: str | None
+    passed: int
+    total: int
+    failed_ids: list[str]
+
+
+@router.get("/eval-runs", response_model=list[EvalRunOut])
+def list_eval_runs(
+    limit: int = 12,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """The latest golden-set evaluation runs, newest first."""
+    rows = session.query(EvalRun).order_by(EvalRun.created_at.desc()).limit(max(1, min(limit, 52))).all()
+    return [
+        EvalRunOut(
+            created_at=row.created_at,
+            provider=row.provider,
+            model=row.model,
+            passed=row.passed,
+            total=row.total,
+            failed_ids=json.loads(row.failed_ids_json or "[]"),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/node-latency-stats", response_model=NodeLatencyStatsOut)

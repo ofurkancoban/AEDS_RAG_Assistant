@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart2, Activity, RefreshCw, Zap, AlertTriangle, ThumbsUp, ThumbsDown, Database, Globe, HeartPulse, Gauge, ShieldAlert, Timer } from 'lucide-react';
 import { AdminStats, ChatQueryResult, NodeLatencyStats, OpsStatus, OriginBreakdown, RateLimitStats, UsageAnalytics } from '../types';
-import { getAnalytics, getNodeLatencyStats, getOpsStatus, getOriginStats, getRateLimitStats, getStats } from '../api/client';
+import { EvalRun, getAnalytics, getEvalRuns, getNodeLatencyStats, getOpsStatus, getOriginStats, getRateLimitStats, getStats } from '../api/client';
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
@@ -18,6 +18,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const [opsStatus, setOpsStatus] = useState<OpsStatus | null>(null);
   const [rateLimitStats, setRateLimitStats] = useState<RateLimitStats | null>(null);
   const [nodeLatencyStats, setNodeLatencyStats] = useState<NodeLatencyStats | null>(null);
+  const [evalRuns, setEvalRuns] = useState<EvalRun[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Silent (no spinner) by default - only the manual Refresh button and the
@@ -26,14 +27,16 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   const load = async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     try {
-      const [statsData, analyticsData, originData, opsData, rateLimitData, nodeLatencyData] = await Promise.all([
+      const [statsData, analyticsData, originData, opsData, rateLimitData, nodeLatencyData, evalRunsData] = await Promise.all([
         getStats(),
         getAnalytics(),
         getOriginStats(),
         getOpsStatus(),
         getRateLimitStats(),
         getNodeLatencyStats(),
+        getEvalRuns().catch(() => [] as EvalRun[]),
       ]);
+      setEvalRuns(evalRunsData);
       setStats(statsData);
       setAnalytics(analyticsData);
       setOriginStats(originData);
@@ -471,6 +474,51 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
           <span>Pending submissions: <strong className="text-amber-600 dark:text-amber-300">{stats?.pending_submissions ?? '—'}</strong></span>
         </div>
       </div>
+
+      {evalRuns.length > 0 && (
+        <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+              <span>Answer Quality (weekly golden-set runs)</span>
+            </h2>
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">{evalRuns.length} runs</span>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] -mt-2">
+            Every Sunday the whole golden set is asked against the live model. Newest first; the
+            failed cases are what to look at.
+          </p>
+          <div className="space-y-3">
+            {evalRuns.map((run) => {
+              const share = run.total ? run.passed / run.total : 0;
+              return (
+                <div key={run.created_at} className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold text-[var(--text-secondary)]">
+                      {new Date(run.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      <span className="font-normal text-[var(--text-muted)]"> · {run.model ?? run.provider}</span>
+                    </span>
+                    <span className="font-mono font-bold text-[var(--text-muted)]">
+                      {run.passed}/{run.total} ({Math.round(share * 100)}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full overflow-hidden bg-black/10 dark:bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${share >= 0.95 ? 'bg-emerald-500' : share >= 0.85 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                      style={{ width: `${Math.max(2, share * 100)}%` }}
+                    />
+                  </div>
+                  {run.failed_ids.length > 0 && (
+                    <p className="text-[10.5px] font-mono text-[var(--text-muted)] break-words">
+                      failed: {run.failed_ids.join(', ')}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {nodeLatencyStats && nodeLatencyStats.by_node.length > 0 && (
         <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">

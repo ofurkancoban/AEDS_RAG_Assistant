@@ -19,6 +19,21 @@ HEALTH_URL="https://aeds-rag-assistant.ofurkan.co/health"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Retrieval quality gate, before anything is shipped: the golden set run
+# through the real search and reranker with no LLM calls (no quota), against
+# the local index - which matches production when data/documents was synced
+# as part of the change. Catches a document, chunking or reranker change
+# that stops the right passages reaching the model. Thresholds sit a little
+# under the values measured 2026-10-11 (context recall 92%, source hits 98%).
+# SKIP_RETRIEVAL_CHECK=1 skips it, e.g. to ship an urgent fix.
+if [ "${SKIP_RETRIEVAL_CHECK:-0}" != "1" ]; then
+  echo "==> Retrieval check (golden set, no LLM calls)"
+  if ! PYTHONPATH=. .venv/bin/python -m tests.eval_retrieval --min-recall 0.88 --min-source-hit 0.95 2>/dev/null | tail -3; then
+    echo "Retrieval quality is below the threshold - not deploying. SKIP_RETRIEVAL_CHECK=1 overrides." >&2
+    exit 1
+  fi
+fi
+
 # docs/nginx-aeds-rag-assistant.conf is documentation, not something this
 # script deploys - nginx itself is edited by hand on the VPS. It drifted
 # silently out of sync with the live config for a long time (missing both

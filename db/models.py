@@ -393,6 +393,22 @@ class QueryLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class EvalRun(Base):
+    """One golden-set evaluation run (scripts/eval_and_notify.py, weekly):
+    the score and which cases failed, so the admin panel can show the trend
+    instead of a single Telegram message that only said "failed"."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    passed: Mapped[int] = mapped_column(Integer)
+    total: Mapped[int] = mapped_column(Integer)
+    failed_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class RateLimitEvent(Base):
     """One row per request that a limiter allowed (see api/rate_limit.py).
 

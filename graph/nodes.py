@@ -1732,6 +1732,35 @@ def _retrieval_query_for(question: str, default: str) -> str:
     return default
 
 
+# Said when nothing relevant was found. Names who can help instead of only
+# "contact the university": the reply used to end there. "do not contain" /
+# "enthalten keine" are what graph/build_graph.py's _looks_unanswered looks
+# for, so these turns still show up as content gaps.
+_NO_ANSWER = {
+    "en": (
+        "The documents I answer from do not contain information on that. I cover the M.Sc. "
+        "Applied Economics and Data Science, the University of Oldenburg's services for students "
+        "and student life in Oldenburg. Who can help instead:\n\n"
+        "- **Exams, the thesis, recognition of credits:** the Examinations Office, via the AskOne "
+        "student portal\n"
+        "- **Visa, residence permit, arriving from abroad:** the International Office's advisers "
+        "for international students\n"
+        "- **Housing, canteen, financial support:** the Studierendenwerk Oldenburg\n"
+        "- **The semester ticket and student representation:** the AStA (student union)"
+    ),
+    "de": (
+        "Die Dokumente, auf die ich mich stütze, enthalten keine Informationen dazu. Ich beantworte "
+        "Fragen zum M.Sc. Applied Economics and Data Science, zu den Angeboten der Universität "
+        "Oldenburg für Studierende und zum Studierendenleben in Oldenburg. Weiterhelfen können:\n\n"
+        "- **Prüfungen, Masterarbeit, Anerkennung:** das Prüfungsamt, über das Studierendenportal AskOne\n"
+        "- **Visum, Aufenthaltserlaubnis, Ankunft aus dem Ausland:** die Beratung für internationale "
+        "Studierende im International Office\n"
+        "- **Wohnen, Mensa, Finanzierung:** das Studierendenwerk Oldenburg\n"
+        "- **Semesterticket und Studierendenvertretung:** der AStA"
+    ),
+}
+
+
 _SINGLE_COURSE_LISTING = re.compile(r"^Matching courses \(([12]) in total")
 
 
@@ -1874,12 +1903,7 @@ def retrieve_node(state: RagState) -> dict:
         logger.info("relevance gate: best rerank score %.4f below threshold", best_score)
         return {
             "retrieved_docs": [],
-            "direct_answer": (
-                "The programme's documents do not contain information on that. This assistant "
-                "only covers the Applied Economics and Data Science programme itself - its "
-                "curriculum, courses, admission requirements, deadlines, exam regulations and "
-                "thesis rules. For anything else, please contact the university directly."
-            ),
+            "direct_answer": _NO_ANSWER["de" if _looks_german(last_question) else "en"],
             "awaiting_semester_number": False,
         }
 
@@ -2064,14 +2088,101 @@ def generate_node(state: RagState) -> dict:
         _with_fallback(get_llm(), purpose="generation"),
         rebuild=lambda: _with_fallback(get_llm(), purpose="generation"),
     )
-    response = llm.invoke(
-        [SystemMessage(content=system_prompt), *prior_messages, context_message, state["messages"][-1]]
-    )
-    response.content = _normalize_passage_markers(
-        _strip_fabricated_citations(_strip_thinking(response.content)),
-        passage_count=len(retrieved_docs),
-    )
+    messages = [SystemMessage(content=system_prompt), *prior_messages, context_message, state["messages"][-1]]
+    response = llm.invoke(messages)
+    response.content = _clean_generated(response.content, len(retrieved_docs))
+
+    if settings.number_guard != "off":
+        allowed_text = "\n".join(str(m.content) for m in messages)
+        unsupported = unsupported_numbers(response.content, allowed_text)
+        if unsupported:
+            logger.warning("number guard: answer states %s, not in the context", unsupported)
+            if settings.number_guard == "regenerate":
+                # Not streamed (callbacks cleared): the first answer's tokens
+                # are already on screen, and the corrected one replaces it as
+                # the final answer in one step.
+                retry = llm.invoke(
+                    [
+                        *messages,
+                        response,
+                        HumanMessage(
+                            content=(
+                                "Your answer states these figures, which do not appear in the context: "
+                                f"{', '.join(unsupported)}. Write the answer again. Use only figures "
+                                "that are written in the context; if a figure is not there, leave it "
+                                "out. Same language and format as before."
+                            )
+                        ),
+                    ],
+                    config={"callbacks": []},
+                )
+                retry.content = _clean_generated(retry.content, len(retrieved_docs))
+                still = unsupported_numbers(retry.content, allowed_text)
+                logger.warning("number guard: regenerated, still unsupported: %s", still or "none")
+                if len(still) < len(unsupported):
+                    response = retry
     return {"messages": [response]}
+
+
+def _clean_generated(text: str, passage_count: int) -> str:
+    cleaned = _normalize_passage_markers(
+        _strip_fabricated_citations(_strip_thinking(text)), passage_count=passage_count
+    )
+    return _plain_dashes(cleaned)
+
+
+def _plain_dashes(text: str) -> str:
+    """Em dashes, and en dashes used as punctuation between words, become a
+    plain hyphen: the interface's copy uses none, and the model writes them
+    by habit. An en dash in a range between digits ("15–25") is kept."""
+    text = re.sub(r"\s*\u2014\s*", " - ", text)
+    return re.sub(r"(?<!\d)\s+\u2013\s+(?!\d)|(?<=\D)\s+\u2013\s+|\s+\u2013\s+(?=\D)", " - ", text)
+
+
+# A figure in an answer: digits with optional thousands/decimal separators
+# ("11,904", "457.90", "11 904"), not part of a code like "wir874" or
+# "H0001293". Passage markers ("[2]") are removed before matching.
+# Thousands groups need exactly three digits, so "July 15 2026" stays two
+# figures rather than becoming "152026".
+_FIGURE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:\d{1,3}(?:[.,\u202f ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(?![A-Za-z0-9])"
+)
+
+
+def _figure_key(raw: str) -> str:
+    return re.sub(r"[.,\u202f ]", "", raw).lstrip("0") or "0"
+
+
+def unsupported_numbers(answer: str, allowed_text: str) -> list[str]:
+    """Figures of 10 or more in `answer` that appear nowhere in
+    `allowed_text` (the context, question and conversation the model was
+    given), compared without separators so "11.904" matches "11,904".
+
+    Exists because a model translating an answer changed "280 half days"
+    into "200" - the most harmful kind of error, as the answer reads as
+    right. Single digits are skipped: list numbering and ordinals are too
+    common to check without false alarms."""
+    allowed = {_figure_key(m.group(0)) for m in _FIGURE_RE.finditer(allowed_text)}
+    # A figure split across a separator in the context ("11, 904") still
+    # contributes its parts; also accept each part on its own.
+    for m in _FIGURE_RE.finditer(allowed_text):
+        allowed.update(_figure_key(part) for part in re.split(r"[.,\u202f ]", m.group(0)) if part)
+    figures = [m.group(0) for m in _FIGURE_RE.finditer(_PASSAGE_MARKER_RE.sub(" ", answer))]
+    # Arithmetic the answer shows ("120 ECTS, 30 for the thesis, so 90 for
+    # modules"): a figure that is the sum or difference of two supported
+    # figures in the same answer is supported too.
+    supported = {int(k) for k in (_figure_key(f) for f in figures) if k.isdigit() and k in allowed}
+    derived = {a + b for a in supported for b in supported} | {abs(a - b) for a in supported for b in supported}
+    found = []
+    for figure in figures:
+        key = _figure_key(figure)
+        if key.isdigit() and int(key) < 10:
+            continue
+        if key in allowed or (key.isdigit() and int(key) in derived):
+            continue
+        if figure not in found:
+            found.append(figure)
+    return found
 
 
 # "[2]", "[1, 3]", "[1][3]" - the forms a model writes when told to cite

@@ -154,6 +154,8 @@ _UNANSWERED_MARKERS = (
     "unable to answer",
     "i don't have",
     "i do not have",
+    # graph/nodes.py's German no-answer reply.
+    "enthalten keine informationen",
 )
 
 

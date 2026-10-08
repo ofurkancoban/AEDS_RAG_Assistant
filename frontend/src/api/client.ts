@@ -382,6 +382,20 @@ export function getRateLimitStats(days = 7): Promise<RateLimitStats> {
   return request(`/admin/rate-limit-stats?days=${days}`);
 }
 
+export interface EvalRun {
+  created_at: string;
+  provider: string;
+  model: string | null;
+  passed: number;
+  total: number;
+  failed_ids: string[];
+}
+
+/** Weekly golden-set evaluation runs, newest first. */
+export function getEvalRuns(): Promise<EvalRun[]> {
+  return request('/admin/eval-runs');
+}
+
 export function getNodeLatencyStats(days = 7): Promise<NodeLatencyStats> {
   return request(`/admin/node-latency-stats?days=${days}`);
 }

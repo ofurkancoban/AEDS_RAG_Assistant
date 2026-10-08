@@ -7,6 +7,44 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.13] - 2026-10-11
+### Added
+- Number guard: every figure in an answer (10 or more) is checked against
+  the context, question and conversation the model was given; separators
+  are ignored ("11.904" = "11,904") and a figure the answer derives from
+  two supported ones (120 - 30 = 90) counts as supported. When a figure is
+  unsupported it is logged, and in "regenerate" mode the answer is written
+  once more with that figure named, without streaming the second attempt.
+  Found because a model turned "280 half days" into "200" while answering
+  in German. Ships in "log" mode until its false-alarm rate is measured.
+- Weekly contradiction check (scripts/check_contradictions.py, Sundays
+  from maintenance): reports documents that state different values for
+  the same fact, with a Telegram summary. It finds both of this month's
+  real conflicts (thesis admission 2 vs 60 ECTS, thesis grading 6 vs 8
+  weeks) when the old documents are put back, and nothing today.
+- Weekly golden-set runs are recorded (eval_runs) and shown in the admin
+  analytics as a trend with the failed cases; the Telegram message now
+  gives the score and the failed case ids.
+- deploy.sh runs the retrieval check (golden set, no LLM calls) first and
+  stops below 88% context recall or 95% source hits.
+- The answer review queue shows how often each question was asked and
+  lists the most-asked first. scripts/refresh_review_queue.py regenerates
+  pending answers whose sources were replaced and rejects, with a note,
+  entries that must never be served to someone else.
+### Changed
+- A student's own ECTS Tracker progress and small talk no longer enter or
+  come out of the reviewed-answer cache: two progress messages read alike,
+  so an approved plan could have been served for someone else's record.
+- The reply when nothing relevant is found names who can help (the
+  Examinations Office via AskOne, the International Office, the
+  Studierendenwerk, the AStA) and is given in German for German questions.
+- Long dashes in answers become plain hyphens; ranges like 15-25 keep
+  theirs. The header shows "Assistent" on phones instead of the cut-off
+  "Studierenden-Assistent".
+- The university-wide language page now starts with this programme's
+  requirement (English B2, no German) before the German-taught programmes'
+  rules.
+
 ## [1.10.12] - 2026-10-11
 ### Added
 - Three documents for international students, each checked against the

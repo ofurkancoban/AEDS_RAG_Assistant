@@ -423,6 +423,21 @@ def main() -> int:
         except Exception as exc:  # never let this fail the backups above
             print(f"  model check failed: {exc}")
 
+    # Weekly (Sundays): documents that state different values for the same
+    # fact, which no single document shows (scripts/check_contradictions.py).
+    if not args.dry_run and datetime.now().weekday() == 6:
+        print("contradictions:")
+        try:
+            from scripts.check_contradictions import main as check_contradictions
+
+            sys_argv, sys.argv = sys.argv, ["check_contradictions", "--notify"]
+            try:
+                check_contradictions()
+            finally:
+                sys.argv = sys_argv
+        except Exception as exc:  # never let this fail the backups above
+            print(f"  contradiction check failed: {exc}")
+
     return 0
 
 

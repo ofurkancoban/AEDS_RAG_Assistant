@@ -128,6 +128,7 @@ const en = {
 
   // Header and footer
   studentAssistant: 'Student Assistant',
+  studentAssistantShort: 'Assistant',
   programme: 'Programme',
   passagesIndexed: (n: string) => `${n} passages indexed`,
   logOut: 'Log out',
@@ -261,6 +262,7 @@ const de: Strings = {
   close: 'Schließen',
 
   studentAssistant: 'Studierenden-Assistent',
+  studentAssistantShort: 'Assistent',
   programme: 'Studiengang',
   passagesIndexed: (n) => `${n} Abschnitte indexiert`,
   logOut: 'Abmelden',

@@ -231,6 +231,9 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                       </span>
                     )}
                     {item.sources.length > 0 && <span>· {item.sources.join(', ')}</span>}
+                    {item.asked_count > 0 && (
+                      <span title="How many times students asked this question">· asked {item.asked_count}x</span>
+                    )}
                     {item.hit_count > 0 && (
                       <span className="flex items-center gap-1 text-accent-500 dark:text-accent-300">
                         <Repeat className="w-3 h-3" />served {item.hit_count}x

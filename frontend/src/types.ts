@@ -243,6 +243,8 @@ export interface ReviewedAnswer {
   downvotes: number;
   /** Rated unhelpful since its last review; listed first. */
   flagged: boolean;
+  /** How many times students asked this question; the queue lists the most-asked first. */
+  asked_count: number;
 }
 
 export interface ChangelogEntry {

@@ -109,7 +109,11 @@ def _lookup_cache(session: Session, payload: "ChatRequest", thread_id: str):
     unfiltered searches - a source_id_filter changes which chunks are
     eligible, so its answer isn't interchangeable with the unfiltered one.
     """
-    cacheable = payload.source_id_filter is None and is_cacheable_turn(thread_id)
+    cacheable = (
+        payload.source_id_filter is None
+        and is_cacheable_turn(thread_id)
+        and semantic_cache.is_reusable_question(payload.message)
+    )
     if not cacheable:
         return False, None, None
 

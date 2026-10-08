@@ -109,7 +109,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <BrandMark size={30} />
           <span className="leading-tight min-w-0">
             <span className="flex items-center gap-2 min-w-0">
-              <span className="text-[15px] font-semibold text-[var(--text)] truncate">{t.studentAssistant}</span>
+              <span className="text-[15px] font-semibold text-[var(--text)] truncate">
+                {/* The full German title did not fit a phone's header next to
+                    the language and theme switches. */}
+                <span className="hidden sm:inline">{t.studentAssistant}</span>
+                <span className="sm:hidden">{t.studentAssistantShort}</span>
+              </span>
               {isAdmin && (
                 <span className="hidden sm:inline-flex items-center px-1.5 rounded border border-brass-500/40 bg-brass-50 dark:bg-brass-900/40 text-brass-700 dark:text-brass-300 text-[10px] font-semibold uppercase tracking-wider">
                   Admin

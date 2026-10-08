@@ -218,6 +218,13 @@ class Settings(BaseSettings):
     # same off-topic scores. Measured 2026-10-11 against no limit, 10
     # candidates alone (5.9s), 256 tokens alone (6.3s, 52/58) and two small
     # models (MiniLM-L6 1.9s but 51/58 and 47/50; mxbai-xsmall slower).
+    # What generate_node does when an answer states a number that appears
+    # nowhere in its context, the question or the conversation (see
+    # graph/nodes.py's unsupported_numbers): "regenerate" asks once more
+    # with the offending figures named, "log" only records it, "off" skips.
+    # Starts in "log" (2026-10-11) until its false-alarm rate on real
+    # answers is measured; then "regenerate".
+    number_guard: str = "log"
     rerank_max_candidates: int = 10
     reranker_max_length: int = 256
     # Minimum cross-encoder score the best retrieved chunk must reach before
