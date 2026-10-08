@@ -814,11 +814,12 @@
       ]
     ],
     "expected_absent": [],
-    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win.",
+    "notes": "Precedence: the university-wide thesis FAQ gives a general or vaguer rule; the programme's 2026 examination regulations (Section 10) give this programme's own, which must win. The thesis FAQ states the programme's own rule (five months) since 1.10.3, so it is an accepted source.",
     "expected_source_ids": [
       [
         "MPO_AEDS_2026_EN",
-        "AEDS_exam_regulations_2026_changes"
+        "AEDS_exam_regulations_2026_changes",
+        "AEDS_website_theses_faq"
       ]
     ]
   },
@@ -1073,5 +1074,153 @@
       }
     ],
     "notes": "From production query_log: real messages that got the 'documents do not contain' refusal. Sent by the ECTS Tracker without progress data; the general graduation requirements answer it, and the reranker scored this personal wording below the relevance gate."
+  },
+  {
+    "id": "intl-residence-permit-where",
+    "question": "Where do I apply for a residence permit in Oldenburg?",
+    "expected_contains": [
+      "Hochschulservice"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_residence_permit",
+        "AEDS_website_international_student_checklist"
+      ]
+    ]
+  },
+  {
+    "id": "intl-residence-permit-funding",
+    "question": "How much money do I need to prove for my residence permit?",
+    "expected_contains": [
+      [
+        "11,904",
+        "11.904"
+      ],
+      "992"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_residence_permit"
+      ]
+    ]
+  },
+  {
+    "id": "intl-residence-permit-documents",
+    "question": "What documents do I need for my residence permit appointment?",
+    "expected_contains": [
+      "passport",
+      [
+        "enrolment",
+        "enrollment"
+      ],
+      "health insurance"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_residence_permit"
+      ]
+    ]
+  },
+  {
+    "id": "intl-health-insurance-over-30",
+    "question": "I am 32 years old. Can I get statutory health insurance as a student?",
+    "expected_contains": [
+      "private"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_health_insurance"
+      ]
+    ]
+  },
+  {
+    "id": "intl-health-insurance-switch",
+    "question": "Can I switch from private to statutory health insurance later during my studies?",
+    "expected_contains": [
+      [
+        "not possible",
+        "cannot",
+        "can't",
+        "no longer possible"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_health_insurance"
+      ]
+    ]
+  },
+  {
+    "id": "intl-work-days-limit",
+    "question": "How many days per year can a non-EU student work in Germany?",
+    "expected_contains": [
+      "140",
+      "280"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_working_while_studying"
+      ]
+    ]
+  },
+  {
+    "id": "intl-work-student-assistant",
+    "question": "As a non-EU student, is there a limit on working as a student assistant at the university?",
+    "expected_contains": [
+      [
+        "no limit",
+        "not limited",
+        "unlimited",
+        "no restriction",
+        "not restricted"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "International-student topic added 2026-10-11 from uol.de (residence permit, health insurance) and DAAD (side jobs), verified against the raw pages.",
+    "expected_source_ids": [
+      [
+        "AEDS_website_working_while_studying"
+      ]
+    ]
   }
 ]

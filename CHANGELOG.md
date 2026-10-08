@@ -7,6 +7,21 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.12] - 2026-10-11
+### Added
+- Three documents for international students, each checked against the
+  official page: the residence permit in Oldenburg (the Hochschulservice
+  at Pferdemarkt 14, when to apply, the documents, proof of funding of
+  EUR 11,904 a year, the fee), health insurance (statutory versus private,
+  no later switch to statutory, students under and over 30, EHIC and
+  agreement countries) and working while studying (140 full or 280 half
+  days a year for non-EU students, no limit as a student assistant, the
+  minimum wage). The production log was too small to show real content
+  gaps, so these were chosen as the questions international Master's
+  students most need answered. Seven golden cases: 0/7 -> 7/7 with apodex
+  (all refused before) and 7/7 with dots; context recall and source hits
+  on the existing cases unchanged.
+
 ## [1.10.11] - 2026-10-11
 ### Fixed
 - Production restarted in a loop for about 25 minutes. pm2's memory

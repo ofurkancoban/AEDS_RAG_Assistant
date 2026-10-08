@@ -4,6 +4,7 @@ import {
   CalendarRange, Globe, UserSearch, ScrollText, GraduationCap,
   FileWarning, Stethoscope, Mail, Briefcase, BadgeCheck,
   RefreshCcw, PauseCircle, PlaneLanding, Dumbbell, Wallet, TrainFront, Library,
+  IdCard, HeartPulse, BriefcaseBusiness,
   Home, Euro, UtensilsCrossed, LifeBuoy, Landmark, Building2,
 } from 'lucide-react';
 import type { Lang } from '../i18n';
@@ -261,6 +262,24 @@ export const PROGRAMME: ProgrammeConfig = {
           icon: PlaneLanding,
         },
         {
+          title: L('Residence permit', 'Aufenthaltserlaubnis'),
+          query: L(
+            'Where and how do I apply for a residence permit in Oldenburg?',
+            'Wo und wie beantrage ich eine Aufenthaltserlaubnis in Oldenburg?',
+          ),
+          icon: IdCard,
+        },
+        {
+          title: L('Health insurance', 'Krankenversicherung'),
+          query: L('Which health insurance do I need as a student?', 'Welche Krankenversicherung brauche ich als Studentin oder Student?'),
+          icon: HeartPulse,
+        },
+        {
+          title: L('Working while studying', 'Jobben im Studium'),
+          query: L('How much am I allowed to work as a non-EU student?', 'Wie viel darf ich als Studierende aus einem Nicht-EU-Land arbeiten?'),
+          icon: BriefcaseBusiness,
+        },
+        {
           title: L('University sports', 'Hochschulsport'),
           query: L(
             'How much does the university fitness centre cost for students?',
@@ -289,7 +308,7 @@ export const PROGRAMME: ProgrammeConfig = {
     },
   ],
   sourceDomains: [
-    { pattern: /enrolment_affairs|international_student|sports_centre|semester_contribution|semester_ticket|library/i, domain: 'university' },
+    { pattern: /enrolment_affairs|international_student|sports_centre|semester_contribution|semester_ticket|library|residence_permit|health_insurance|working_while_studying/i, domain: 'university' },
     { pattern: /accommodation|_stw_/i, domain: 'city' },
   ],
   sources: {
@@ -342,6 +361,9 @@ export const PROGRAMME: ProgrammeConfig = {
       title: L('Library opening hours', 'Öffnungszeiten der Bibliothek'),
       kind: L('University library', 'Universitätsbibliothek'),
     },
+    AEDS_website_residence_permit: { title: L('Residence permit', 'Aufenthaltserlaubnis'), kind: KIND.universityWebsite },
+    AEDS_website_health_insurance: { title: L('Health insurance', 'Krankenversicherung'), kind: KIND.universityWebsite },
+    AEDS_website_working_while_studying: { title: L('Working while studying', 'Jobben im Studium'), kind: L('DAAD', 'DAAD') },
     AEDS_website_accommodation: { title: L('Accommodation & living', 'Wohnen & Leben'), kind: KIND.universityWebsite },
     AEDS_website_stw_accommodation: { title: L('Student accommodation', 'Studentisches Wohnen'), kind: KIND.studierendenwerk },
     AEDS_website_stw_faq: { title: L('Student housing FAQ', 'FAQ zum Wohnen'), kind: KIND.studierendenwerk },
