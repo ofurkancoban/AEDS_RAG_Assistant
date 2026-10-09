@@ -1,13 +1,17 @@
-import functools
 import logging
+import queue
+import threading
 import time
 from typing import Iterator
+
+from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from concurrency import once
 from config import settings
+from graph import progress
 from graph.nodes import detect_contribution_node, generate_node, retrieve_node
 from graph.state import RagState
 
@@ -20,10 +24,18 @@ def _with_latency_logging(node_name: str, fn):
     needed) that's enough to answer "which node is slow" from the existing
     log stream."""
 
-    @functools.wraps(fn)
-    def wrapper(state):
+    # No functools.wraps: LangGraph decides whether to pass `config` by
+    # inspecting the signature, and inspect.signature follows __wrapped__ -
+    # with wraps() it would see fn's (state)-only signature and never hand
+    # this wrapper the config carrying the progress reporter.
+    def wrapper(state, config: RunnableConfig):
+        reporter = (config or {}).get("configurable", {}).get("report_stage")
+        token = progress.set_reporter(reporter)
         start = time.monotonic()
-        result = fn(state)
+        try:
+            result = fn(state)
+        finally:
+            progress.reset_reporter(token)
         elapsed_ms = (time.monotonic() - start) * 1000
         logger.info("node=%s latency_ms=%.0f", node_name, elapsed_ms)
         # Also surfaced in the API response (see run_chat/stream_chat) for the
@@ -33,6 +45,7 @@ def _with_latency_logging(node_name: str, fn):
         result["node_latencies"] = {**state.get("node_latencies", {}), node_name: round(elapsed_ms, 1)}
         return result
 
+    wrapper.__name__ = getattr(fn, "__name__", node_name)
     return wrapper
 
 
@@ -115,7 +128,9 @@ def _build_retrieval_diagnostics(retrieved_docs: list) -> list[dict]:
     return [
         {
             "source_id": doc.metadata.get("source_id", "unknown"),
-            "snippet": doc.page_content[:200],
+            # Long enough to read as the quoted evidence when a citation is
+            # opened in the chat UI, not just as an identifying fragment.
+            "snippet": doc.page_content[:400],
             "hybrid_score": doc.metadata.get("_hybrid_score"),
             "rerank_score": doc.metadata.get("_rerank_score"),
             "expired_since": (
@@ -209,7 +224,9 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
 def stream_chat(
     thread_id: str, question: str, source_id_filter: str | None = None
 ) -> Iterator[tuple[str, dict]]:
-    """Yields ('token', {'text': str}) as the answer is generated, followed by
+    """Yields ('stage', {'stage': str}) as the run reaches each user-visible
+    step (see graph/progress.py), ('token', {'text': str}) as the answer is
+    generated, followed by
     exactly one final ('done', {'sources': [...], 'detected_contribution': ...})
     once the graph run completes. Only tokens from the 'generate' node are
     streamed - the classifier nodes' raw JSON output is never shown to the
@@ -217,20 +234,47 @@ def stream_chat(
     from langchain_core.messages import HumanMessage
 
     graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": thread_id}}
+    events: queue.Queue = queue.Queue()
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+            "report_stage": lambda stage: events.put(("stage", {"stage": stage})),
+        }
+    }
 
-    for message_chunk, metadata in graph.stream(
-        {
-            "messages": [HumanMessage(content=question)],
-            "source_id_filter": source_id_filter,
-        },
-        config=config,
-        stream_mode="messages",
-    ):
-        if metadata.get("langgraph_node") == "generate" and message_chunk.content:
-            yield ("token", {"text": message_chunk.content})
+    # The graph runs in its own thread so a stage reported from inside a
+    # long-running node reaches the client immediately. Iterating
+    # graph.stream() here directly would only yield between LLM chunks, so
+    # "searching" and "ranking" would arrive together, after the fact.
+    _DONE = object()
 
-    final_state = graph.get_state(config).values
+    def run_graph():
+        try:
+            for message_chunk, metadata in graph.stream(
+                {
+                    "messages": [HumanMessage(content=question)],
+                    "source_id_filter": source_id_filter,
+                },
+                config=config,
+                stream_mode="messages",
+            ):
+                if metadata.get("langgraph_node") == "generate" and message_chunk.content:
+                    events.put(("token", {"text": message_chunk.content}))
+            events.put((_DONE, None))
+        except BaseException as exc:  # re-raised on the consuming side
+            events.put((_DONE, exc))
+
+    threading.Thread(target=run_graph, name=f"chat-stream-{thread_id}", daemon=True).start()
+
+    while True:
+        kind, data = events.get()
+        if kind is _DONE:
+            if data is not None:
+                raise data
+            break
+        yield (kind, data)
+
+    final_state = graph.get_state({"configurable": {"thread_id": thread_id}}).values
     final_answer = final_state["messages"][-1].content
     yield (
         "done",

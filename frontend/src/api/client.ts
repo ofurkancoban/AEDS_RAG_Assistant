@@ -138,7 +138,17 @@ export async function streamChatMessage(
   message: string,
   threadId: string | null,
   sourceIdFilter: string | null | undefined,
-  { onToken, onDone }: { onToken: (text: string) => void; onDone: (data: any) => void }
+  {
+    onToken,
+    onDone,
+    onStage,
+  }: {
+    onToken: (text: string) => void;
+    onDone: (data: any) => void;
+    /** A step the backend has reached (see graph/progress.py): 'understanding',
+        'searching', 'ranking', 'writing'. Never sent for a cached answer. */
+    onStage?: (stage: string) => void;
+  }
 ): Promise<void> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = getToken();
@@ -174,7 +184,8 @@ export async function streamChatMessage(
       if (!block.trim()) continue;
 
       const { event, data } = parseSseEvent(block);
-      if (event === 'token' && data) onToken(data.text);
+      if (event === 'stage' && data) onStage?.(data.stage);
+      else if (event === 'token' && data) onToken(data.text);
       else if (event === 'done' && data) onDone(data);
     }
   }

@@ -18,7 +18,7 @@ export const InjectionWarning: React.FC<InjectionWarningProps> = ({ markers }) =
 
   return (
     <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-1.5">
-      <div className="flex items-center gap-2 text-[11px] font-extrabold text-amber-700 dark:text-amber-300 uppercase tracking-wide">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">
         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
         <span>Read this one carefully before approving</span>
       </div>

@@ -117,14 +117,14 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl space-y-4">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-accent-600/20 border border-accent-500/30 flex items-center justify-center text-accent-500 dark:text-accent-400">
                 <MessagesSquare className="w-5 h-5" />
               </div>
-              <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">Answer Review</h1>
+              <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">Answer Review</h1>
             </div>
             <p className="text-xs text-[var(--text-secondary)]">
               Questions students asked, with the answer that was given. Approving one makes it the
@@ -134,7 +134,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
 
           <button
             onClick={() => load()}
-            className="flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-md shrink-0"
+            className="flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-sm shrink-0"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -153,7 +153,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
         </div>
       </div>
 
-      <div className="flex items-center glass p-2 rounded-2xl shadow-xl">
+      <div className="flex items-center glass p-2 rounded-2xl shadow-[var(--shadow-sm)]">
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {(['pending', 'approved', 'rejected', 'all'] as FilterStatus[]).map((s) => (
             <button
@@ -161,7 +161,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
               onClick={() => setFilter(s)}
               className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 capitalize ${
                 filter === s
-                  ? 'bg-accent-600/20 text-accent-600 dark:text-accent-300 border border-accent-500/40 font-extrabold shadow-sm'
+                  ? 'bg-accent-600/20 text-accent-600 dark:text-accent-300 border border-accent-500/40 font-semibold shadow-sm'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)]'
               }`}
             >
@@ -189,7 +189,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                 key={item.id}
                 className={`bg-[var(--bg-subtle)] border rounded-2xl p-5 space-y-3 backdrop-blur-md transition-all ${
                   isEditing
-                    ? 'border-accent-500/50 bg-accent-500/5 shadow-lg shadow-accent-500/10'
+                    ? 'border-accent-500/50 bg-accent-500/5 shadow-sm shadow-accent-500/10'
                     : item.status === 'pending'
                     ? 'border-amber-500/30 bg-amber-500/5'
                     : item.status === 'approved'
@@ -214,7 +214,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                   </div>
                   <div className="flex items-center gap-1.5">
                     {item.edited && (
-                      <span className="text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30">
+                      <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30">
                         corrected
                       </span>
                     )}
@@ -268,7 +268,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                       <button
                         onClick={() => handleApprove(item)}
                         disabled={busy}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                       >
                         <Save className="w-4 h-4" />Save &amp; Approve
                       </button>
@@ -295,7 +295,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                         <button
                           onClick={() => handleApprove(item)}
                           disabled={busy}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                         >
                           <CheckCircle2 className="w-4 h-4" />{busy ? 'Saving...' : 'Approve'}
                         </button>

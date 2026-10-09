@@ -7,6 +7,84 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.9.0] - 2026-10-07
+### Added
+- Live answer progress. An answer takes 20-30 seconds and the page used to
+  show three dots for all of it; the streaming endpoint now sends a 'stage'
+  event as the pipeline reaches each step (understanding the question,
+  searching the documents, selecting passages, writing), shown as a step
+  list with a progress bar and a running timer. Every step marked done is
+  one the backend actually reported (graph/progress.py); a structured
+  lookup that skips document search shows those steps as skipped.
+- Inline citations. Retrieved passages are numbered in the model's context
+  and it tags each fact with the passage it came from; the chat renders
+  "[2]" as a citation that previews the passage on hover. Numbers with no
+  matching passage are stripped server-side, and Telegram replies strip
+  them all (they cannot be opened there).
+- An Evidence panel beside the conversation on wide screens: the selected
+  answer's passages with quoted text, relevance, how often each is cited,
+  outdated warnings, and which were retrieved but not cited. Clicking a
+  citation highlights its passage there; on narrower screens the sources
+  sit under the answer and a citation opens the passage as a sheet.
+- University and City & living questions alongside the programme ones
+  (re-registration, leave of absence, arriving as an international
+  student, university sports, Studierendenwerk housing, rent, canteen
+  prices), each verified to answer from the documents. Every answer is
+  labelled with the domain its main source belongs to.
+### Changed
+- The student interface is redesigned as an institutional service rather
+  than a chat app: a "Student Assistant" header with the programme it
+  serves, topic navigation grouped by domain (a drawer on phones), a start
+  screen with one card per domain, and each question and answer as one
+  card. One sans-serif family (IBM Plex, self-hosted - Google Fonts would
+  send every visitor's IP to Google), university blue, neutral greys.
+- Everything programme-specific (name, domains, topics, start questions,
+  which document belongs to which domain, how each document is named) now
+  lives in frontend/src/config/programme.ts. Serving another programme or
+  the whole university means adding configuration, not redesigning.
+- Version and visitor count moved from the viewport corners into the
+  navigation footer; every dialog is a bottom sheet on phones and closes
+  with Escape. Admin views share the new design tokens.
+### Fixed
+- The production OpenRouter model, stealth/space-bunny-alpha, had been
+  withdrawn ("No endpoints found"): every answer first failed against it and
+  then fell back silently. The default is now apodex/apodex-1.1-mini
+  (13/15 on a hard golden-eval subset at a 4.2s median, the fastest model
+  that passed), with dots-studio/dots-3-note-preview (15/15, 45-46/47 on the
+  full set, slower) as the fallback - chosen by measuring OpenRouter's free
+  models on this project's own tasks.
+- "Writing the answer" took 8-25s before the first word with reasoning
+  models: they spent up to 2,500 hidden reasoning tokens first. OpenRouter's
+  reasoning is now set per call kind - off for answer generation, low effort
+  for the router, translation and classifier, where it made tool choice
+  consistent (15/15 instead of missing the catalog tool on 2 of 5 runs) at
+  no extra latency.
+- Plain new-information messages ("The lab is in room A14") were never
+  flagged for review: the Laya gate scores them near zero. A plain-statement
+  rule now passes them too (25/25 vs 15/25 on hand-written contributions,
+  0/76 false passes on real questions; on real production traffic, 10 of 70
+  messages reach the classifier instead of 6).
+- "Which courses are taught only in German?" listed the 30-ECTS thesis
+  module, which Stud.IP records as German though it is not a taught course.
+- A catalog search the router made by mistake and that matched nothing was
+  still handed to the model as the only context, so it answered "no
+  information" to questions the documents do answer; it now falls through
+  to document search.
+- Router examples for "Who is <name>?" and first-semester course questions,
+  which some models otherwise sent to document search.
+- The model choice no longer lives in .env. A model line there outranked
+  the code default and is what kept the withdrawn model in production;
+  models now come from config.py, switchable live in the admin panel, and
+  scripts/deploy.sh removes OPENROUTER_MODEL / OPENROUTER_FALLBACK_MODEL
+  from the server's .env (after a dated backup).
+### Added
+- scripts/check_llm_models.py: verifies the configured OpenRouter models
+  still exist and flags a model line left in .env. Runs on every deploy
+  (clearing an admin-panel value that names a withdrawn model, so the code
+  default applies after the restart) and in the nightly maintenance run
+  (alert-only, to the admin Telegram chat) - a withdrawn model can no longer
+  hide behind the fallback for days.
+
 ## [1.8.4] - 2026-10-05
 ### Fixed
 - Tapping the message box on iOS Safari zoomed the whole page in instead

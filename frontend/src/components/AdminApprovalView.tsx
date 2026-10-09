@@ -153,13 +153,13 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 animate-in fade-in duration-200">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-accent-600/20 border border-accent-500/30 rounded-2xl text-accent-500 dark:text-accent-400 shadow-md">
+          <div className="p-2.5 bg-accent-600/20 border border-accent-500/30 rounded-2xl text-accent-500 dark:text-accent-400 shadow-sm">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">Admin Approval Queue</h1>
+            <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">Admin Approval Queue</h1>
             <p className="text-xs text-[var(--text-secondary)]">
               Facts submitted through chat are never added automatically - review, edit, reject, or approve to vectorize.
             </p>
@@ -175,7 +175,7 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
         </button>
       </div>
 
-      <div className="flex items-center glass p-2 rounded-2xl shadow-xl">
+      <div className="flex items-center glass p-2 rounded-2xl shadow-[var(--shadow-sm)]">
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           {(['pending', 'approved', 'rejected', 'revoked', 'all'] as FilterStatus[]).map((status) => (
             <button
@@ -183,7 +183,7 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
               onClick={() => setFilterStatus(status)}
               className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center space-x-2 capitalize ${
                 filterStatus === status
-                  ? 'bg-accent-600/20 text-accent-600 dark:text-accent-300 border border-accent-500/40 font-extrabold shadow-sm'
+                  ? 'bg-accent-600/20 text-accent-600 dark:text-accent-300 border border-accent-500/40 font-semibold shadow-sm'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)]'
               }`}
             >
@@ -208,7 +208,7 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
               key={item.id}
               className={`bg-[var(--bg-subtle)] border rounded-2xl p-5 space-y-4 transition-all backdrop-blur-md ${
                 editingId === item.id
-                  ? 'border-accent-500/50 bg-accent-500/5 shadow-lg shadow-accent-500/10'
+                  ? 'border-accent-500/50 bg-accent-500/5 shadow-sm shadow-accent-500/10'
                   : CARD_STYLES[item.status]
               }`}
             >
@@ -270,7 +270,7 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
                       <button
                         onClick={() => handleApprove(item)}
                         disabled={processingId === item.id}
-                        className="px-4.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
+                        className="px-4.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
                       >
                         <CheckCircle2 className="w-4 h-4" /><span>Save &amp; Approve</span>
                       </button>
@@ -330,7 +330,7 @@ export const AdminApprovalView: React.FC<AdminApprovalViewProps> = ({ onQueueCha
                       <button
                         onClick={() => handleApprove(item)}
                         disabled={processingId === item.id}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
                       >
                         <CheckCircle2 className="w-4 h-4" /><span>Approve &amp; Vectorize</span>
                       </button>

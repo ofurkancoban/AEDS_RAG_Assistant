@@ -406,6 +406,23 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
 
+    # A withdrawn OpenRouter model is otherwise invisible: the fallback model
+    # answers instead and nothing errors. Alert-only here (no --fix) - the
+    # running app caches its config, so the remedy is an admin switching the
+    # model in the admin panel, which applies live.
+    if not args.dry_run:
+        print("llm models:")
+        try:
+            from scripts.check_llm_models import main as check_llm_models
+
+            sys_argv, sys.argv = sys.argv, ["check_llm_models"]
+            try:
+                check_llm_models()
+            finally:
+                sys.argv = sys_argv
+        except Exception as exc:  # never let this fail the backups above
+            print(f"  model check failed: {exc}")
+
     return 0
 
 

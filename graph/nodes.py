@@ -18,6 +18,7 @@ from db.chroma_client import hybrid_search
 from db.contribution_gate import could_be_a_contribution
 from db.freshness import get_expired_source_ids
 from db.reranker import rerank
+from graph import progress
 from graph.state import RagState
 from ingestion.catalog import get_catalog_courses
 from ingestion.deadlines import (
@@ -197,8 +198,27 @@ def _get_gemini_llm_cached(model_name: str) -> BaseChatModel:
     )
 
 
-@lru_cache(maxsize=4)
-def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
+# OpenRouter's "reasoning" request field, per kind of call. Measured with
+# dots-studio/dots-3-note-preview (2026-10-07), a model that reasons by
+# default:
+# - generation: reasoning OFF. Left on, it spent 580-2,500 hidden reasoning
+#   tokens before the first word of an answer - first token after 8-25s
+#   instead of 1.3-2s - for no gain in a task that is extracting facts from
+#   quoted passages (golden eval 43/47 with it off).
+# - classifier (tool router, translation, contribution JSON): reasoning ON at
+#   low effort. With it off the router skipped the catalog tool on 2 of 5
+#   runs of the same "Who is <professor>?" question; with it on, 15/15 -
+#   and at no extra latency, since these outputs are a single short decision.
+# Models without reasoning ignore the field (checked against the fallback
+# model).
+_OPENROUTER_REASONING = {
+    "generation": {"enabled": False},
+    "classifier": {"effort": "low"},
+}
+
+
+@lru_cache(maxsize=8)
+def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> BaseChatModel:
     # OpenRouter is OpenAI-API-compatible, so ChatOpenAI pointed at its base
     # URL is the client - this is not an OpenAI account or API key.
     from langchain_openai import ChatOpenAI
@@ -208,6 +228,7 @@ def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
+        extra_body={"reasoning": _OPENROUTER_REASONING[purpose]},
         # openai's client otherwise defaults to a 600s timeout - fine for a
         # healthy model, but it means a stealth model that starts hanging
         # instead of erroring (rather than a clean 4xx) would sit for ten
@@ -219,7 +240,7 @@ def _get_openrouter_llm_cached(model_name: str) -> BaseChatModel:
     )
 
 
-def _with_fallback(runnable, *, tools: list | None = None):
+def _with_fallback(runnable, *, tools: list | None = None, purpose: str = "classifier"):
     """Adds openrouter_fallback_model as a fallback for `runnable` - tried
     only if the primary call itself raises (a 4xx/5xx from OpenRouter, a
     timeout, etc). Exists for openrouter's ":free" stealth-style releases
@@ -259,7 +280,7 @@ def _with_fallback(runnable, *, tools: list | None = None):
         # Falling back to itself would just repeat the same failure.
         return runnable
 
-    fallback = _get_openrouter_llm_cached(config.openrouter_fallback_model)
+    fallback = _get_openrouter_llm_cached(config.openrouter_fallback_model, purpose)
     if tools:
         fallback = fallback.bind_tools(tools)
     return runnable.with_fallbacks([fallback])
@@ -354,7 +375,7 @@ def get_llm() -> BaseChatModel:
         return _get_gemini_llm_cached(config.gemini_model)
 
     if provider == "openrouter":
-        return _get_openrouter_llm_cached(config.openrouter_model)
+        return _get_openrouter_llm_cached(config.openrouter_model, "generation")
 
     return _get_ollama_generation_llm()
 
@@ -370,7 +391,7 @@ def get_classifier_llm() -> BaseChatModel:
     config = get_runtime_config()
     provider = effective_provider()
     if provider == "openrouter":
-        return _get_openrouter_llm_cached(config.openrouter_model)
+        return _get_openrouter_llm_cached(config.openrouter_model, "classifier")
 
     if provider == "gemini":
         return _get_gemini_llm_cached(config.gemini_model)
@@ -624,9 +645,16 @@ def search_course_catalog(
     if compulsory_only:
         courses = [c for c in courses if c["compulsory"]]
     if language_exact:
+        # The thesis module is excluded: it is not a taught course, but
+        # Stud.IP records a language for it like any other module ("German"),
+        # so "which courses are taught only in German" listed the 30-ECTS
+        # thesis among them - the exact error an admin corrected in review.
+        # Filtered here rather than in catalog.csv, which update_catalog.py
+        # regenerates from Stud.IP and would silently undo a hand edit.
         courses = [
             c for c in courses
             if c.get("language") and c["language"].strip().lower() == language_exact.strip().lower()
+            and (c.get("category") or "").strip().lower() != "thesis"
         ]
 
     if not courses:
@@ -684,6 +712,13 @@ _ROUTER_SYSTEM_PROMPT = (
     "search_course_catalog(course_name_or_abbreviation=\"Applied Econometrics\")\n"
     '- "Which courses does Prof. Helm teach?" -> '
     'search_course_catalog(professor_name="Helm")\n'
+    # A bare "who is <name>" carries no course or teaching cue, and some
+    # models (dots-3-note) then answered "not in the documents" instead of
+    # looking the person up - the tool docstring alone did not carry it.
+    '- "Who is Peter Eppinger?" / "Wer ist Prof. Eppinger?" -> '
+    'search_course_catalog(professor_name="Peter Eppinger")\n'
+    '- "Which compulsory courses are usually taken in the first semester?" -> '
+    "search_course_catalog(compulsory_only=true)\n"
     '- "When is the deadline for non-EU applicants?" -> '
     'lookup_application_deadline(entry_qualification="Non-EU (third countries)")\n'
     '- "What are the application deadlines?" / "...for EU and German applicants?" -> '
@@ -736,6 +771,15 @@ def _route_with_tools(question: str) -> dict | None:
             result_text = tool_fn.invoke(call["args"])
         except Exception:
             logger.warning("Tool execution failed for %s", call["name"], exc_info=True)
+            continue
+
+        # A catalog search that matched nothing is not an answer. Handed to
+        # generate_node as the only context it made the model reply "no
+        # information" to a question the documents do answer (e.g. when the
+        # thesis is registered, routed to the catalog by mistake) - skipping
+        # it lets the question fall through to document search, as this
+        # function's docstring promises.
+        if result_text.startswith("No matching courses found"):
             continue
 
         if call["name"] in ("lookup_application_deadline", "lookup_examinations_office_contact"):
@@ -1411,6 +1455,7 @@ def retrieve_node(state: RagState) -> dict:
     # enumeration, deadlines, exams office contact, curriculum listing) with
     # the model deciding, via native tool-calling, whether one of these
     # structured lookups answers the question - see _route_with_tools.
+    progress.report_stage(progress.UNDERSTANDING)
     tool_result = _route_with_tools(last_question)
     if tool_result is not None:
         return tool_result
@@ -1421,8 +1466,10 @@ def retrieve_node(state: RagState) -> dict:
     # English-only past this point - the corpus and its embedding model are
     # English (see _translate_to_english), not the question itself,
     # which generate_node still answers in whatever language it was asked in.
+    progress.report_stage(progress.SEARCHING)
     retrieval_query = _translate_to_english(query)
     docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
+    progress.report_stage(progress.RANKING)
     docs = rerank(retrieval_query, docs, runtime.rerank_top_k)
 
     # Relevance gate: hybrid search always returns its top k, however weak the
@@ -1486,6 +1533,7 @@ def _expiry_label(source_id: str | None, expired_sources: dict[str, date]) -> st
 
 
 def generate_node(state: RagState) -> dict:
+    progress.report_stage(progress.WRITING)
     if state.get("direct_answer"):
         return {"messages": [AIMessage(content=state["direct_answer"])]}
 
@@ -1503,12 +1551,16 @@ def generate_node(state: RagState) -> dict:
     # header-bounded section as parent_content - substituted in here so the
     # model gets that fuller surrounding context, even though matching itself
     # was against the smaller, more precise child chunk.
+    # Numbered in the same order as the `retrieval` list the API returns
+    # (one entry per retrieved doc, no dedup - see _build_retrieval_diagnostics),
+    # so a "[2]" the model writes is exactly retrieval[1] in the web UI, which
+    # renders it as a clickable citation.
     context = "\n\n".join(
-        f"[source: {doc.metadata.get('source_id', 'unknown')}"
+        f"[{number}] [source: {doc.metadata.get('source_id', 'unknown')}"
         + _expiry_label(doc.metadata.get("source_id"), expired_sources)
         + "] "
         + (doc.metadata.get("parent_content") or doc.page_content)
-        for doc in retrieved_docs
+        for number, doc in enumerate(retrieved_docs, start=1)
     )
 
     source_ids = {doc.metadata.get("source_id") for doc in retrieved_docs}
@@ -1581,8 +1633,17 @@ def generate_node(state: RagState) -> dict:
             "as an upcoming one, and never compute a countdown to it."
         )
 
+    # The citation instruction rides in this header, not in SYSTEM_PROMPT
+    # (which an admin can replace wholesale) and not in warning_parts (where
+    # every extra sentence has measurably cost this small model accuracy -
+    # see the comment above). One sentence, stated before the passages.
     context_message = SystemMessage(
-        content=f"Context retrieved for the latest question:\n{context}\n\n" + "\n\n".join(warning_parts)
+        content=(
+            "Context retrieved for the latest question. Passages are numbered; after "
+            "each fact you state, add the number of the passage it came from in "
+            "square brackets, e.g. [2].\n"
+            f"{context}\n\n" + "\n\n".join(warning_parts)
+        )
     )
 
     from runtime_config import get_runtime_config
@@ -1602,12 +1663,46 @@ def generate_node(state: RagState) -> dict:
     # no override has been saved.
     system_prompt = runtime.system_prompt_override or SYSTEM_PROMPT
 
-    llm = _with_resilience(_with_fallback(get_llm()))
+    llm = _with_resilience(_with_fallback(get_llm(), purpose="generation"))
     response = llm.invoke(
         [SystemMessage(content=system_prompt), *prior_messages, context_message, state["messages"][-1]]
     )
-    response.content = _strip_fabricated_citations(_strip_thinking(response.content))
+    response.content = _normalize_passage_markers(
+        _strip_fabricated_citations(_strip_thinking(response.content)),
+        passage_count=len(retrieved_docs),
+    )
     return {"messages": [response]}
+
+
+# "[2]", "[1, 3]", "[1][3]" - the forms a model writes when told to cite
+# numbered passages. Markdown links ("[text](url)") never match: the group
+# only admits digits, commas and spaces.
+_PASSAGE_MARKER_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\](?!\()")
+
+
+def _normalize_passage_markers(text: str, passage_count: int) -> str:
+    """Rewrites "[1, 3]" as "[1][3]" and drops any number that has no
+    matching passage. A citation the reader can click must point at a real
+    passage - an invented "[7]" for a four-passage context would otherwise
+    render as a link to nothing, which reads worse than no citation at all."""
+
+    def replace(match: re.Match) -> str:
+        numbers = [int(n) for n in re.findall(r"\d+", match.group(1))]
+        kept = [n for n in numbers if 1 <= n <= passage_count]
+        return "".join(f"[{n}]" for n in kept)
+
+    cleaned = _PASSAGE_MARKER_RE.sub(replace, text)
+    # A dropped marker can leave "word ." or "word  word" behind. Only runs
+    # between two words are collapsed: leading indentation (nested lists) and
+    # trailing double spaces (Markdown line breaks) are meaningful.
+    cleaned = re.sub(r"(?<=\S)[ \t]+([.,;:])", r"\1", cleaned)
+    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", cleaned)
+
+
+def strip_passage_markers(text: str) -> str:
+    """For channels with no way to show a citation (Telegram, plain-text
+    copies): the bare numbers would only be noise there."""
+    return re.sub(r"[ \t]*(?:\[\d+\])+", "", text)
 
 
 _THINK_TAG_RE = re.compile(r".*</think>\s*", re.DOTALL)

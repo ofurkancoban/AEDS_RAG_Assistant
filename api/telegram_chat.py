@@ -64,8 +64,11 @@ def _get_or_create_telegram_user(session, chat_id: str):
 
 def _format_reply(answer: str, sources: list) -> str:
     from api.telegram_bot import _truncate
+    from graph.nodes import strip_passage_markers
 
-    text = _truncate(answer, limit=_ANSWER_PREVIEW_CHARS)
+    # The web UI turns "[2]" into a clickable citation; Telegram can't, so the
+    # numbers would only be noise there.
+    text = _truncate(strip_passage_markers(answer), limit=_ANSWER_PREVIEW_CHARS)
 
     def get(source, key):
         return source.get(key) if isinstance(source, dict) else getattr(source, key, None)

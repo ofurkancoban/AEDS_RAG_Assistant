@@ -1,3 +1,5 @@
+import re
+
 from concurrency import once
 from config import settings
 
@@ -22,6 +24,35 @@ def _get_router():
     from laya import Router
 
     return Router(preload=True)
+
+
+# Openers that make a message a question or a request rather than a claim.
+# English is enough in practice (detect_contribution_node translates German
+# to English first); the German forms are kept for direct callers.
+_QUESTION_OR_REQUEST_START = re.compile(
+    r"^(who|what|when|where|which|why|how|is|are|can|could|do|does|did|should|would|will|may|"
+    r"wer|was|wann|wo|welche|welcher|welches|warum|wie|kann|muss|gibt|ist|sind|"
+    r"tell|explain|show|list|give|create|make|help|please|i want|i need|i would like)\b",
+    re.IGNORECASE,
+)
+_MIN_STATEMENT_WORDS = 6
+
+
+def _looks_like_statement(text: str) -> bool:
+    """A plain declarative sentence: no question mark, not opening like a
+    question or a request, and long enough to carry a claim. Laya scores
+    corrections ("Actually X, not Y") well but plain new information ("The lab
+    is in room A14") barely at all - 0.03 against a 0.20 threshold - so this
+    rule catches the statements it misses. Measured (2026-10-07): recall on 25
+    hand-written contributions 15/25 -> 25/25, with 0/76 false passes on real
+    questions and non-contributions; on 70 real production messages the gate
+    passes 10 instead of 6. Rewording Laya's instruction instead was tried
+    and was worse - every variant that caught more also passed far more
+    ordinary questions."""
+    stripped = text.strip()
+    if "?" in stripped or len(re.findall(r"\w+", stripped)) < _MIN_STATEMENT_WORDS:
+        return False
+    return not _QUESTION_OR_REQUEST_START.match(stripped)
 
 
 def could_be_a_contribution(text: str) -> bool:
@@ -49,6 +80,8 @@ def could_be_a_contribution(text: str) -> bool:
     direct caller that skips that translation step gets the weaker
     multilingual checkpoint's accuracy instead.
     """
+    if _looks_like_statement(text):
+        return True
     result = _get_router().predict(text, _CONTRIBUTION_QUESTIONS)
     probability = result["answers"]["is_contribution"]["noul"]
     return probability >= settings.contribution_gate_threshold

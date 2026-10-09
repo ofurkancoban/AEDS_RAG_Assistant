@@ -18,8 +18,10 @@ def test_get_config_reports_openrouter_fallback_model(client, admin_headers):
     response = client.get("/admin/config", headers=admin_headers)
     assert response.status_code == 200
     body = response.json()
-    assert body["openrouter_model"]["value"] == "stealth/space-bunny-alpha"
-    assert body["openrouter_fallback_model"]["value"] == "cohere/north-mini-code:free"
+    # Compared against the settings rather than literal model names: the
+    # defaults change whenever a free model is withdrawn or replaced.
+    assert body["openrouter_model"]["value"] == settings.openrouter_model
+    assert body["openrouter_fallback_model"]["value"] == settings.openrouter_fallback_model
     # Default provider is ollama (see conftest.py) - the openrouter fields
     # are stored but not in effect, so the UI must not offer to edit them.
     assert body["openrouter_model"]["read_only"] is True

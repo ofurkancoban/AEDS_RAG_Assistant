@@ -59,6 +59,7 @@ rsync -az --delete \
   --exclude 'frontend/node_modules' \
   --exclude 'frontend/dist' \
   --exclude 'frontend_classic' \
+  --exclude 'frontend_backup_*' \
   --exclude '*.log' \
   --exclude '.pytest_cache' \
   ./ "root@${VPS_HOST}:${VPS_APP_DIR}/"
@@ -69,6 +70,20 @@ ssh "root@${VPS_HOST}" "chown -R www-data:www-data ${VPS_WEB_ROOT}"
 
 echo "==> Installing dependencies and running DB migration on VPS"
 ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && .venv/bin/pip install -q -r requirements.txt && .venv/bin/python -c 'from db.models import init_db; init_db()'"
+
+# Model choice lives in config.py (the default) and the admin panel (a live
+# override) - not in .env. A model line there silently outranks the code
+# default, and kept a withdrawn OpenRouter model in production for days
+# after the code had moved on. Removed here, with a dated backup of the file
+# first, and only when such a line exists.
+echo "==> Removing OpenRouter model lines from the VPS .env (model choice is config.py + admin panel)"
+ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && if grep -qE '^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL)=' .env; then cp .env .env.bak-\$(date +%Y%m%d%H%M%S) && sed -i -E '/^(OPENROUTER_MODEL|OPENROUTER_FALLBACK_MODEL)=/d' .env && echo '    removed (backup saved next to .env)'; else echo '    none present'; fi"
+
+# Before the restart, so a cleared admin-panel value takes effect with it
+# (the running app caches its effective config).
+echo "==> Checking the configured OpenRouter models still exist"
+ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && PYTHONPATH=. .venv/bin/python scripts/check_llm_models.py --fix" || \
+  echo "    WARNING: a configured model is still unavailable - see above, and switch it in the admin panel." >&2
 
 echo "==> Restarting pm2"
 ssh "root@${VPS_HOST}" "source ~/.nvm/nvm.sh 2>/dev/null; pm2 restart ${PM2_APP_NAME}"

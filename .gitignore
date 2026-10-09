@@ -14,3 +14,5 @@ frontend/dist/
 .claude/
 .agents/
 skills-lock.json
+# Local pre-redesign snapshots; the matching git tags (frontend-pre-redesign-*) keep them in history.
+frontend_backup_*/

@@ -4,9 +4,6 @@ import { ChatQueryResult, AdminStats } from './types';
 import { Navbar, TabId } from './components/Navbar';
 import { RagChatView } from './components/RagChatView';
 import { LoginModal } from './components/LoginModal';
-import { FloatingBackground } from './components/FloatingBackground';
-import { VersionBadge } from './components/VersionBadge';
-import { VisitorCounter } from './components/VisitorCounter';
 import { useAuth } from './context/AuthContext';
 import { getStats } from './api/client';
 
@@ -23,7 +20,7 @@ const UserManagementView = lazy(() => import('./components/UserManagementView').
 const AnswerReviewView = lazy(() => import('./components/AnswerReviewView').then((m) => ({ default: m.AnswerReviewView })));
 
 const AdminTabFallback: React.FC = () => (
-  <div className="max-w-5xl mx-auto px-4 py-16 text-center text-[var(--text-muted)] text-xs flex items-center justify-center space-x-2">
+  <div className="max-w-5xl mx-auto px-4 py-16 text-center text-[var(--text-muted)] text-sm flex items-center justify-center gap-2">
     <RefreshCw className="w-4 h-4 animate-spin" />
     <span>Loading...</span>
   </div>
@@ -33,6 +30,7 @@ export default function App() {
   const { isAdmin, identity, isReady } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [latestResult, setLatestResult] = useState<ChatQueryResult | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
 
@@ -55,32 +53,11 @@ export default function App() {
   }, [isAdmin, refreshStats]);
 
   return (
-    // App shell: the page itself is exactly one viewport tall and never
-    // scrolls. Anything longer than the space available scrolls inside <main>
-    // instead, so the navbar stays put and the chat view can size itself to
-    // whatever is left rather than guessing. h-dvh, not h-screen (100vh):
-    // mobile Safari's address/tab bar shrinks and grows the real visible
-    // viewport, and 100vh is measured against the taller, bar-hidden case -
-    // h-screen content ran under the bar instead of shrinking to fit above it.
-    <div className="h-dvh bg-[var(--bg)] text-[var(--text)] font-sans selection:bg-accent-500 selection:text-white flex flex-col relative overflow-hidden">
-
-      {/* Blurred color fields - the "light source" every glass panel in the
-          app blurs and refracts. Glassmorphism reads as glass only when
-          there's something colorful behind it to distort.
-
-          Oxford navy is a far darker, less saturated hue than the indigo
-          these used to be, so the old opacities turned the light theme grey
-          rather than blue. Light mode therefore leans on the mid steps at
-          higher opacity, while dark mode keeps them low - the same tint that
-          barely registers on white is more than enough against near-black.
-          The brass field is the one warm note; it stops the page reading as
-          a single flat wash of navy. */}
-      <div className="fixed top-[-10%] left-[-5%] w-[560px] h-[560px] bg-accent-500/35 dark:bg-accent-600/25 rounded-full blur-[130px] pointer-events-none z-0"></div>
-      <div className="fixed bottom-[-10%] right-[-5%] w-[640px] h-[640px] bg-accent-600/30 dark:bg-accent-700/30 rounded-full blur-[160px] pointer-events-none z-0"></div>
-      <div className="fixed top-[40%] right-[15%] w-[380px] h-[380px] bg-accent-400/25 dark:bg-accent-500/15 rounded-full blur-[120px] pointer-events-none z-0"></div>
-      <div className="fixed top-[65%] left-[10%] w-[320px] h-[320px] bg-brass-400/14 dark:bg-brass-500/14 rounded-full blur-[130px] pointer-events-none z-0"></div>
-      <FloatingBackground />
-
+    // App shell: exactly one viewport tall and never scrolls itself; anything
+    // longer scrolls inside <main>, so the header stays put. h-dvh, not
+    // h-screen: mobile Safari measures 100vh with its toolbar hidden, so
+    // h-screen content ran under the toolbar instead of fitting above it.
+    <div className="h-dvh bg-[var(--bg)] text-[var(--text)] font-sans flex flex-col relative overflow-hidden">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -90,13 +67,16 @@ export default function App() {
         pendingAnswers={stats?.pending_answers ?? 0}
         pendingSourceChanges={stats?.pending_source_changes ?? 0}
         onOpenLogin={() => setIsLoginOpen(true)}
+        onOpenMenu={activeTab === 'chat' ? () => setIsNavOpen(true) : undefined}
       />
 
-      {/* min-h-0 is what lets this shrink inside the flex column instead of
-          being forced to its content height, which is what would push the page
-          past one viewport. Views longer than the space available (the admin
-          lists) scroll here; the chat view fills it exactly and does not. */}
-      <main className="flex-1 min-h-0 overflow-y-auto z-10 relative w-full">
+      {/* min-h-0 lets this shrink inside the flex column instead of being
+          forced to its content height. The admin lists scroll here; the chat
+          view fills it exactly and scrolls internally. */}
+      {/* No z-index here on purpose: one would make <main> a stacking
+          context and trap every modal rendered inside it beneath the header.
+          Being later in the DOM is enough to paint over the fixed backdrop. */}
+      <main className="flex-1 min-h-0 overflow-y-auto relative w-full">
         {/* Keyed on the identity so logging in or out starts a clean
             conversation. A thread belongs to exactly one identity and the
             server rejects a thread_id that is not the caller's, so carrying
@@ -104,8 +84,9 @@ export default function App() {
         {activeTab === 'chat' && isReady && (
           <RagChatView
             key={identity?.id ?? 'anonymous'}
-            onOpenAdminMode={isAdmin ? () => setActiveTab('admin') : undefined}
             onQueryResult={setLatestResult}
+            isNavOpen={isNavOpen}
+            onNavOpenChange={setIsNavOpen}
           />
         )}
 
@@ -122,9 +103,6 @@ export default function App() {
       </main>
 
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
-      <VersionBadge />
-      <VisitorCounter />
-
     </div>
   );
 }

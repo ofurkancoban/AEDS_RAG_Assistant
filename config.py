@@ -89,19 +89,24 @@ class Settings(BaseSettings):
     # GET https://openrouter.ai/api/v1/key before relying on this for more
     # than a handful of concurrent users.
     openrouter_api_key: str = ""
-    openrouter_model: str = "stealth/space-bunny-alpha"
+    # Chosen 2026-10-07 by measuring the free models OpenRouter offered that
+    # day on this project's own tasks (one real generation, four router
+    # decisions, then a 15-case golden-eval subset through the real pipeline):
+    # apodex-1.1-mini scored 13/15 - both misses factually correct answers
+    # that tripped a strict test rule - at a 4.2s median, about three times
+    # faster than any other model that passed. The previous default,
+    # stealth/space-bunny-alpha, had been withdrawn ("No endpoints found"),
+    # so every call was silently landing on the fallback. Reasoning is set
+    # per call kind (see graph/nodes.py's _OPENROUTER_REASONING).
+    openrouter_model: str = "apodex/apodex-1.1-mini:free"
     # Tried only if openrouter_model's own call fails (see graph/nodes.py's
-    # _with_fallback) - a second, more established model to fall back to
-    # when the primary is a "stealth" (anonymous, temporary) release that
-    # OpenRouter can pull or start erroring on with no notice. Empty means
-    # no fallback is attempted. cohere/north-mini-code:free was this
-    # project's own previous non-stealth default (measured directly via
-    # run_chat before switching to space-bunny-alpha), so it's a known-good
-    # choice here rather than an untested guess - any ":free" model can
-    # still hit OpenRouter's shared-pool rate limit at any given moment
-    # (observed directly against google/gemma-4-31b-it:free during testing),
-    # so this is a mitigation, not a guarantee.
-    openrouter_fallback_model: str = "cohere/north-mini-code:free"
+    # _with_fallback): ":free" models are previews OpenRouter can pull or
+    # rate-limit with no notice, as happened to space-bunny-alpha. Empty
+    # means no fallback is attempted. dots-3-note is the most accurate model
+    # in the same measurement (15/15 on the subset, 45-46/47 on the full
+    # golden set) but slower (12s median), which suits a fallback that only
+    # runs when the primary is failing.
+    openrouter_fallback_model: str = "dots-studio/dots-3-note-preview:free"
 
     # Ceiling on LLM requests issued per calendar day, enforced in-app (see
     # llm_budget.py). 0 means no ceiling; leave it at -1 to derive one from the

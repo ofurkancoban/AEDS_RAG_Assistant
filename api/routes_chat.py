@@ -429,6 +429,9 @@ def chat_stream(
             question=payload.message,
             source_id_filter=payload.source_id_filter,
         ):
+            if event_type == "stage":
+                yield f"event: stage\ndata: {json.dumps(data)}\n\n"
+                continue
             if event_type == "token":
                 answer_parts.append(data["text"])
                 yield f"event: token\ndata: {json.dumps(data)}\n\n"

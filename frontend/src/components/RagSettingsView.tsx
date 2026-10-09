@@ -68,13 +68,13 @@ export const RagSettingsView: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-xl bg-accent-600/20 border border-accent-500/30 flex items-center justify-center text-accent-500 dark:text-accent-400">
               <Sliders className="w-5 h-5 text-accent-500 dark:text-accent-400" />
             </div>
-            <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">RAG Configuration</h1>
+            <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">RAG Configuration</h1>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-1">
             Live-editable retrieval and generation settings - changes apply to the next chat turn immediately.
@@ -84,7 +84,7 @@ export const RagSettingsView: React.FC = () => {
         <button
           onClick={() => save({ reset_system_prompt: true })}
           disabled={isSaving}
-          className="flex items-center space-x-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] bg-[var(--bg-inset)] hover:bg-[var(--bg-inset)]/70 px-4 py-2.5 rounded-2xl border border-accent-500/20 transition-all cursor-pointer shadow-md shrink-0"
+          className="flex items-center space-x-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] bg-[var(--bg-inset)] hover:bg-[var(--bg-inset)]/70 px-4 py-2.5 rounded-2xl border border-accent-500/20 transition-all cursor-pointer shadow-sm shrink-0"
         >
           <RotateCcw className="w-3.5 h-3.5 text-accent-500 dark:text-accent-400" />
           <span>Reset System Prompt</span>
@@ -93,16 +93,16 @@ export const RagSettingsView: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        <div className="glass rounded-3xl p-6 space-y-5 shadow-2xl">
+        <div className="glass rounded-2xl p-6 space-y-5 shadow-[var(--shadow-sm)]">
           <div className="flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
             <Layers className="w-5 h-5 text-accent-500 dark:text-accent-400" />
-            <h2 className="text-sm font-extrabold text-[var(--text)]">Retrieval</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text)]">Retrieval</h2>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <label className="font-bold text-[var(--text-secondary)]">Retrieval pool size (before rerank)</label>
-              <span className="font-mono text-accent-500 dark:text-accent-400 font-extrabold">{config.retrieval_top_k.value}</span>
+              <span className="font-mono text-accent-500 dark:text-accent-400 font-semibold">{config.retrieval_top_k.value}</span>
             </div>
             <input
               type="range"
@@ -120,7 +120,7 @@ export const RagSettingsView: React.FC = () => {
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <label className="font-bold text-[var(--text-secondary)]">Chunks sent to LLM (after rerank)</label>
-              <span className="font-mono text-accent-500 dark:text-accent-400 font-extrabold">{config.rerank_top_k.value}</span>
+              <span className="font-mono text-accent-500 dark:text-accent-400 font-semibold">{config.rerank_top_k.value}</span>
             </div>
             {/* Capped by the retrieval pool: reranking only narrows what was
                 retrieved, so a higher value is meaningless and the API rejects
@@ -141,7 +141,7 @@ export const RagSettingsView: React.FC = () => {
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <label className="font-bold text-[var(--text-secondary)]">Conversation history window (turns)</label>
-              <span className="font-mono text-accent-500 dark:text-accent-400 font-extrabold">{config.conversation_history_window.value}</span>
+              <span className="font-mono text-accent-500 dark:text-accent-400 font-semibold">{config.conversation_history_window.value}</span>
             </div>
             <input
               type="range"
@@ -299,10 +299,10 @@ export const RagSettingsView: React.FC = () => {
           )}
         </div>
 
-        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+        <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
           <div className="flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
             <Lock className="w-5 h-5 text-[var(--text-muted)]" />
-            <h2 className="text-sm font-extrabold text-[var(--text)]">Read-only (requires re-embedding)</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text)]">Read-only (requires re-embedding)</h2>
           </div>
 
           {[
@@ -324,12 +324,12 @@ export const RagSettingsView: React.FC = () => {
 
       </div>
 
-      <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+      <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
         <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5 gap-3">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-5 h-5 text-accent-500 dark:text-accent-400 shrink-0" />
             <div>
-              <h2 className="text-sm font-extrabold text-[var(--text)]">System Prompt</h2>
+              <h2 className="text-[15px] font-semibold text-[var(--text)]">System Prompt</h2>
               <p className="text-[11px] text-[var(--text-muted)]">
                 {systemPrompt
                   ? 'A custom prompt is active - the default below is not in use.'
@@ -337,7 +337,7 @@ export const RagSettingsView: React.FC = () => {
               </p>
             </div>
           </div>
-          <span className={`text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-full border shrink-0 ${
+          <span className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border shrink-0 ${
             systemPrompt
               ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
               : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
@@ -384,7 +384,7 @@ export const RagSettingsView: React.FC = () => {
           <button
             onClick={() => save({ system_prompt_override: systemPrompt || undefined, reset_system_prompt: !systemPrompt })}
             disabled={isSaving}
-            className="flex items-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-[var(--text)] text-xs font-bold px-5 py-2.5 rounded-2xl shadow-lg shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-[var(--text)] text-xs font-bold px-5 py-2.5 rounded-2xl shadow-sm shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             <span>{isSaving ? 'Saving...' : 'Save Prompt'}</span>

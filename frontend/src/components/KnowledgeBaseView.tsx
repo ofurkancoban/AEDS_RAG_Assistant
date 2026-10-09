@@ -207,14 +207,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl space-y-4">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-accent-500/10 pb-4">
           <div className="space-y-1">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-accent-600/20 border border-accent-500/30 flex items-center justify-center text-accent-500 dark:text-accent-400">
                 <Database className="w-5 h-5" />
               </div>
-              <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">Document Ingestion &amp; Knowledge Base</h1>
+              <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">Document Ingestion &amp; Knowledge Base</h1>
             </div>
             <p className="text-xs text-[var(--text-secondary)]">
               Upload documents to be chunked, embedded, and indexed for retrieval.
@@ -224,14 +224,14 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0">
             <button
               onClick={load}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-md"
+              className="flex-1 md:flex-none flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-sm"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
             <button
               onClick={() => setIsAddingNew(true)}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-4.5 py-2.5 rounded-2xl shadow-lg shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer"
+              className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-4.5 py-2.5 rounded-2xl shadow-sm shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer"
             >
               <Files className="w-4 h-4" />
               <span>Upload Documents</span>
@@ -247,7 +247,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
             {SUPPORTED_FORMATS.map((fmt, idx) => (
               <div key={idx} className="p-2.5 rounded-2xl border border-accent-500/15 bg-accent-500/5 flex flex-col text-xs shadow-sm">
-                <p className="text-[11px] font-extrabold text-[var(--text-secondary)] leading-tight">{fmt.label}</p>
+                <p className="text-[11px] font-semibold text-[var(--text-secondary)] leading-tight">{fmt.label}</p>
                 <p className="text-[9px] opacity-70 font-mono text-[var(--text-muted)]">{fmt.ext}</p>
               </div>
             ))}
@@ -256,7 +256,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
       </div>
 
       {sourceChanges.length > 0 && (
-        <div className="glass rounded-3xl p-5 shadow-2xl space-y-3">
+        <div className="glass rounded-2xl p-5 shadow-[var(--shadow-sm)] space-y-3">
           <div className="flex items-center justify-between border-b border-amber-500/10 pb-3">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -369,7 +369,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
       )}
 
       {bulkStatus && (
-        <div className="glass rounded-3xl p-5 shadow-2xl space-y-3">
+        <div className="glass rounded-2xl p-5 shadow-[var(--shadow-sm)] space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Files className="w-5 h-5 text-accent-500 dark:text-accent-400" />
@@ -415,11 +415,11 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
       )}
 
       {isAddingNew && (
-        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+        <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
           <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
             <div className="flex items-center space-x-2">
               <Upload className="w-5 h-5 text-accent-500 dark:text-accent-400" />
-              <h2 className="text-sm font-extrabold text-[var(--text)]">Upload Documents</h2>
+              <h2 className="text-[15px] font-semibold text-[var(--text)]">Upload Documents</h2>
             </div>
             <button onClick={() => setIsAddingNew(false)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] cursor-pointer font-bold">
               Close
@@ -435,7 +435,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
               disabled={bulkStatus?.isBulkUploading || false}
               className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
             />
-            <div className="w-12 h-12 bg-accent-500/10 border border-accent-500/20 rounded-2xl flex items-center justify-center mx-auto text-accent-500 dark:text-accent-400 shadow-md">
+            <div className="w-12 h-12 bg-accent-500/10 border border-accent-500/20 rounded-2xl flex items-center justify-center mx-auto text-accent-500 dark:text-accent-400 shadow-sm">
               {bulkStatus?.isBulkUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Files className="w-6 h-6" />}
             </div>
             <p className="text-xs font-bold text-[var(--text)]">Click or drop file(s) here</p>
@@ -444,7 +444,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
         </div>
       )}
 
-      <div className="glass rounded-3xl p-4 space-y-4 shadow-2xl">
+      <div className="glass rounded-2xl p-4 space-y-4 shadow-[var(--shadow-sm)]">
         <div className="relative">
           <Search className="w-4 h-4 text-[var(--text-faint)] absolute left-3.5 top-3" />
           <input
@@ -456,7 +456,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
           />
         </div>
 
-        <div className="text-xs font-extrabold text-accent-500 dark:text-accent-400 uppercase tracking-wider px-1">
+        <div className="text-xs font-semibold text-accent-500 dark:text-accent-400 uppercase tracking-wider px-1">
           Ingested Documents ({filteredDocs.length})
         </div>
 
@@ -474,7 +474,7 @@ export const KnowledgeBaseView: React.FC<KnowledgeBaseViewProps> = ({ onCorpusCh
                     <h4 className="text-xs font-bold text-[var(--text)] truncate flex items-center gap-1.5">
                       <span className="truncate">{doc.filename}</span>
                       {doc.expired && (
-                        <span className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+                        <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
                           expired
                         </span>
                       )}

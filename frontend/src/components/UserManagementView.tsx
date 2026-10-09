@@ -98,14 +98,14 @@ export const UserManagementView: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl space-y-4">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-accent-600/20 border border-accent-500/30 flex items-center justify-center text-accent-500 dark:text-accent-400">
                 <Users className="w-5 h-5" />
               </div>
-              <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">Staff Accounts</h1>
+              <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">Staff Accounts</h1>
             </div>
             <p className="text-xs text-[var(--text-secondary)]">
               Accounts exist only for managing the assistant. Students never need one.
@@ -115,14 +115,14 @@ export const UserManagementView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0">
             <button
               onClick={load}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-md"
+              className="flex-1 md:flex-none flex items-center justify-center space-x-2 glass-well hover:bg-[var(--bg-inset)]/70 text-[var(--text-secondary)] text-xs font-bold px-4 py-2.5 rounded-2xl transition-all cursor-pointer shadow-sm"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
             <button
               onClick={() => { setIsFormOpen((open) => !open); setFormError(null); }}
-              className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-4.5 py-2.5 rounded-2xl shadow-lg shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer"
+              className="flex-1 md:flex-none flex items-center justify-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-4.5 py-2.5 rounded-2xl shadow-sm shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
               <span>Add User</span>
@@ -150,10 +150,10 @@ export const UserManagementView: React.FC = () => {
       )}
 
       {isFormOpen && (
-        <form onSubmit={handleCreate} className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+        <form onSubmit={handleCreate} className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
           <div className="flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
             <UserPlus className="w-5 h-5 text-accent-500 dark:text-accent-400" />
-            <h2 className="text-sm font-extrabold text-[var(--text)]">New staff account</h2>
+            <h2 className="text-[15px] font-semibold text-[var(--text)]">New staff account</h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -227,7 +227,7 @@ export const UserManagementView: React.FC = () => {
             <button
               type="submit"
               disabled={busyId === -1}
-              className="flex items-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-5 py-2.5 rounded-2xl shadow-lg shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center space-x-2 bg-gradient-to-r from-accent-600 to-accent-700 hover:from-accent-500 hover:to-accent-600 text-white text-xs font-bold px-5 py-2.5 rounded-2xl shadow-sm shadow-accent-600/30 border border-accent-400/30 transition-all cursor-pointer disabled:opacity-50"
             >
               <UserPlus className="w-4 h-4" />
               <span>{busyId === -1 ? 'Creating...' : 'Create account'}</span>
@@ -236,8 +236,8 @@ export const UserManagementView: React.FC = () => {
         </form>
       )}
 
-      <div className="glass rounded-3xl p-4 space-y-3 shadow-2xl">
-        <div className="text-xs font-extrabold text-accent-500 dark:text-accent-400 uppercase tracking-wider px-1">
+      <div className="glass rounded-2xl p-4 space-y-3 shadow-[var(--shadow-sm)]">
+        <div className="text-xs font-semibold text-accent-500 dark:text-accent-400 uppercase tracking-wider px-1">
           Accounts ({users.length})
         </div>
 
@@ -260,7 +260,7 @@ export const UserManagementView: React.FC = () => {
                           both say "this account has staff powers", and having
                           them in two different yellows made them look like two
                           unrelated states. */}
-                      <span className={`text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full border ${
+                      <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border ${
                         user.role === 'admin'
                           ? 'bg-brass-500/15 text-brass-700 dark:text-brass-300 border-brass-500/35'
                           : 'bg-slate-500/15 text-slate-600 dark:text-slate-300 border-slate-500/30'
@@ -268,7 +268,7 @@ export const UserManagementView: React.FC = () => {
                         {user.role}
                       </span>
                       {isSelf && (
-                        <span className="text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30">
+                        <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30">
                           you
                         </span>
                       )}

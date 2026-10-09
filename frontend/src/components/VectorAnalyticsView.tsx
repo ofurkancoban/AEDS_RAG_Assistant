@@ -76,13 +76,13 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
-      <div className="glass rounded-3xl p-6 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="glass rounded-2xl p-6 shadow-[var(--shadow-sm)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-xl bg-accent-600/20 border border-accent-500/30 flex items-center justify-center text-accent-500 dark:text-accent-400">
               <BarChart2 className="w-5 h-5 text-accent-500 dark:text-accent-400" />
             </div>
-            <h1 className="text-lg font-extrabold text-[var(--text)] tracking-tight">Vector Space &amp; RAG Analytics</h1>
+            <h1 className="text-xl sm:text-[22px] font-semibold text-[var(--text)] tracking-[-0.01em]">Vector Space &amp; RAG Analytics</h1>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-1">
             Real corpus statistics and the retrieval diagnostics from the last chat query.
@@ -91,7 +91,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
         <button
           onClick={() => load(true)}
-          className="flex items-center space-x-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] bg-[var(--bg-inset)] hover:bg-[var(--bg-inset)]/70 px-4 py-2.5 rounded-2xl border border-accent-500/20 transition-all cursor-pointer shadow-md shrink-0"
+          className="flex items-center space-x-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] bg-[var(--bg-inset)] hover:bg-[var(--bg-inset)]/70 px-4 py-2.5 rounded-2xl border border-accent-500/20 transition-all cursor-pointer shadow-sm shrink-0"
         >
           <RefreshCw className={`w-3.5 h-3.5 text-accent-500 dark:text-accent-400 ${isLoading ? 'animate-spin' : ''}`} />
           <span>Refresh</span>
@@ -99,21 +99,21 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass p-5 rounded-3xl space-y-2 shadow-2xl">
-          <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Total Vector Chunks</span>
-          <div className="text-2xl font-extrabold text-[var(--text)] font-mono">{stats?.total_chunks ?? '—'}</div>
+        <div className="glass p-5 rounded-2xl space-y-2 shadow-[var(--shadow-sm)]">
+          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Total Vector Chunks</span>
+          <div className="text-2xl font-semibold text-[var(--text)] font-mono">{stats?.total_chunks ?? '—'}</div>
           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">{stats?.total_sources ?? 0} source documents</span>
         </div>
 
-        <div className="glass p-5 rounded-3xl space-y-2 shadow-2xl">
-          <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Embedding Model</span>
+        <div className="glass p-5 rounded-2xl space-y-2 shadow-[var(--shadow-sm)]">
+          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Embedding Model</span>
           <div className="text-sm font-bold text-accent-600 dark:text-accent-300 font-mono truncate">{stats?.embedding_model ?? '—'}</div>
           <span className="text-[11px] text-[var(--text-muted)]">{stats?.embedding_dimension ?? '—'}-dim vectors</span>
         </div>
 
-        <div className="glass p-5 rounded-3xl space-y-2 shadow-2xl">
-          <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Last Query Latency</span>
-          <div className="text-2xl font-extrabold text-[var(--text)] font-mono">
+        <div className="glass p-5 rounded-2xl space-y-2 shadow-[var(--shadow-sm)]">
+          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Last Query Latency</span>
+          <div className="text-2xl font-semibold text-[var(--text)] font-mono">
             {totalLatency != null
               ? `${Math.round(totalLatency)}ms`
               : latestResult?.cached
@@ -129,9 +129,9 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
           </span>
         </div>
 
-        <div className="glass p-5 rounded-3xl space-y-2 shadow-2xl">
-          <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Top Rerank Score</span>
-          <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+        <div className="glass p-5 rounded-2xl space-y-2 shadow-[var(--shadow-sm)]">
+          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Top Rerank Score</span>
+          <div className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
             {topRerankScore != null && Number.isFinite(topRerankScore) ? topRerankScore.toFixed(2) : 'N/A'}
           </div>
           <span className="text-[11px] text-[var(--text-muted)]">Cross-encoder relevance score</span>
@@ -139,14 +139,14 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
       </div>
 
       {stats && stats.expired_documents > 0 && (
-        <div className="rounded-3xl p-5 border border-amber-500/40 bg-amber-500/10 flex items-start gap-3">
+        <div className="rounded-2xl p-5 border border-amber-500/40 bg-amber-500/10 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-xs space-y-1">
             {/* The noun was already pluralised here but the pronouns were
                 not, so a single expired file read "1 document past their
                 validity date". The body text is written without pronouns
                 instead, which reads correctly for any count. */}
-            <p className="font-extrabold text-amber-700 dark:text-amber-300">
+            <p className="font-semibold text-amber-700 dark:text-amber-300">
               {stats.expired_documents === 1
                 ? '1 document past its validity date'
                 : `${stats.expired_documents} documents past their validity date`}
@@ -162,9 +162,9 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
       {analytics && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+          <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
             <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
-              <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+              <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
                 <Activity className="w-4 h-4 text-accent-500 dark:text-accent-400" />
                 <span>Usage (last 30 days)</span>
               </h2>
@@ -175,23 +175,23 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="glass-well rounded-2xl p-3 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-extrabold">Cache hit rate</span>
-                <div className="text-xl font-extrabold font-mono text-accent-600 dark:text-accent-300 flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-semibold">Cache hit rate</span>
+                <div className="text-xl font-semibold font-mono text-accent-600 dark:text-accent-300 flex items-center gap-1.5">
                   <Database className="w-4 h-4" />
                   {Math.round(analytics.cache_hit_rate * 100)}%
                 </div>
                 <span className="text-[10px] text-[var(--text-muted)]">LLM calls skipped entirely</span>
               </div>
               <div className="glass-well rounded-2xl p-3 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-extrabold">Avg latency</span>
-                <div className="text-xl font-extrabold font-mono text-[var(--text)]">
+                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-semibold">Avg latency</span>
+                <div className="text-xl font-semibold font-mono text-[var(--text)]">
                   {analytics.avg_latency_ms}ms
                 </div>
                 <span className="text-[10px] text-[var(--text-muted)]">excludes cache hits</span>
               </div>
               <div className="glass-well rounded-2xl p-3 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-extrabold">Ratings</span>
-                <div className="text-xl font-extrabold font-mono flex items-center gap-3">
+                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-semibold">Ratings</span>
+                <div className="text-xl font-semibold font-mono flex items-center gap-3">
                   <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <ThumbsUp className="w-4 h-4" />{analytics.thumbs_up}
                   </span>
@@ -201,8 +201,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
                 </div>
               </div>
               <div className="glass-well rounded-2xl p-3 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-extrabold">Unanswered</span>
-                <div className="text-xl font-extrabold font-mono text-amber-600 dark:text-amber-400">
+                <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-semibold">Unanswered</span>
+                <div className="text-xl font-semibold font-mono text-amber-600 dark:text-amber-400">
                   {analytics.unanswered_queries}
                 </div>
                 <span className="text-[10px] text-[var(--text-muted)]">corpus had no answer</span>
@@ -215,10 +215,10 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
               {stats && (
                 <div className="glass-well rounded-2xl p-3 space-y-1.5 col-span-2">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-extrabold">
+                    <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-semibold">
                       LLM requests today
                     </span>
-                    <span className="font-mono text-xs font-extrabold text-[var(--text)]">
+                    <span className="font-mono text-xs font-semibold text-[var(--text)]">
                       {stats.llm_calls_today}
                       {stats.llm_daily_budget > 0 && ` / ${stats.llm_daily_budget}`}
                     </span>
@@ -253,7 +253,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
             </div>
 
             <div className="space-y-2 pt-1">
-              <span className="text-[10px] font-extrabold text-accent-500 dark:text-accent-400 uppercase tracking-wider">
+              <span className="text-[10px] font-semibold text-accent-500 dark:text-accent-400 uppercase tracking-wider">
                 Most asked
               </span>
               {analytics.top_questions.length === 0 ? (
@@ -273,9 +273,9 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
               not answer. This is the highest-signal list in the whole admin UI
               - it says exactly which documents are still missing, from real
               demand rather than guesswork. */}
-          <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+          <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
             <div className="border-b border-accent-500/10 pb-3.5">
-              <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+              <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
                 <span>Content Gaps</span>
               </h2>
@@ -301,7 +301,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
             {analytics.thumbs_down_questions.length > 0 && (
               <div className="space-y-2 pt-2">
-                <span className="text-[10px] font-extrabold text-rose-500 uppercase tracking-wider">
+                <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
                   Rated unhelpful
                 </span>
                 {analytics.thumbs_down_questions.map((q, idx) => (
@@ -316,9 +316,9 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
       )}
 
       {originStats && originStats.total_queries > 0 && (
-        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+        <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
           <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
-            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
               <Globe className="w-4 h-4 text-accent-500 dark:text-accent-400" />
               <span>Traffic by Origin (last 30 days)</span>
             </h2>
@@ -349,7 +349,7 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
           {originStats.daily_totals.length > 1 && (
             <div className="pt-2 space-y-1.5">
-              <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">
+              <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
                 Daily volume
               </span>
               <div className="flex items-end gap-0.5 h-12">
@@ -372,8 +372,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
 
       {opsStatus && (opsStatus.provider_usage.length > 0 || opsStatus.system_health.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
-            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+          <div className="glass rounded-2xl p-6 space-y-3 shadow-[var(--shadow-sm)]">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
               <Gauge className="w-4 h-4 text-accent-500 dark:text-accent-400" />
               <span>LLM Budget by Provider</span>
             </h2>
@@ -404,8 +404,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
             </div>
           </div>
 
-          <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
-            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+          <div className="glass rounded-2xl p-6 space-y-3 shadow-[var(--shadow-sm)]">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
               <HeartPulse className="w-4 h-4 text-accent-500 dark:text-accent-400" />
               <span>VPS Host Health</span>
             </h2>
@@ -437,8 +437,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
       )}
 
       {rateLimitStats && rateLimitStats.by_limiter.length > 0 && (
-        <div className="glass rounded-3xl p-6 space-y-3 shadow-2xl">
-          <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+        <div className="glass rounded-2xl p-6 space-y-3 shadow-[var(--shadow-sm)]">
+          <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
             <ShieldAlert className="w-4 h-4 text-amber-500" />
             <span>Rate Limit Rejections (last {rateLimitStats.days} days)</span>
           </h2>
@@ -460,8 +460,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
         </div>
       )}
 
-      <div className="glass p-5 rounded-3xl space-y-2 shadow-2xl">
-        <span className="text-[10px] font-extrabold text-[var(--text-muted)] uppercase tracking-widest">Reranker &amp; Chat Model</span>
+      <div className="glass p-5 rounded-2xl space-y-2 shadow-[var(--shadow-sm)]">
+        <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Reranker &amp; Chat Model</span>
         <div className="flex flex-wrap gap-4 text-xs font-mono text-[var(--text-secondary)]">
           <span>Reranker: <strong className="text-accent-600 dark:text-accent-300">{stats?.reranker_model ?? '—'}</strong></span>
           <span>
@@ -473,9 +473,9 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
       </div>
 
       {nodeLatencyStats && nodeLatencyStats.by_node.length > 0 && (
-        <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+        <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
           <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
-            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
               <Timer className="w-4 h-4 text-accent-500 dark:text-accent-400" />
               <span>Pipeline Latency by Node (last {nodeLatencyStats.days} days)</span>
             </h2>
@@ -511,10 +511,10 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
         </div>
       )}
 
-      <div className="glass rounded-3xl p-6 space-y-4 shadow-2xl">
+      <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
         <div className="flex items-center justify-between border-b border-accent-500/10 pb-3.5">
           <div>
-            <h2 className="text-sm font-extrabold text-[var(--text)] flex items-center space-x-2">
+            <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2">
               <Activity className="w-4 h-4 text-accent-500 dark:text-accent-400" />
               <span>Last Query Retrieval Breakdown</span>
             </h2>
