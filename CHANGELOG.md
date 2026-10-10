@@ -7,6 +7,18 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.2] - 2026-10-11
+### Changed
+- The tool router (which structured lookup, if any, answers a question)
+  runs on dots-3-note, with apodex as its fallback; answers are still
+  written by apodex. On the golden set, full runs scored 54 and 53 of 56
+  against 51, 51 and 50 with apodex routing, and on the questions where
+  the two models routed differently dots was right on 12 of 15 and apodex
+  on none (deadline groups mixed up, exam procedures sent to the contact
+  lookup, a fee question searched in the course catalogue). Routing takes
+  about 1.4 seconds longer per question. Set in config.py
+  (openrouter_router_model); scripts/check_llm_models.py checks it too.
+
 ## [1.10.1] - 2026-10-11
 ### Changed
 - The examination regulations of 04.09.2026 replace the 2023 version in

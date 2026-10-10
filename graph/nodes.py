@@ -256,7 +256,9 @@ def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> 
     )
 
 
-def _with_fallback(runnable, *, tools: list | None = None, purpose: str = "classifier"):
+def _with_fallback(
+    runnable, *, tools: list | None = None, purpose: str = "classifier", primary_model: str | None = None
+):
     """Adds openrouter_fallback_model as a fallback for `runnable` - tried
     only if the primary call itself raises (a 4xx/5xx from OpenRouter, a
     timeout, etc). Exists for openrouter's ":free" stealth-style releases
@@ -292,11 +294,17 @@ def _with_fallback(runnable, *, tools: list | None = None, purpose: str = "class
     config = get_runtime_config()
     if effective_provider() != "openrouter" or not config.openrouter_fallback_model:
         return runnable
-    if config.openrouter_fallback_model == config.openrouter_model:
+    primary = primary_model or config.openrouter_model
+    fallback_model = config.openrouter_fallback_model
+    if fallback_model == primary:
+        # The router may run on the configured fallback model; its own
+        # fallback is then the main model.
+        fallback_model = config.openrouter_model
+    if fallback_model == primary:
         # Falling back to itself would just repeat the same failure.
         return runnable
 
-    fallback = _get_openrouter_llm_cached(config.openrouter_fallback_model, purpose)
+    fallback = _get_openrouter_llm_cached(fallback_model, purpose)
     if tools:
         fallback = fallback.bind_tools(tools)
     return runnable.with_fallbacks([fallback])
@@ -413,6 +421,17 @@ def get_classifier_llm() -> BaseChatModel:
         return _get_gemini_llm_cached(config.gemini_model)
 
     return _get_ollama_classifier_llm()
+
+
+def get_router_llm() -> tuple[BaseChatModel, str | None]:
+    """The tool router's model, and its OpenRouter model name when it is not
+    the main model (for _with_fallback). See config.openrouter_router_model."""
+    from llm_budget import effective_provider
+
+    router_model = settings.openrouter_router_model
+    if effective_provider() == "openrouter" and router_model:
+        return _get_openrouter_llm_cached(router_model, "classifier"), router_model
+    return get_classifier_llm(), None
 
 
 _STOPWORDS_FOR_ABBREVIATION = {"of", "the", "and", "for", "in", "to", "a", "an", "&"}
@@ -797,8 +816,9 @@ def _route_with_tools(question: str) -> dict | None:
     expressed via native tool-calling instead of string-matching. Returns None
     (falls through to generic retrieval) if the model doesn't call a tool, or
     if the tool it calls turns up nothing useful."""
+    router_llm, router_model = get_router_llm()
     llm_with_tools = _with_resilience(
-        _with_fallback(get_classifier_llm().bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS)
+        _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
     )
     try:
         response = llm_with_tools.invoke(

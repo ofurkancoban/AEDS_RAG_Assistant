@@ -111,6 +111,17 @@ class Settings(BaseSettings):
     # train on prompts (provider.data_collection = "deny"). Checked working
     # with both models above on 2026-10-10.
     openrouter_deny_data_collection: bool = True
+    # Model for the tool-calling router only (which structured lookup, if
+    # any, answers a question). Empty means openrouter_model. The router
+    # decides what the answer is built from, so a wrong call is costly, and
+    # it is one short call per question - accuracy matters more here than
+    # for any other call. When set, openrouter_model becomes its fallback.
+    # Measured 2026-10-11 over the golden set: with apodex routing, full runs
+    # scored 51, 51 and 50 of 56; with dots routing 54 and 53, and on a
+    # router-only pass dots was right on 12 of the 15 questions where the
+    # two disagreed (apodex on none), for about 1.4s more per question
+    # (median 3.6s vs 2.2s).
+    openrouter_router_model: str = "dots-studio/dots-3-note-preview:free"
 
     # Ceiling on LLM requests issued per calendar day, enforced in-app (see
     # llm_budget.py). 0 means no ceiling; leave it at -1 to derive one from the
