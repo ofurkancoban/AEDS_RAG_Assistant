@@ -7,6 +7,7 @@ import { FileWarning } from 'lucide-react';
 import { RetrievalDiagnostic } from '../../types';
 import { ANSWER_MARKDOWN_COMPONENTS } from '../markdown';
 import { CITE_PREFIX, describeSource, linkifyCitations, plainSnippet, relevance } from './citations';
+import { useI18n } from '../../i18n';
 
 interface AnswerBodyProps {
   text: string;
@@ -27,6 +28,7 @@ const CitationChip: React.FC<{
   onOpen: (n: number, item: RetrievalDiagnostic) => void;
 }> = ({ n, item, isActive, onOpen }) => {
   const ref = useRef<HTMLButtonElement>(null);
+  const { lang, t } = useI18n();
   const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null);
 
   const show = () => {
@@ -39,7 +41,7 @@ const CitationChip: React.FC<{
     setPos({ left, top: below ? r.bottom + 8 : r.top - 8, below });
   };
 
-  const source = item ? describeSource(item.source_id) : null;
+  const source = item ? describeSource(item.source_id, lang) : null;
 
   return (
     <>
@@ -55,7 +57,7 @@ const CitationChip: React.FC<{
           if (item) onOpen(n, item);
         }}
         disabled={!item}
-        aria-label={source ? `Source ${n}: ${source.title}` : `Source ${n}`}
+        aria-label={source ? `${t.sourceN(n)}: ${source.title}` : t.sourceN(n)}
         className={`citation-chip ${isActive ? 'is-active' : ''}`}
       >
         {n}
@@ -76,19 +78,19 @@ const CitationChip: React.FC<{
               {item.rerank_score != null && (
                 <>
                   <span className="text-[var(--text-faint)]">·</span>
-                  <span className="font-mono">relevance {Math.round(relevance(item.rerank_score) * 100)}%</span>
+                  <span className="font-mono">{t.relevance} {Math.round(relevance(item.rerank_score) * 100)}%</span>
                 </>
               )}
             </div>
             {item.expired_since && (
               <div className="mt-2 flex items-center gap-1.5 text-[11.5px] font-medium text-amber-700 dark:text-amber-400">
-                <FileWarning className="w-3.5 h-3.5" /> Outdated since {item.expired_since}
+                <FileWarning className="w-3.5 h-3.5" /> {t.outdatedSince(item.expired_since)}
               </div>
             )}
             <p className="mt-2 pl-2.5 border-l-2 border-brass-400 text-[13.5px] leading-snug text-[var(--text-secondary)] line-clamp-5 whitespace-pre-line">
               {plainSnippet(item.snippet)}
             </p>
-            <p className="mt-2 text-[11px] text-[var(--text-faint)]">Click to show this source</p>
+            <p className="mt-2 text-[11px] text-[var(--text-faint)]">{t.clickToShow}</p>
           </div>,
           document.body
         )}

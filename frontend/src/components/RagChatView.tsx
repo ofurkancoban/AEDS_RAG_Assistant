@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ArrowUpRight, FileText, ShieldCheck, Clock, Plus } from 'lucide-react';
 import { ChatQueryResult, RetrievalDiagnostic } from '../types';
-import { rateAnswer, streamChatMessage, submitFeedback } from '../api/client';
+import { ThreadSummary, getThread, listThreads, rateAnswer, streamChatMessage, submitFeedback } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { BrandMark } from './BrandMark';
 import { Exchange, ChatMessage } from './chat/Exchange';
@@ -11,8 +11,9 @@ import { EvidencePanel } from './chat/Sources';
 import { ChunkDetailModal, SuggestKnowledgeModal } from './chat/ChatModals';
 import { citationCounts, stripCitations } from './chat/citations';
 import { useMediaQuery } from './chat/useMediaQuery';
-import { WELCOME_MESSAGES, pickRandom, prefersReducedMotion } from './chat/content';
-import { PROGRAMME, DOMAIN_TONE } from '../config/programme';
+import { WELCOME_MESSAGES, WELCOME_MESSAGES_DE, prefersReducedMotion } from './chat/content';
+import { PROGRAMME, DOMAIN_TONE, localizedDomains } from '../config/programme';
+import { useI18n } from '../i18n';
 
 interface RagChatViewProps {
   onQueryResult?: (result: ChatQueryResult) => void;
@@ -27,8 +28,17 @@ interface ExchangeData {
   answer?: ChatMessage;
 }
 
-function nowLabel(): string {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function nowLabel(locale: string): string {
+  return new Date().toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** A reopened question's time; with the date when it wasn't asked today. */
+function pastLabel(iso: string, locale: string): string {
+  // The API sends naive UTC timestamps.
+  const date = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
+  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === new Date().toDateString()) return time;
+  return `${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}, ${time}`;
 }
 
 function toExchanges(messages: ChatMessage[]): ExchangeData[] {
@@ -51,7 +61,9 @@ function jokeOf(message: string): string {
 }
 
 export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOpen, onNavOpenChange }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isReady, identity } = useAuth();
+  const { lang, t } = useI18n();
+  const domains = localizedDomains(lang);
   const isXL = useMediaQuery('(min-width: 1280px)');
 
   const [queryInput, setQueryInput] = useState('');
@@ -74,7 +86,13 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
   const [isSubmittingKnowledge, setIsSubmittingKnowledge] = useState(false);
   const [submitSuccessMsg, setSubmitSuccessMsg] = useState<string | null>(null);
 
-  const [welcomeJoke] = useState(() => jokeOf(pickRandom(WELCOME_MESSAGES)));
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [isOpeningThread, setIsOpeningThread] = useState(false);
+
+  // Picked once per visit; switching language shows the joke in the same slot.
+  const [jokeSeed] = useState(() => Math.random());
+  const welcomeMessages = lang === 'de' ? WELCOME_MESSAGES_DE : WELCOME_MESSAGES;
+  const welcomeJoke = jokeOf(welcomeMessages[Math.floor(jokeSeed * welcomeMessages.length)]);
   const lastCardRef = useRef<HTMLDivElement>(null);
 
   const exchanges = useMemo(() => toExchanges(messages), [messages]);
@@ -92,6 +110,67 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
   }, [exchanges.length]);
 
   const closeNav = () => onNavOpenChange(false);
+
+  const refreshThreads = () => {
+    listThreads()
+      .then(setThreads)
+      .catch((err) => console.error('Failed to load recent conversations:', err));
+  };
+
+  // Reloaded whenever the identity changes (a guest session minted on first
+  // visit, or a staff login), since conversations belong to the identity.
+  useEffect(() => {
+    if (!isReady || !identity) return;
+    refreshThreads();
+  }, [isReady, identity?.id]);
+
+  const handleOpenThread = async (id: string) => {
+    if (isQuerying || isOpeningThread) return;
+    closeNav();
+    if (id === threadId) return;
+    setIsOpeningThread(true);
+    try {
+      const turns = await getThread(id);
+      const restored: ChatMessage[] = [];
+      const restoredRatings: Record<string, 1 | -1> = {};
+      turns.forEach((turn, idx) => {
+        const label = pastLabel(turn.asked_at, t.dateLocale);
+        const answerId = `ast-${id}-${idx}`;
+        restored.push({ id: `usr-${id}-${idx}`, sender: 'user', text: turn.question, timestamp: label });
+        restored.push({
+          id: answerId,
+          sender: 'assistant',
+          text: turn.answer,
+          timestamp: label,
+          resultData: {
+            id: `res-${id}-${idx}`,
+            query: turn.question,
+            answer: turn.answer,
+            sources: turn.sources,
+            retrieval: turn.retrieval,
+            nodeLatencies: {},
+            autoFlaggedContribution: null,
+            timestamp: Date.parse(turn.asked_at),
+            queryLogId: turn.query_log_id,
+            cached: false,
+            elapsedMs: 0,
+            hasExpiredDeadline: false,
+          },
+        });
+        if (turn.rating === 1 || turn.rating === -1) restoredRatings[answerId] = turn.rating;
+      });
+      setMessages(restored);
+      setRatings((prev) => ({ ...prev, ...restoredRatings }));
+      setThreadId(id);
+      setSelectedId(null);
+      setActiveCitation(null);
+    } catch (err) {
+      console.error('Failed to open conversation:', err);
+      refreshThreads();
+    } finally {
+      setIsOpeningThread(false);
+    }
+  };
 
   const handleNewQuestion = () => {
     setThreadId(null);
@@ -123,7 +202,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
         source_id: suggestSourceId || 'general',
         content: suggestContent,
       });
-      setSubmitSuccessMsg('Submitted to the admin review queue - it will be indexed once approved.');
+      setSubmitSuccessMsg(t.submitted);
       setTimeout(() => {
         setIsSuggestModalOpen(false);
         setSubmitSuccessMsg(null);
@@ -131,7 +210,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
       }, 2200);
     } catch (err: any) {
       console.error('Failed to submit knowledge:', err);
-      alert(err.message || 'Failed to submit');
+      alert(err.message || t.submitFailed);
     } finally {
       setIsSubmittingKnowledge(false);
     }
@@ -159,7 +238,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
     const userMsgId = `usr-${Date.now()}`;
     const assistantMsgId = `ast-${Date.now()}`;
 
-    setMessages((prev) => [...prev, { id: userMsgId, sender: 'user', text: textToSubmit, timestamp: nowLabel() }]);
+    setMessages((prev) => [...prev, { id: userMsgId, sender: 'user', text: textToSubmit, timestamp: nowLabel(t.dateLocale) }]);
     if (!queryToRun) setQueryInput('');
     setSelectedId(null);
     setActiveCitation(null);
@@ -172,6 +251,14 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
 
       await streamChatMessage(textToSubmit, threadId, null, {
         onStage: (stage) => setStages((prev) => (prev.includes(stage) ? prev : [...prev, stage])),
+        onContribution: (type) =>
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId && m.resultData
+                ? { ...m, resultData: { ...m.resultData, autoFlaggedContribution: type } }
+                : m
+            )
+          ),
         onToken: (text) => {
           setIsQuerying(false);
           // Whether the answer exists is read from `prev`, not from a flag in
@@ -182,7 +269,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
             if (prev.some((m) => m.id === assistantMsgId)) {
               return prev.map((m) => (m.id === assistantMsgId ? { ...m, text: m.text + text } : m));
             }
-            return [...prev, { id: assistantMsgId, sender: 'assistant', text, timestamp: nowLabel() }];
+            return [...prev, { id: assistantMsgId, sender: 'assistant', text, timestamp: nowLabel(t.dateLocale) }];
           });
         },
         onDone: (data) => {
@@ -210,7 +297,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
             if (!prev.some((m) => m.id === assistantMsgId)) {
               return [
                 ...prev,
-                { id: assistantMsgId, sender: 'assistant', text: data.final_answer, timestamp: nowLabel(), resultData: result },
+                { id: assistantMsgId, sender: 'assistant', text: data.final_answer, timestamp: nowLabel(t.dateLocale), resultData: result },
               ];
             }
             return prev.map((m) =>
@@ -218,6 +305,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
             );
           });
           onQueryResult?.(result);
+          refreshThreads();
         },
       });
     } catch (error: any) {
@@ -227,8 +315,8 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
         {
           id: `err-${Date.now()}`,
           sender: 'assistant',
-          text: `**The answer could not be loaded.** ${error?.message || 'Server connection failed. Please try again.'}`,
-          timestamp: nowLabel(),
+          text: `${t.answerFailed} ${error?.message || t.connectionFailed}`,
+          timestamp: nowLabel(t.dateLocale),
         },
       ]);
     } finally {
@@ -243,10 +331,13 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
         onClose={closeNav}
         onNewQuestion={handleNewQuestion}
         onAskTopic={(query) => handleRunQuery(query)}
-        isQuerying={isQuerying}
+        isQuerying={isQuerying || isOpeningThread}
+        threads={threads}
+        activeThreadId={threadId}
+        onOpenThread={handleOpenThread}
       />
 
-      <section className="flex-1 min-w-0 flex flex-col" aria-label="Assistant">
+      <section className="flex-1 min-w-0 flex flex-col" aria-label={t.studentAssistant}>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {!hasStarted ? (
             <div className="max-w-[880px] mx-auto px-4 sm:px-8 py-7 sm:py-12 animate-fade-up">
@@ -254,15 +345,14 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
                 {PROGRAMME.name} · {PROGRAMME.degree}
               </p>
               <h1 className="mt-2 text-[26px] sm:text-[32px] font-semibold leading-tight tracking-[-0.015em] text-[var(--text)]">
-                How can we help?
+                {t.howCanWeHelp}
               </h1>
               <p className="mt-2 max-w-[62ch] text-[15px] sm:text-[16px] leading-relaxed text-[var(--text-secondary)]">
-                Ask about your programme, the university or life in {PROGRAMME.city}. Every answer is drawn
-                from official documents and shows its sources.
+                {t.intro(PROGRAMME.city)}
               </p>
 
               <div className="mt-6 sm:mt-8 grid gap-3.5 md:grid-cols-3">
-                {PROGRAMME.domains.map((domain) => {
+                {domains.map((domain) => {
                   const Icon = domain.icon;
                   return (
                     <section key={domain.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4 flex flex-col">
@@ -293,9 +383,9 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
               </div>
 
               <ul className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px] text-[var(--text-muted)]">
-                <li className="inline-flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />Official programme &amp; university sources</li>
-                <li className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" />Answers reviewed by programme staff</li>
-                <li className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />Outdated sources are flagged</li>
+                <li className="inline-flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" />{t.trustSources}</li>
+                <li className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" />{t.trustReviewed}</li>
+                <li className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{t.trustOutdated}</li>
               </ul>
 
               {/* The assistant's own voice, kept small: the platform is an
@@ -304,7 +394,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
               <aside className="mt-8 flex items-start gap-3 rounded-lg border border-dashed border-[var(--border-strong)] px-4 py-3">
                 <BrandMark size={24} className="mt-0.5" />
                 <p className="text-[13px] leading-relaxed text-[var(--text-muted)]">
-                  <span className="font-medium text-[var(--text-secondary)]">From the assistant: </span>
+                  <span className="font-medium text-[var(--text-secondary)]">{t.fromAssistant}</span>
                   {welcomeJoke}
                 </p>
               </aside>
@@ -313,7 +403,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
             <div className="max-w-[780px] mx-auto px-3 sm:px-6 pb-8">
               <div className="sticky top-0 z-10 -mx-3 sm:-mx-6 px-3 sm:px-6 py-2.5 mb-2 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur-sm">
                 <span className="text-[12.5px] text-[var(--text-muted)]">
-                  This conversation · {exchanges.length} {exchanges.length === 1 ? 'question' : 'questions'}
+                  {t.thisConversation(exchanges.length)}
                 </span>
                 <button
                   onClick={handleNewQuestion}
@@ -321,7 +411,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
                   className="inline-flex items-center gap-1.5 h-8 px-2.5 -mr-2 rounded-md text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)] disabled:opacity-50 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  New question
+                  {t.newQuestion}
                 </button>
               </div>
 
@@ -379,7 +469,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
               onSubmit={() => handleRunQuery()}
               onPickTopic={(query) => handleRunQuery(query)}
               isQuerying={isQuerying}
-              placeholder={hasStarted ? 'Ask a follow-up question' : undefined}
+              placeholder={hasStarted ? t.followUpPlaceholder : undefined}
             />
           </div>
         </div>

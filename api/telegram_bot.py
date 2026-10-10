@@ -363,6 +363,21 @@ def notify_pending_answer(answer_id: int, question: str, answer: str, chat_id: s
         _notify_admins(text, markup)
 
 
+def notify_downvoted_answer(question: str, answer: str, answer_id: int | None) -> None:
+    """A student rated an answer unhelpful. When the answer is in the review
+    queue the usual review buttons come with it; otherwise (a follow-up
+    question, which is never cached) the alert is for information only."""
+    text = f"Rated unhelpful by a student.\n\nQ: {_truncate(question, 200)}\n\nA: {_truncate(answer)}"
+    markup = None
+    if answer_id is not None:
+        markup = {
+            "inline_keyboard": [
+                [_button("Approve", f"aa:{answer_id}"), _button("Edit", f"ae:{answer_id}"), _button("Reject", f"ar:{answer_id}")]
+            ]
+        }
+    _notify_admins(text, markup)
+
+
 def _send_main_menu(chat_id: str) -> None:
     send_message(
         "AEDS RAG admin bot. Pick a category below, or use the / commands:",

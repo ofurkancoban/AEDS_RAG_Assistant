@@ -133,8 +133,9 @@ def record_feedback(chat_id: str, query_log_id: int, rating: int) -> str:
         entry = session.get(QueryLog, query_log_id)
         if entry is None or entry.user_id != user.id:
             return "Can't rate that."
-        entry.rating = rating
-        session.commit()
+        from db.answer_flags import record_rating
+
+        record_rating(session, entry, rating)
         return "Thanks for the feedback!"
     finally:
         session.close()

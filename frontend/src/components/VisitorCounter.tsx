@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Users } from 'lucide-react';
 import { getVisitorCount } from '../api/client';
+import { useI18n } from '../i18n';
 
 export const VisitorCounter: React.FC = () => {
   const [count, setCount] = useState<number | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     getVisitorCount().then((data) => setCount(data.unique_visitors)).catch(() => setCount(null));
@@ -15,7 +17,7 @@ export const VisitorCounter: React.FC = () => {
   return (
     <span
       className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-muted)]"
-      title="Unique visitors since launch"
+      title={t.visitorsTitle}
     >
       <Users className="w-3.5 h-3.5" />
       {count.toLocaleString()}

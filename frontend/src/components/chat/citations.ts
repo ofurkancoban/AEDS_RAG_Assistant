@@ -1,4 +1,5 @@
 import { PROGRAMME } from '../../config/programme';
+import { Lang, STRINGS } from '../../i18n';
 
 // "[2]" written by the model after a fact (see graph/nodes.py's numbered
 // context). A following "(" means a Markdown link, which is left alone.
@@ -50,20 +51,21 @@ export function plainSnippet(text: string): string {
 /* Source ids are file stems ("AEDS_website_language_requirements"). Readers
    get a title and a kind instead; the raw id stays visible in the passage
    dialog for anyone who needs to find the file. */
-export function describeSource(sourceId: string): { title: string; kind: string } {
+export function describeSource(sourceId: string, lang: Lang): { title: string; kind: string } {
   const known = PROGRAMME.sources[sourceId];
-  if (known) return known;
+  if (known) return { title: known.title[lang], kind: known.kind[lang] };
+  const kinds = STRINGS[lang].sourceKinds;
   const humanize = (s: string) => {
     const words = s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
     return words.charAt(0).toUpperCase() + words.slice(1);
   };
   if (sourceId.startsWith('AEDS_website_')) {
-    return { title: humanize(sourceId.slice('AEDS_website_'.length)), kind: 'Website' };
+    return { title: humanize(sourceId.slice('AEDS_website_'.length)), kind: kinds.website };
   }
-  if (/^MPO_/i.test(sourceId)) return { title: 'Examination regulations', kind: humanize(sourceId) };
-  if (/flyer/i.test(sourceId)) return { title: 'Programme flyer', kind: 'Brochure' };
-  if (/handbook|modul/i.test(sourceId)) return { title: humanize(sourceId), kind: 'Module handbook' };
-  return { title: humanize(sourceId), kind: 'Document' };
+  if (/^MPO_/i.test(sourceId)) return { title: kinds.examRegulations, kind: humanize(sourceId) };
+  if (/flyer/i.test(sourceId)) return { title: kinds.programmeFlyer, kind: kinds.brochure };
+  if (/handbook|modul/i.test(sourceId)) return { title: humanize(sourceId), kind: kinds.moduleHandbook };
+  return { title: humanize(sourceId), kind: kinds.document };
 }
 
 /** Rerank scores are probabilities in 0..1; clamp anything odd. */

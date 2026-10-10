@@ -2,12 +2,14 @@ import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, FileSearch, PenLine } from 'lucide-react';
 import { RetrievalDiagnostic } from '../../types';
 import { describeSource, plainSnippet, relevance } from './citations';
+import { useI18n } from '../../i18n';
 
 const RelevanceBar: React.FC<{ score: number | null | undefined; width?: string }> = ({ score, width = 'w-14' }) => {
+  const { t } = useI18n();
   if (score == null) return null;
   const pct = Math.round(relevance(score) * 100);
   return (
-    <span className="flex items-center gap-2 shrink-0" aria-label={`Relevance ${pct} percent`}>
+    <span className="flex items-center gap-2 shrink-0" aria-label={t.relevanceLabel(pct)}>
       <span className={`${width} h-1 rounded-full bg-accent-100 dark:bg-accent-500/15 overflow-hidden`} aria-hidden="true">
         <span className="block h-full rounded-full bg-accent-600 dark:bg-accent-400" style={{ width: `${pct}%` }} />
       </span>
@@ -16,19 +18,22 @@ const RelevanceBar: React.FC<{ score: number | null | undefined; width?: string 
   );
 };
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return Number.isNaN(d.getTime())
     ? iso
-    : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const OutdatedTag: React.FC<{ since: string; long?: boolean }> = ({ since, long }) => (
+const OutdatedTag: React.FC<{ since: string; long?: boolean }> = ({ since, long }) => {
+  const { t } = useI18n();
+  return (
   <span className="inline-flex items-center gap-1 px-1.5 py-px rounded text-[11px] font-medium text-amber-800 bg-amber-50 dark:text-amber-300 dark:bg-amber-500/15 shrink-0">
     <AlertTriangle className="w-3 h-3" />
-    {long ? `Outdated since ${formatDate(since)}` : 'Outdated'}
+    {long ? t.outdatedSince(formatDate(since, t.dateLocale)) : t.outdated}
   </span>
-);
+  );
+};
 
 interface SourcesProps {
   retrieval: RetrievalDiagnostic[];
@@ -38,18 +43,19 @@ interface SourcesProps {
 
 /* Under the answer, on screens without room for the evidence panel. */
 export const InlineSources: React.FC<SourcesProps> = ({ retrieval, counts, onOpenPassage }) => {
+  const { lang, t } = useI18n();
   if (retrieval.length === 0) return null;
   const anyCited = counts.size > 0;
   return (
-    <section aria-label="Sources" className="border-t border-[var(--border)] bg-[var(--bg-subtle)] px-4 sm:px-5 py-3">
+    <section aria-label={t.sources} className="border-t border-[var(--border)] bg-[var(--bg-subtle)] px-4 sm:px-5 py-3">
       <h3 className="eyebrow !text-[var(--text)] mb-1">
-        Sources{anyCited && <span className="text-[var(--text-muted)] font-medium"> · {counts.size} of {retrieval.length} cited</span>}
+        {t.sources}{anyCited && <span className="text-[var(--text-muted)] font-medium"> · {t.citedOf(counts.size, retrieval.length)}</span>}
       </h3>
       <ol>
         {retrieval.map((item, idx) => {
           const n = idx + 1;
           const cited = !anyCited || counts.has(n);
-          const source = describeSource(item.source_id);
+          const source = describeSource(item.source_id, lang);
           return (
             <li key={idx} className="border-t border-[var(--border)] first:border-t-0">
               <button
@@ -96,6 +102,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
 }) => {
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
   const anyCited = counts.size > 0;
+  const { lang, t } = useI18n();
 
   useEffect(() => {
     if (activeCitation == null) return;
@@ -103,11 +110,11 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
   }, [activeCitation]);
 
   return (
-    <aside className="hidden xl:flex w-[360px] shrink-0 flex-col bg-[var(--bg-elevated)] border-l border-[var(--border)]" aria-label="Evidence">
+    <aside className="hidden xl:flex w-[360px] shrink-0 flex-col bg-[var(--bg-elevated)] border-l border-[var(--border)]" aria-label={t.evidence}>
       <div className="px-5 py-3.5 border-b border-[var(--border)]">
-        <h2 className="text-[14px] font-semibold text-[var(--text)]">Evidence</h2>
+        <h2 className="text-[14px] font-semibold text-[var(--text)]">{t.evidence}</h2>
         <p className="text-[12px] text-[var(--text-muted)] truncate">
-          {question ? <>Sources for “{question}”</> : 'Sources of the selected answer'}
+          {question ? t.sourcesFor(question) : t.sourcesOfSelected}
         </p>
       </div>
 
@@ -115,12 +122,10 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
         <div className="flex-1 flex flex-col items-center justify-center text-center px-8 text-[var(--text-muted)]">
           <FileSearch className="w-8 h-8 mb-3 text-[var(--text-faint)]" />
           <p className="text-[13.5px] font-medium text-[var(--text-secondary)]">
-            {question ? 'No documents behind this answer' : 'Sources appear here'}
+            {question ? t.noDocuments : t.sourcesAppear}
           </p>
           <p className="text-[12.5px] mt-1 leading-relaxed">
-            {question
-              ? 'It came from a structured lookup (course catalogue, deadlines table) or the documents did not cover it.'
-              : 'Ask a question and the passages the answer was drawn from will be listed here, with their quoted text.'}
+            {question ? t.noDocumentsBody : t.sourcesAppearBody}
           </p>
         </div>
       ) : (
@@ -130,7 +135,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
             const times = counts.get(n) ?? 0;
             const cited = !anyCited || times > 0;
             const active = activeCitation === n;
-            const source = describeSource(item.source_id);
+            const source = describeSource(item.source_id, lang);
             return (
               <li key={idx} ref={(el) => { itemRefs.current[idx] = el; }}>
                 <button
@@ -148,7 +153,7 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
                     <span className="truncate">
-                      {source.kind} · {anyCited ? (times > 0 ? `cited ${times}×` : 'retrieved, not cited') : 'retrieved'}
+                      {source.kind} · {anyCited ? (times > 0 ? t.citedTimes(times) : t.retrievedNotCited) : t.retrieved}
                     </span>
                   </div>
                   {item.expired_since && (
@@ -167,10 +172,10 @@ export const EvidencePanel: React.FC<EvidencePanelProps> = ({
       )}
 
       <div className="px-5 py-3 border-t border-[var(--border)] text-[12.5px] text-[var(--text-muted)]">
-        Something wrong or outdated?{' '}
+        {t.somethingWrong}{' '}
         <button onClick={onSuggestCorrection} className="inline-flex items-center gap-1 font-medium text-accent-700 dark:text-accent-300 hover:underline cursor-pointer">
           <PenLine className="w-3.5 h-3.5" />
-          Suggest a correction
+          {t.suggestCorrection}
         </button>
       </div>
     </aside>

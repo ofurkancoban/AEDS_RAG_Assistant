@@ -1,13 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 // The stages graph/progress.py reports, in pipeline order.
-const STAGES: { id: string; label: string }[] = [
-  { id: 'understanding', label: 'Understanding the question' },
-  { id: 'searching', label: 'Searching programme and university documents' },
-  { id: 'ranking', label: 'Selecting the most relevant passages' },
-  { id: 'writing', label: 'Writing the answer' },
-];
+const STAGES = ['understanding', 'searching', 'ranking', 'writing'].map((id) => ({ id }));
 
 interface ProgressStepsProps {
   /** Stages reported so far, in arrival order. */
@@ -23,6 +19,7 @@ interface ProgressStepsProps {
    seconds, and with nothing moving a reader can't tell slow from stuck. */
 export const ProgressSteps: React.FC<ProgressStepsProps> = ({ stages, startedAt }) => {
   const [now, setNow] = useState(() => Date.now());
+  const { t } = useI18n();
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -35,7 +32,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({ stages, startedAt 
   const progress = ((activeIndex + 1) / STAGES.length) * 100;
 
   return (
-    <div role="status" aria-live="polite" aria-label="Answer progress">
+    <div role="status" aria-live="polite" aria-label={t.answerProgress}>
       <div className="h-[3px] bg-accent-100 dark:bg-accent-500/15">
         <div
           className="h-full bg-accent-600 dark:bg-accent-400 transition-[width] duration-500 ease-out"
@@ -67,7 +64,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({ stages, startedAt 
               >
                 {done && <Check className="w-3 h-3" strokeWidth={3} />}
               </span>
-              <span className={`min-w-0 ${skipped ? 'line-through decoration-[var(--border-strong)]' : ''}`}>{stage.label}</span>
+              <span className={`min-w-0 ${skipped ? 'line-through decoration-[var(--border-strong)]' : ''}`}>{t.stages[stage.id]}</span>
               {active && (
                 <span className="ml-auto font-mono text-[12px] font-normal tabular-nums text-[var(--text-muted)]">{elapsed}s</span>
               )}

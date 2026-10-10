@@ -7,6 +7,7 @@ import { InlineSources } from './Sources';
 import { citationCounts } from './citations';
 import { formatElapsed } from './content';
 import { DOMAIN_TONE, domainById, domainForSources } from '../../config/programme';
+import { useI18n } from '../../i18n';
 
 export interface ChatMessage {
   id: string;
@@ -66,11 +67,12 @@ export const Exchange: React.FC<ExchangeProps> = ({
   onRate,
   onSuggestCorrection,
 }) => {
+  const { lang, t } = useI18n();
   const result = answer?.resultData;
   const retrieval = result?.retrieval ?? [];
   const counts = useMemo(() => citationCounts(answer?.text ?? ''), [answer?.text]);
   const hasAnswerText = Boolean(answer && answer.text.length > 0);
-  const domain = result ? domainById(domainForSources(retrieval.map((r) => r.source_id))) : null;
+  const domain = result ? domainById(domainForSources(retrieval.map((r) => r.source_id)), lang) : null;
 
   const meta = (
     <>
@@ -95,11 +97,11 @@ export const Exchange: React.FC<ExchangeProps> = ({
     >
       <header className="flex items-start gap-3 px-4 sm:px-5 py-3.5 bg-[var(--bg-subtle)] border-b border-[var(--border)]">
         <span className="w-7 h-7 shrink-0 rounded-full bg-[var(--bg-inset)] text-[var(--text-secondary)] flex items-center justify-center text-[11px] font-semibold" aria-hidden="true">
-          You
+          {t.you}
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="text-[15.5px] font-semibold leading-snug text-[var(--text)] pt-[3px] whitespace-pre-wrap break-words">
-            <span className="sr-only">You asked: </span>
+            <span className="sr-only">{t.youAsked}</span>
             {question.text}
           </h2>
           <div className="flex sm:hidden items-center gap-2 mt-1.5">{meta}</div>
@@ -112,7 +114,7 @@ export const Exchange: React.FC<ExchangeProps> = ({
           {result?.hasExpiredDeadline && (
             <div className="mb-3 flex items-center gap-2 text-[13px] font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-md px-3 py-2">
               <FileWarning className="w-4 h-4 shrink-0" />
-              Mentions a deadline that has already passed
+              {t.pastDeadline}
             </div>
           )}
           <AnswerBody
@@ -137,10 +139,10 @@ export const Exchange: React.FC<ExchangeProps> = ({
         >
           <div className="flex flex-wrap items-center gap-1.5 mr-auto pl-1">
             {result.elapsedMs > 0 && (
-              <span className={metaChip} title={`This answer took ${(result.elapsedMs / 1000).toFixed(1)} seconds`}>
+              <span className={metaChip} title={t.answerTook((result.elapsedMs / 1000).toFixed(1))}>
                 <Clock className="w-3 h-3" />
-                {formatElapsed(result.elapsedMs)}
-                {retrieval.length > 0 && <span>· {retrieval.length} sources</span>}
+                {formatElapsed(result.elapsedMs, lang)}
+                {retrieval.length > 0 && <span>· {t.sourcesCount(retrieval.length)}</span>}
               </span>
             )}
             {/* Admin-only: internal stage timings and the cache flag mean
@@ -155,7 +157,7 @@ export const Exchange: React.FC<ExchangeProps> = ({
             {result.autoFlaggedContribution && (
               <span className={`${metaChip} !text-amber-800 dark:!text-amber-300 !bg-amber-50 dark:!bg-amber-500/10`}>
                 <Flag className="w-3 h-3" />
-                Flagged: {result.autoFlaggedContribution}
+                {t.flagged}: {result.autoFlaggedContribution}
               </span>
             )}
           </div>
@@ -165,18 +167,18 @@ export const Exchange: React.FC<ExchangeProps> = ({
               <>
                 <button
                   onClick={() => onRate(result.queryLogId!, 1)}
-                  aria-label="This answer was helpful"
-                  title="This answer was helpful"
+                  aria-label={t.helpfulLabel}
+                  title={t.helpfulLabel}
                   aria-pressed={rating === 1}
                   className={`${action} ${rating === 1 ? '!text-emerald-700 dark:!text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' : ''}`}
                 >
                   <ThumbsUp className="w-4 h-4" />
-                  <span className="hidden sm:inline">Helpful</span>
+                  <span className="hidden sm:inline">{t.helpful}</span>
                 </button>
                 <button
                   onClick={() => onRate(result.queryLogId!, -1)}
-                  aria-label="This answer was wrong or unhelpful"
-                  title="This answer was wrong or unhelpful"
+                  aria-label={t.unhelpfulLabel}
+                  title={t.unhelpfulLabel}
                   aria-pressed={rating === -1}
                   className={`${action} ${rating === -1 ? '!text-rose-700 dark:!text-rose-400 bg-rose-50 dark:bg-rose-500/10' : ''}`}
                 >
@@ -184,24 +186,29 @@ export const Exchange: React.FC<ExchangeProps> = ({
                 </button>
               </>
             )}
-            <button onClick={onCopy} aria-label="Copy answer" title="Copy answer" className={action}>
+            <button onClick={onCopy} aria-label={t.copyAnswer} title={t.copyAnswer} className={action}>
               {isCopied ? (
                 <>
                   <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-emerald-700 dark:text-emerald-400">Copied</span>
+                  <span className="text-emerald-700 dark:text-emerald-400">{t.copied}</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-4 h-4" />
-                  <span className="hidden sm:inline">Copy</span>
+                  <span className="hidden sm:inline">{t.copy}</span>
                 </>
               )}
             </button>
-            <button onClick={onSuggestCorrection} title="Something wrong or outdated? Suggest a correction" className={action}>
+            <button onClick={onSuggestCorrection} title={t.suggestTitle} className={action}>
               <PenLine className="w-4 h-4" />
-              <span>Suggest a correction</span>
+              <span>{t.suggestCorrection}</span>
             </button>
           </div>
+          {rating === -1 && (
+            <p role="status" className="basis-full px-1 pb-0.5 text-[12.5px] text-[var(--text-muted)]">
+              {t.downvoteThanks}
+            </p>
+          )}
         </footer>
       )}
     </article>

@@ -277,7 +277,21 @@ class CachedAnswer(Base):
     # for any access-control decision, since it is caller-supplied and not
     # a trust boundary.
     origin: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Thumbs-down ratings from students who were given this answer. A
+    # downvote never changes `status` by itself (one anonymous click must not
+    # pull an approved answer); it puts the row at the top of the review
+    # queue until an admin has looked at it again (see is_flagged).
+    downvotes: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    last_downvoted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    @property
+    def is_flagged(self) -> bool:
+        """Downvoted since its last review (or never reviewed)."""
+        if self.last_downvoted_at is None:
+            return False
+        reviewed = self.reviewed_at.replace(tzinfo=None) if self.reviewed_at else None
+        return reviewed is None or self.last_downvoted_at.replace(tzinfo=None) > reviewed
 
 
 class ProviderDailyUsage(Base):
@@ -367,6 +381,11 @@ class QueryLog(Base):
     # panel can show where a slow turn's time actually went averaged over
     # many turns, not just the very last one it happened to catch.
     node_latencies_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON {"sources": [...], "retrieval": [...]} exactly as the answer was
+    # shown, in order: an answer's [n] markers point at retrieval[n-1], which
+    # the sorted source_ids above cannot reconstruct. Lets a reopened
+    # conversation show the same citations. NULL for turns logged before it.
+    evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # +1 / -1 from the thumbs control, NULL until the user rates it.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # See CachedAnswer.origin's docstring - same meaning, same caveats.

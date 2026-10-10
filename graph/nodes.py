@@ -2,6 +2,8 @@ import json
 import logging
 import random
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from functools import lru_cache
 
@@ -23,6 +25,7 @@ from graph.state import RagState
 from ingestion.catalog import get_catalog_courses
 from ingestion.deadlines import (
     DEADLINE_PASSED_MARKER,
+    DEADLINE_PASSED_MARKER_DE,
     NEXT_INTAKE_NOTE,
     describe_deadline_status,
     get_application_deadlines,
@@ -217,6 +220,19 @@ _OPENROUTER_REASONING = {
 }
 
 
+def _openrouter_extra_body(purpose: str) -> dict:
+    body: dict = {"reasoning": _OPENROUTER_REASONING[purpose]}
+    if settings.openrouter_deny_data_collection:
+        # Students' questions must not become training data. OpenRouter then
+        # routes only to provider endpoints that neither store nor train on
+        # prompts, and fails (so _with_fallback moves on) rather than
+        # silently using one that does. Both current free models have such
+        # an endpoint; the stricter zero-data-retention flag does not work
+        # for the fallback model.
+        body["provider"] = {"data_collection": "deny"}
+    return body
+
+
 @lru_cache(maxsize=8)
 def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> BaseChatModel:
     # OpenRouter is OpenAI-API-compatible, so ChatOpenAI pointed at its base
@@ -228,7 +244,7 @@ def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> 
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
         temperature=0,
-        extra_body={"reasoning": _OPENROUTER_REASONING[purpose]},
+        extra_body=_openrouter_extra_body(purpose),
         # openai's client otherwise defaults to a 600s timeout - fine for a
         # healthy model, but it means a stealth model that starts hanging
         # instead of erroring (rather than a clean 4xx) would sit for ten
@@ -567,7 +583,10 @@ def lookup_application_deadline(entry_qualification: str) -> str:
 @tool
 def lookup_examinations_office_contact() -> str:
     """Look up who chairs the Examining Board / is the contact person for the
-    Examinations Office for this study programme."""
+    Examinations Office for this study programme. It returns only that
+    person's name. Use it ONLY when the question asks who that person is;
+    never for how an exam procedure works (registering, withdrawing, TANs,
+    illness, retakes, deadlines) - those are general document questions."""
     chair = get_examining_board_chair()
     return f"The chair of the Examining Board for this programme is {chair}." if chair else "Not found."
 
@@ -596,7 +615,10 @@ def search_course_catalog(
     so it goes in course_name_or_abbreviation, NOT professor_name. Use
     compulsory_only=true to list every compulsory course. Use language_exact
     (the exact value, e.g. "German") to list courses taught only in that
-    language, not one that's merely also offered in it alongside another.
+    language, not one that's merely also offered in it alongside another -
+    and ONLY for a question about which courses are taught in a language,
+    never for language requirements, certificates or proficiency for
+    admission (those are general document questions, not catalog ones).
     Leave a parameter at its default if it doesn't apply to this question.
     Do NOT use this tool for a component/category's aggregate ECTS target
     (e.g. "how many ECTS does the Economics component require?", "how many
@@ -668,7 +690,9 @@ def get_full_curriculum() -> str:
     Empirical Methods, Data Science, Specialisation, Thesis). Use this for a
     broad "what's in the curriculum" / "list all courses" request that isn't
     about one specific attribute (professor, compulsory, language) - for
-    those, use search_course_catalog instead. Do NOT use this tool for any
+    those, use search_course_catalog instead. This listing has NO lecturer
+    names, so it cannot answer who teaches anything: for "which professors
+    teach here" call search_course_catalog with no arguments. Do NOT use this tool for any
     question about a component/category's or the programme's total/target
     ECTS credits, or how ECTS are "distributed"/"broken down"/"split" across
     components or semesters - the courses actually offered in a category do
@@ -717,6 +741,11 @@ _ROUTER_SYSTEM_PROMPT = (
     # looking the person up - the tool docstring alone did not carry it.
     '- "Who is Peter Eppinger?" / "Wer ist Prof. Eppinger?" -> '
     'search_course_catalog(professor_name="Peter Eppinger")\n'
+    # The full curriculum listing has no lecturer names, so routing a
+    # roster question there produced "the documents name no professors".
+    '- "Which professors teach on this programme?" / "Wer lehrt in diesem '
+    'Studiengang?" -> search_course_catalog() with no arguments (every course '
+    "with its lecturers)\n"
     '- "Which compulsory courses are usually taken in the first semester?" -> '
     "search_course_catalog(compulsory_only=true)\n"
     '- "When is the deadline for non-EU applicants?" -> '
@@ -724,11 +753,31 @@ _ROUTER_SYSTEM_PROMPT = (
     '- "What are the application deadlines?" / "...for EU and German applicants?" -> '
     'lookup_application_deadline(entry_qualification="all")\n'
     '- "What courses are in the curriculum?" -> get_full_curriculum()\n'
-    '- "What are the language requirements?" -> no tool (general document search)\n'
+    '- "What are the language requirements?" / "Which language certificate do I need?" '
+    "-> no tool (general document search) - admission language requirements are "
+    "not a course-language question\n"
+    '- "Which courses are taught only in German?" -> '
+    'search_course_catalog(language_exact="German")\n'
     '- "How are the 120 ECTS distributed?" -> no tool (general document search)\n'
+    '- "How do I withdraw from an exam I registered for?" -> no tool (general '
+    "document search) - an exam procedure, not a request for the examinations "
+    "office contact\n"
+    # The German wording of an admission question ("Bachelorabschluss",
+    # "ECTS") was sent to the examinations office lookup, which only knows
+    # a contact person.
+    '- "How many ECTS does my Bachelor\'s degree need for admission?" -> no tool '
+    "(general document search) - admission requirements are not an "
+    "examinations office question; that tool only returns a contact person\n"
     '- "When are the re-registration periods?" / "When do I need to re-register?" '
     "-> no tool (general document search) - re-registration (Rückmeldung, for "
-    "already-enrolled students) is not the same thing as an application deadline"
+    "already-enrolled students) is not the same thing as an application deadline\n"
+    # Campus names (Haarentor, Wechloy) also appear as course locations in the
+    # catalog, and a library question naming one was routed to the catalog,
+    # whose course hits then replaced the document search entirely.
+    '- "When is the library on Campus Haarentor open?" / "How much is the semester '
+    'fee?" -> no tool (general document search) - university services, fees, the '
+    "semester ticket, housing and city life are document questions even when a "
+    "campus is named"
 )
 
 
@@ -804,6 +853,8 @@ def _route_with_tools(question: str) -> dict | None:
         # follow-up advice three times over.
         if DEADLINE_PASSED_MARKER in combined:
             combined = f"{combined}\n\n{NEXT_INTAKE_NOTE}"
+        if _looks_german(question):
+            combined = _translate_answer_to_german(combined)
         return {
             "retrieved_docs": [],
             "direct_answer": combined,
@@ -1310,6 +1361,13 @@ _GERMAN_STOPWORDS = {
     "über", "bewerbung", "frist", "kurse", "ich", "wer", "nicht", "auch",
     "wenn", "oder", "sein", "eine", "einen", "einem", "viele", "mehr",
     "alle", "noch", "schon", "sehr", "nur", "uns",
+    # Articles, prepositions and verbs that are not also English words
+    # ("was", "die" alone and "den" are, so a German question needs two of
+    # these). "Was sind die Bewerbungsfristen?" matched only "sind" before
+    # and was answered in English.
+    "die", "dem", "des", "ein", "einer", "eines", "mit", "von", "zum",
+    "zur", "bei", "zu", "mein", "meine", "sich", "werden", "wird",
+    "habe", "haben", "kostet", "gilt", "gelten", "bekomme", "wo", "wieso",
 }
 
 
@@ -1350,7 +1408,11 @@ def _translate_to_english(text: str) -> str:
 
     prompt = (
         "Translate this message from German to English. It may be a question "
-        "or a statement. Respond with only the translation, nothing else.\n\n"
+        "or a statement. Keep the names of institutions, services and "
+        "systems in German exactly as written (e.g. Studierendenwerk, AStA, "
+        "Mensa, Stud.IP, Deutschlandsemesterticket): the English documents "
+        "use those German names. Respond with only the translation, nothing "
+        "else.\n\n"
         f"{text}"
     )
     try:
@@ -1359,6 +1421,30 @@ def _translate_to_english(text: str) -> str:
         return translated or text
     except Exception:
         logger.warning("Translation to English failed, using the original text", exc_info=True)
+        return text
+
+
+def _translate_answer_to_german(text: str) -> str:
+    """The structured lookups (deadlines, the examinations office contact)
+    answer from fixed English templates, not through generate_node, so a
+    German question would otherwise get an English reply. Best-effort like
+    _translate_to_english: on failure the English answer is still correct."""
+    prompt = (
+        "Translate this answer from English to German. Keep the Markdown "
+        "formatting, every number, name, e-mail address, phone number and "
+        "link exactly as written; write dates the German way (15. Juli 2026). "
+        "Use the formal 'Sie'. Translate "
+        f"\"{DEADLINE_PASSED_MARKER}\" as \"{DEADLINE_PASSED_MARKER_DE}\". "
+        "Respond with only the translation, nothing else.\n\n"
+        f"{text}"
+    )
+    try:
+        translated = _with_resilience(_with_fallback(get_classifier_llm())).invoke(prompt).content.strip()
+        # Long dashes are not used anywhere in the interface's copy.
+        translated = re.sub(r"\s*[\u2013\u2014]\s*", " - ", translated)
+        return translated or text
+    except Exception:
+        logger.warning("Translation to German failed, answering in English", exc_info=True)
         return text
 
 
@@ -1391,6 +1477,56 @@ def _build_progress_aware_schedule_answer(
 
     idx = 0 if exclude_codes else min(max(completed_semesters, 0), len(full_terms) - 1)
     return _format_schedule_terms(full_terms[idx : idx + 1], single_term=True)
+
+
+# Document search runs speculatively, in parallel with the tool router.
+# Measured on the production VPS (2026-10-09): the router call takes 2-3s and
+# the cross-encoder rerank 6-9s on CPU, and they used to run back to back.
+# Running them together turns the sum into the maximum without changing any
+# answer. Cheaper reranking was measured and rejected: int8 quantization
+# changed the top-4 passages on 4 of 5 questions, and capping the pool at 10
+# candidates would have dropped a passage the reranker picked on 18 of 30
+# real questions.
+_RETRIEVAL_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="speculative-retrieval")
+
+
+class _SpeculativeRetrieval:
+    """Starts translate -> hybrid search -> rerank in the background.
+
+    The worker reports no progress stages itself: if the router then answers
+    with a tool, a late "ranking" event would arrive after "writing" and send
+    the progress display backwards. Stages are reported by the caller when it
+    actually starts waiting on the result. cancel() skips the rerank (the
+    expensive part) if it has not started yet."""
+
+    def __init__(self, query: str, filter_: dict | None):
+        self._searched = threading.Event()
+        self._cancelled = threading.Event()
+        self._future = _RETRIEVAL_POOL.submit(self._run, query, filter_)
+
+    def _run(self, query: str, filter_: dict | None) -> list[Document]:
+        from runtime_config import get_runtime_config
+
+        runtime = get_runtime_config()
+        # English-only past this point - the corpus and its embedding model
+        # are English (see _translate_to_english); generate_node still answers
+        # in whatever language the question was asked in.
+        retrieval_query = _translate_to_english(query)
+        docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
+        self._searched.set()
+        if self._cancelled.is_set():
+            return []
+        return rerank(retrieval_query, docs, runtime.rerank_top_k)
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+
+    def result(self) -> list[Document]:
+        progress.report_stage(progress.SEARCHING)
+        while not self._searched.is_set() and not self._future.done():
+            self._searched.wait(0.1)
+        progress.report_stage(progress.RANKING)
+        return self._future.result()  # re-raises a worker exception here
 
 
 def retrieve_node(state: RagState) -> dict:
@@ -1456,21 +1592,13 @@ def retrieve_node(state: RagState) -> dict:
     # the model deciding, via native tool-calling, whether one of these
     # structured lookups answers the question - see _route_with_tools.
     progress.report_stage(progress.UNDERSTANDING)
+    retrieval = _SpeculativeRetrieval(query, filter_)
     tool_result = _route_with_tools(last_question)
     if tool_result is not None:
+        retrieval.cancel()
         return tool_result
 
-    from runtime_config import get_runtime_config
-
-    runtime = get_runtime_config()
-    # English-only past this point - the corpus and its embedding model are
-    # English (see _translate_to_english), not the question itself,
-    # which generate_node still answers in whatever language it was asked in.
-    progress.report_stage(progress.SEARCHING)
-    retrieval_query = _translate_to_english(query)
-    docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
-    progress.report_stage(progress.RANKING)
-    docs = rerank(retrieval_query, docs, runtime.rerank_top_k)
+    docs = retrieval.result()
 
     # Relevance gate: hybrid search always returns its top k, however weak the
     # match, so without this the model is handed near-irrelevant chunks for an

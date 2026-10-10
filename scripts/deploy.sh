@@ -85,8 +85,13 @@ echo "==> Checking the configured OpenRouter models still exist"
 ssh "root@${VPS_HOST}" "cd ${VPS_APP_DIR} && PYTHONPATH=. .venv/bin/python scripts/check_llm_models.py --fix" || \
   echo "    WARNING: a configured model is still unavailable - see above, and switch it in the admin panel." >&2
 
-echo "==> Restarting pm2"
-ssh "root@${VPS_HOST}" "source ~/.nvm/nvm.sh 2>/dev/null; pm2 restart ${PM2_APP_NAME}"
+# The app holds the embedding model and the reranker in memory, about
+# 2.9 GB steady with a 3.2 GB peak. The ceiling is a safety net against a
+# leak on a box with no swap, not a budget: pm2 restarts the app past it.
+PM2_MAX_MEMORY="4500M"
+
+echo "==> Restarting pm2 (memory ceiling ${PM2_MAX_MEMORY})"
+ssh "root@${VPS_HOST}" "source ~/.nvm/nvm.sh 2>/dev/null; pm2 restart ${PM2_APP_NAME} --max-memory-restart ${PM2_MAX_MEMORY} && pm2 save"
 
 echo "==> Waiting for the app to come back healthy (cold start reloads the local embedding model, can take a minute or two)"
 for i in $(seq 1 24); do

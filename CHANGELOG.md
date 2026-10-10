@@ -7,6 +7,57 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.0] - 2026-10-10
+### Added
+- Recent conversations. Each visitor's earlier conversations are listed in
+  the side navigation, titled by their first question; opening one restores
+  every turn with its citations, evidence and ratings, and a follow-up
+  continues the same thread. query_log now keeps each answer's sources and
+  passages in order (evidence_json), which is what lets "[2]" point at the
+  right passage again. Only the caller's own threads can be listed or opened.
+- German interface. An EN/DE switch in the header translates the student
+  screens (start screen, topics, composer, progress, sources, dialogs); the
+  choice is remembered per browser and English stays the default. Every
+  German topic and start question was run through the pipeline and answers
+  in German from the right documents. Staff screens stay English.
+- New university documents: the semester contribution (amounts by student
+  group for the winter semester 2026/27, bank details, the 2024/25 refund),
+  the Germany semester ticket (how to retrieve it, where it is valid, what
+  it does not cover) and the library opening hours, with topics for each.
+- A thumbs-down now reaches the programme team: admins get a Telegram alert
+  with the question and answer, and the answer moves to the top of the
+  review queue under a new "Rated unhelpful" filter until it is reviewed
+  again. It never changes an answer's review status by itself. Students
+  see a short note that the answer will be checked.
+### Changed
+- Faster answers: document search and reranking start at the same time as
+  the tool router instead of after it, and are skipped when a tool answers.
+  Sources are sent with the answer instead of waiting for contribution
+  detection, which now follows as its own event.
+- OpenRouter calls ask for providers that neither store nor train on
+  prompts (provider.data_collection = "deny", checked working with both
+  models; OPENROUTER_DENY_DATA_COLLECTION switches it off). The privacy
+  note under the input says so.
+- pm2 restarts the app if it ever passes 4.5 GB (it holds about 2.9 GB of
+  embedding and reranker models), set by scripts/deploy.sh.
+- Answer review shows the model's citation numbers as chips.
+### Fixed
+- German questions: "Studierendenwerk" and similar names are kept in German
+  when a question is translated for search (it became "student union
+  dormitory" and the housing documents were missed); deadline and
+  examinations office answers are translated for a German question instead
+  of arriving in English; more German questions are recognised as German.
+- An admission question in German was sent to the examinations office
+  lookup and answered with the Examining Board chair.
+- "Which professors teach on this programme?" answered that the documents
+  name no professors: it was routed to the curriculum listing, which has no
+  lecturer names, instead of the course catalogue.
+- A library question naming a campus (Wechloy) was sent to the course
+  catalogue, whose campus field replaced the document search.
+- Exam procedure questions (a lost TAN list, what the examinations office
+  does) were answered with only the Examining Board chair's name: the
+  contact lookup is now used only when a question asks who that person is.
+
 ## [1.9.0] - 2026-10-07
 ### Added
 - Live answer progress. An answer takes 20-30 seconds and the page used to

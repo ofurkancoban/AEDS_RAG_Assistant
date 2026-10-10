@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, ChevronDown, CornerDownLeft, LayoutList, Loader2 } from 'lucide-react';
-import { PROGRAMME, DOMAIN_TONE, DomainId, Topic } from '../../config/programme';
+import { DOMAIN_TONE, DomainId, Topic, localizedDomains } from '../../config/programme';
+import { useI18n } from '../../i18n';
 import { useMediaQuery } from './useMediaQuery';
 
 interface ComposerProps {
@@ -29,6 +30,8 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const isWide = useMediaQuery('(min-width: 640px)');
+  const { lang, t } = useI18n();
+  const domains = localizedDomains(lang);
 
   const [openedByButton, setOpenedByButton] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -39,7 +42,7 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
   const entries = useMemo(() => {
     const q = slashQuery ?? '';
     const all: Entry[] = [];
-    for (const domain of PROGRAMME.domains) {
+    for (const domain of domains) {
       for (const topic of domain.topics) {
         if (!q || `${topic.title} ${domain.label}`.toLowerCase().includes(q)) {
           all.push({ topic, domain: domain.id, index: all.length });
@@ -47,7 +50,7 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
       }
     }
     return all;
-  }, [slashQuery]);
+  }, [slashQuery, domains]);
 
   useEffect(() => setActiveIndex(0), [slashQuery]);
   useEffect(() => {
@@ -91,21 +94,21 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
           <div
             className="absolute left-0 right-0 bottom-full mb-2 z-30 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow-lg)] overflow-hidden animate-in"
             role="listbox"
-            aria-label="Topics"
+            aria-label={t.topics}
           >
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
-              <span className="text-[13.5px] font-semibold text-[var(--text)]">Topics</span>
+              <span className="text-[13.5px] font-semibold text-[var(--text)]">{t.topics}</span>
               <span className="hidden sm:flex items-center gap-1.5 text-[11px] text-[var(--text-faint)]">
-                <kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> move <kbd className="kbd">↵</kbd> ask <kbd className="kbd">esc</kbd> close
+                <kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> {t.topicKeys.move} <kbd className="kbd">↵</kbd> {t.topicKeys.ask} <kbd className="kbd">esc</kbd> {t.topicKeys.close}
               </span>
             </div>
             <div className="max-h-[min(360px,50dvh)] overflow-y-auto py-1">
               {entries.length === 0 ? (
                 <p className="px-4 py-3 text-[13.5px] text-[var(--text-muted)]">
-                  No topic matches "{slashQuery}". Press Escape and ask it as a question instead.
+                  {t.noTopicMatch(slashQuery ?? '')}
                 </p>
               ) : (
-                PROGRAMME.domains.map((domain) => {
+                domains.map((domain) => {
                   const inDomain = entries.filter((e) => e.domain === domain.id);
                   if (inDomain.length === 0) return null;
                   return (
@@ -156,9 +159,9 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
           <button
             type="button"
             onClick={() => (isMenuOpen ? closeMenu() : setOpenedByButton(true))}
-            aria-label="Browse topics"
+            aria-label={t.browseTopics}
             aria-expanded={isMenuOpen}
-            title="Browse topics ( / )"
+            title={`${t.browseTopics} ( / )`}
             className={`shrink-0 h-9 px-2.5 rounded-md flex items-center gap-1.5 text-[13px] font-medium transition-colors cursor-pointer ${
               isMenuOpen
                 ? 'bg-accent-50 text-accent-800 dark:bg-accent-500/15 dark:text-accent-200'
@@ -166,11 +169,11 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
             }`}
           >
             <LayoutList className="w-4 h-4" />
-            <span className="hidden sm:inline">Topics</span>
+            <span className="hidden sm:inline">{t.topics}</span>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          <label htmlFor="chat-input" className="sr-only">Ask a question</label>
+          <label htmlFor="chat-input" className="sr-only">{t.askLabel}</label>
           <textarea
             id="chat-input"
             ref={textareaRef}
@@ -205,7 +208,7 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
                 if (canSend) onSubmit();
               }
             }}
-            placeholder={placeholder ?? (isWide ? 'Ask a question, e.g. When is the deadline for the winter semester?' : 'Ask a question…')}
+            placeholder={placeholder ?? (isWide ? t.askPlaceholderWide : t.askPlaceholder)}
             disabled={isQuerying}
             // 16px on phones: iOS Safari zooms the page in on focus for any
             // input under 16px.
@@ -214,8 +217,8 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
           <button
             type="submit"
             disabled={!canSend}
-            aria-label="Send question"
-            title="Send (Enter)"
+            aria-label={t.sendQuestion}
+            title={t.sendTitle}
             className="shrink-0 w-9 h-9 rounded-md flex items-center justify-center bg-accent-800 hover:bg-accent-700 dark:bg-accent-600 dark:hover:bg-accent-500 text-white disabled:bg-[var(--bg-inset)] disabled:text-[var(--text-faint)] transition-colors cursor-pointer disabled:cursor-not-allowed"
           >
             {isQuerying ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-[18px] h-[18px]" />}
@@ -227,10 +230,10 @@ export const Composer: React.FC<ComposerProps> = ({ value, onChange, onSubmit, o
           questions are kept and read by a person. */}
       <div className="mt-2 flex items-start justify-between gap-4 text-[11.5px] leading-snug text-[var(--text-muted)]">
         <span>
-          Questions and answers are stored and reviewed by the programme team.{' '}
-          <strong className="font-medium text-[var(--text-secondary)]">Do not enter personal information.</strong>
+          {t.privacyNote}{' '}
+          <strong className="font-medium text-[var(--text-secondary)]">{t.privacyWarning}</strong>
         </span>
-        <span className="hidden md:inline whitespace-nowrap text-[var(--text-faint)]">Enter to send · / for topics</span>
+        <span className="hidden md:inline whitespace-nowrap text-[var(--text-faint)]">{t.keyHints}</span>
       </div>
     </div>
   );
