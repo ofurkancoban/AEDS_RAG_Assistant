@@ -306,6 +306,11 @@ export const PROGRAMME: ProgrammeConfig = {
       kind: KIND.accreditation,
     },
     MPO_AEDS_2023_EN: { title: L('Examination regulations (2023)', 'Prüfungsordnung (2023)'), kind: KIND.regulations },
+    MPO_AEDS_2026_EN: { title: L('Examination regulations (2026)', 'Prüfungsordnung (2026)'), kind: KIND.regulations },
+    AEDS_exam_regulations_2026_changes: {
+      title: L('Changes in the 2026 regulations', 'Änderungen der Prüfungsordnung 2026'),
+      kind: KIND.programmeDocument,
+    },
     ZO_FMa_AEDS_EN: { title: L('Admission regulations', 'Zugangs- und Zulassungsordnung'), kind: KIND.regulations },
     SP_MSc_Applied_Economics_and_Data_Science: { title: L('Study plan', 'Studienplan'), kind: KIND.programmeDocument },
     'SP_MSc_Applied-Economics-and-Data-Science': { title: L('Study plan', 'Studienplan'), kind: KIND.programmeDocument },
