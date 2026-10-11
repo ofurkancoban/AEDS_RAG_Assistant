@@ -18,12 +18,12 @@ def test_gemini_default_budget(monkeypatch):
     assert settings.effective_daily_llm_budget == 450
 
 
-def test_openrouter_default_budget_matches_free_tier_without_credits(monkeypatch):
-    """45, not OpenRouter's raw 50/day cap - see config.py's docstring for
-    the margin _with_resilience's retries need."""
+def test_openrouter_default_budget_matches_the_1000_request_tier(monkeypatch):
+    """900, under the account's 1000/day free-model cap - see
+    config.daily_budget_for_provider for why not the 50/day tier's 45."""
     monkeypatch.setattr(settings, "llm_provider", "openrouter")
     monkeypatch.setattr(settings, "daily_llm_call_budget", -1)
-    assert settings.effective_daily_llm_budget == 45
+    assert settings.effective_daily_llm_budget == 900
 
 
 def test_explicit_budget_overrides_every_provider_default(monkeypatch):

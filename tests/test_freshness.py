@@ -77,7 +77,7 @@ def _run_generate_with(monkeypatch, docs, expired):
             return AIMessage(content="answer")
 
     monkeypatch.setattr(nodes, "get_llm", lambda: RecordingLlm())
-    monkeypatch.setattr(nodes, "_with_resilience", lambda llm: llm)
+    monkeypatch.setattr(nodes, "_with_resilience", lambda llm, **kw: llm)
     monkeypatch.setattr(nodes, "get_expired_source_ids", lambda: expired)
 
     nodes.generate_node(

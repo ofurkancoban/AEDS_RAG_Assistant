@@ -7,6 +7,33 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.3] - 2026-10-11
+### Fixed
+- An exhausted OpenRouter quota no longer takes the site down. When the
+  provider answers with its daily-quota 429, the call is not retried (it
+  could not succeed before the next UTC day): the provider is marked
+  exhausted for the day, the same question is answered by the fallback
+  provider (Gemini) at once, and admins get a Telegram alert saying why.
+  Per-minute limits are still retried as before. On 2026-10-10 the quota
+  was used up by local evaluation runs, this server's own counter could
+  not see that, and every question retried a 429 for minutes until the
+  provider was switched by hand.
+- The OpenRouter daily budget assumed the 50-request free tier (45) while
+  the account is on the 1000-request tier, so production moved to Gemini
+  after about 15 questions a day. It is now 900.
+- The thesis FAQ stated general figures that contradict this programme's
+  examination regulations (grading "within about eight weeks", "some
+  programmes" have a colloquium, "most programmes" award 30 credits, a
+  weighted mean). It now states the programme's own rules: grading within
+  six weeks, a compulsory pass/fail colloquium, 30 ECTS (24 + 6), the
+  2.0 rule for differing grades, and five months of writing time.
+### Changed
+- tests/eval_golden.py runs through the Kilo gateway by default (no key,
+  paced to 180 requests an hour), so evaluation no longer spends the
+  OpenRouter quota production depends on; --gateway openrouter opts back
+  in with a warning. The gateway is set by openrouter_base_url; the
+  OpenRouter key is never sent to another host.
+
 ## [1.10.2] - 2026-10-11
 ### Changed
 - The tool router (which structured lookup, if any, answers a question)

@@ -59,7 +59,7 @@ def test_a_german_query_is_translated_before_retrieval(monkeypatch):
     monkeypatch.setattr(nodes, "_with_fallback", lambda llm, tools=None: llm)
     monkeypatch.setattr(
         nodes, "_with_resilience",
-        lambda llm: type("Stub", (), {"invoke": lambda self, prompt: _FakeTranslation("What is the application deadline?")})(),
+        lambda llm, **kw: type("Stub", (), {"invoke": lambda self, prompt: _FakeTranslation("What is the application deadline?")})(),
     )
 
     result = nodes._translate_to_english("Wann ist die Bewerbungsfrist?")
@@ -68,7 +68,7 @@ def test_a_german_query_is_translated_before_retrieval(monkeypatch):
 
 
 def test_a_failed_translation_falls_back_to_the_original_query(monkeypatch):
-    def _raise(llm):
+    def _raise(llm, **kw):
         raise RuntimeError("provider down")
 
     monkeypatch.setattr(nodes, "get_classifier_llm", lambda: object())

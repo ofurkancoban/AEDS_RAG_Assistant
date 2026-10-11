@@ -13,6 +13,16 @@ Usage:
     python -m tests.eval_golden
     python -m tests.eval_golden --verbose
     python -m tests.eval_golden --filter language
+    python -m tests.eval_golden --gateway openrouter   # spends production quota
+
+By default the LLM calls go through the Kilo gateway, not OpenRouter: the
+free-model quota on OpenRouter is counted per account and production depends
+on it (one day of full runs used all 1000 requests and the live site stopped
+answering). Kilo's free tier needs no key, allows 200 requests per hour per
+IP (calls are paced to stay under it, so a full run takes over an hour) and
+requires data collection for its free models - fine for these test
+questions, never for student traffic. A model the gateway does not offer is
+reported up front; pass --generation-model to measure with another one.
 
 Requires the same runtime the backend needs: Ollama running locally with the
 configured models pulled, and the document corpus already ingested into Chroma
@@ -29,6 +39,10 @@ import uuid
 from pathlib import Path
 
 GOLDEN_SET_PATH = Path(__file__).parent / "golden_qa.json"
+
+KILO_BASE_URL = "https://api.kilo.ai/api/gateway"
+# Under Kilo's 200 per hour per IP, with room for a probe or a retry.
+KILO_REQUESTS_PER_HOUR = 180
 # Cases mined from the answer-review queue by scripts/export_review_cases.py -
 # real questions the model got wrong in production, with the assertions derived
 # from what the reviewing admin corrected. Optional: absent until that script
@@ -210,6 +224,44 @@ def run(cases: list[dict], verbose: bool, report_path: Path | None = None) -> bo
     return all_passed
 
 
+def use_gateway(gateway: str, generation_model: str | None = None, router_model: str | None = None) -> list[str]:
+    """Point this process's LLM calls at a gateway and return the configured
+    models it does not offer. Only for a separate eval process: it rewrites
+    settings in place, which inside the API process would move live traffic."""
+    import llm_budget
+    from config import settings
+    from graph import nodes
+    from runtime_config import get_runtime_config
+
+    # The local daily-budget counter would otherwise divert calls to another
+    # provider once today's local usage passes its ceiling.
+    llm_budget.effective_provider = lambda: "openrouter"
+    if gateway == "kilo":
+        settings.openrouter_base_url = KILO_BASE_URL
+        settings.openrouter_requests_per_hour = KILO_REQUESTS_PER_HOUR
+        # Kilo refuses free-model requests that deny data collection.
+        settings.openrouter_deny_data_collection = False
+    if generation_model:
+        settings.openrouter_model = generation_model
+    if router_model is not None:
+        settings.openrouter_router_model = router_model
+    nodes._get_openrouter_llm_cached.cache_clear()
+    nodes._gateway_rate_limiter.cache_clear()
+    from runtime_config import _cached_effective_config
+
+    _cached_effective_config.cache_clear()
+
+    config = get_runtime_config()
+    models = {config.openrouter_model, config.openrouter_fallback_model, settings.openrouter_router_model} - {"", None}
+    unavailable = []
+    for model in sorted(models):
+        try:
+            nodes._get_openrouter_llm_cached(model, "classifier").invoke("Say OK")
+        except Exception as exc:  # noqa: BLE001 - any failure means the run cannot use it
+            unavailable.append(f"{model}: {str(exc)[:120]}")
+    return unavailable
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true", help="Always print the full answer, even on pass")
@@ -224,7 +276,25 @@ def main():
         default=None,
         help="Write a JSON report of what each case retrieved and answered to this path",
     )
+    parser.add_argument(
+        "--gateway",
+        choices=("kilo", "openrouter"),
+        default="kilo",
+        help="Where LLM calls go (default kilo; openrouter spends the quota production uses)",
+    )
+    parser.add_argument("--generation-model", default=None, help="Override the answer-writing model for this run")
+    parser.add_argument("--router-model", default=None, help="Override the tool-router model for this run")
     args = parser.parse_args()
+
+    if args.gateway == "openrouter":
+        print("WARNING: using OpenRouter - this run spends the free-model quota production depends on.")
+    unavailable = use_gateway(args.gateway, args.generation_model, args.router_model)
+    if unavailable:
+        print(f"Not available on {args.gateway}:")
+        for line in unavailable:
+            print(f"  - {line}")
+        print("Pass --generation-model / --router-model with a model the gateway offers.")
+        sys.exit(2)
 
     cases = load_cases(include_review=not args.no_review_cases)
     if args.filter:

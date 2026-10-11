@@ -109,7 +109,7 @@ _notified_fallback_day: str | None = None
 _notified_fallback_lock = threading.Lock()
 
 
-def _record_fallback_engaged(live: str, fallback: str) -> None:
+def _record_fallback_engaged(live: str, fallback: str, reason: str | None = None) -> None:
     """Best-effort, once per calendar day: writes a BudgetFallbackEvent row
     (see db/models.py - the persistent record recent_fallback_events reads
     back for the admin panel) and sends the matching Telegram alert. A
@@ -184,7 +184,9 @@ def _record_fallback_engaged(live: str, fallback: str) -> None:
             from api.telegram_bot import _notify_admins
 
             _notify_admins(
-                f"{live}'s daily budget is exhausted ({used} calls today) - "
+                f"{reason} - falling back to {fallback} until 00:00 UTC."
+                if reason
+                else f"{live}'s daily budget is exhausted ({used} calls today) - "
                 f"falling back to {fallback} for the rest of the day."
             )
         except Exception:
@@ -250,6 +252,58 @@ def effective_provider() -> str:
             return fallback
 
     return live
+
+
+def mark_exhausted(provider: str, detail: str = "") -> bool:
+    """The provider itself refused with "daily quota exhausted". Fills
+    today's counter up to the budget, so effective_provider() moves every
+    process to the fallback until the next UTC day - which is when
+    OpenRouter's free-model quota resets. Needed because the counter only
+    sees this server's calls: on 2026-10-10 the account quota was used up
+    from elsewhere (local evaluation runs) while this counter stood at 26,
+    so nothing switched and every question retried a 429 for minutes.
+
+    Returns True when a fallback provider now serves the next call."""
+    budget = daily_budget(provider)
+    if budget <= 0:
+        logger.warning("%s reported its daily quota exhausted, but it has no budget to fill", provider)
+        return False
+
+    used_before = usage_today(provider)
+    day = _today()
+    session = SessionLocal()
+    try:
+        row = session.get(ProviderDailyUsage, (day, provider))
+        if row is None:
+            session.add(ProviderDailyUsage(day=day, provider=provider, call_count=budget))
+        else:
+            row.call_count = max(row.call_count, budget)
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.warning("Failed to mark %s's daily quota as exhausted", provider, exc_info=True)
+        return False
+    finally:
+        session.close()
+
+    from runtime_config import get_runtime_config
+
+    fallback = get_runtime_config().daily_budget_fallback_provider
+    if not fallback or fallback == provider:
+        return False
+    if daily_budget(fallback) > 0 and usage_today(fallback) >= daily_budget(fallback):
+        return False
+
+    logger.warning("%s reported its daily quota exhausted; falling back to %s", provider, fallback)
+    _record_fallback_engaged(
+        provider,
+        fallback,
+        reason=(
+            f"{provider} reported its daily quota exhausted{f' ({detail})' if detail else ''} "
+            f"after {used_before} calls from this server"
+        ),
+    )
+    return True
 
 
 def has_headroom(estimated_calls: int = 3) -> bool:
