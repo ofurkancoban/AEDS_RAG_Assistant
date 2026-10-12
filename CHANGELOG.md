@@ -7,6 +7,21 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.26] - 2026-10-12
+### Fixed
+- The schedule recommender now prefers a student's already-planned
+  electives (ECTS Tracker status "planned") over a catalog course they've
+  never touched - found live: a student who had already planned "Spatial
+  Econometrics" for Empirical and "Computational Intelligence I" for
+  Specialization was instead recommended "Operations Management", a course
+  they'd never shown any interest in, because planned and never-touched
+  electives were weighted identically in the selection pool. Also fixes a
+  cross-listing gap this surfaced: a planned course catalogued under a
+  different category than the student counts it toward (the same situation
+  the completed-codes category override already handled) was silently
+  dropped from the recommendation entirely rather than offered back for the
+  category the student actually planned it under.
+
 ## [1.10.25] - 2026-10-12
 ### Added
 - Schedule recommendations are more explanatory: a short lead-in explains

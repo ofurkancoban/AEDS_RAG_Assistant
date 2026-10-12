@@ -686,3 +686,94 @@ class TestAlternatives:
         )
         assert answer is not None
         assert "Every compulsory module you still owe is included" in answer
+
+
+class TestExtractPlannedCodesByCategory:
+    def test_absent_line_returns_empty_dict(self):
+        assert nodes._extract_planned_codes_by_category("What should I take this semester?") == {}
+
+    def test_present_line_is_parsed_into_category_buckets(self):
+        text = (
+            "Codes by category: economics: wir821\n"
+            "Planned codes by category: economics: wir874, wir895; empirical: wir894, wir897\n"
+            "Which courses should I take this semester?"
+        )
+        result = nodes._extract_planned_codes_by_category(text)
+        assert result == {
+            "economics": frozenset({"wir874", "wir895"}),
+            "empirical": frozenset({"wir894", "wir897"}),
+        }
+
+    def test_does_not_confuse_the_planned_line_with_the_completed_codes_by_category_line(self):
+        text = (
+            "Codes by category: economics: wir821, wir873\n"
+            "Planned codes by category: economics: wir874, wir895\n"
+            "Which courses should I take this semester?"
+        )
+        completed = nodes._extract_completed_codes_by_category(text)
+        planned = nodes._extract_planned_codes_by_category(text)
+        assert completed == {"economics": frozenset({"wir821", "wir873"})}
+        assert planned == {"economics": frozenset({"wir874", "wir895"})}
+
+
+class TestPlannedCoursesPrioritized:
+    def test_a_planned_elective_is_chosen_over_an_unplanned_one(self, monkeypatch):
+        catalog = [
+            _course("planned1", "empirical", 6, offering="WiSe"),
+            _course("other1", "empirical", 6, offering="WiSe"),
+            _course("other2", "empirical", 6, offering="WiSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        for _ in range(10):
+            selected = nodes._select_recommended_courses(
+                targets={"empirical": 6},
+                planned_codes_by_category={"empirical": frozenset({"planned1"})},
+            )
+            assert {c["code"] for c in selected} == {"planned1"}
+
+    def test_a_cross_listed_planned_course_is_pulled_in_from_its_own_catalog_category(self, monkeypatch):
+        # inf535-style case: catalogued under "datascience", but the
+        # student's own tracker (and their planned-codes line) counts it
+        # toward "specialization" - it must still be offered for that
+        # category's remaining target, not silently dropped.
+        catalog = [_course("crosscourse", "datascience", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        selected = nodes._select_recommended_courses(
+            targets={"specialization": 6, "datascience": 0},
+            planned_codes_by_category={"specialization": frozenset({"crosscourse"})},
+        )
+        assert {c["code"] for c in selected} == {"crosscourse"}
+
+    def test_a_cross_listed_planned_course_is_not_double_selected(self, monkeypatch):
+        # datascience's own target (18, unreduced) would also want this
+        # course - it must be counted once, toward specialization (where
+        # the student planned it), not picked again for datascience too.
+        catalog = [_course("crosscourse", "datascience", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        selected = nodes._select_recommended_courses(
+            targets={"specialization": 6, "datascience": 18},
+            planned_codes_by_category={"specialization": frozenset({"crosscourse"})},
+        )
+        codes = [c["code"] for c in selected]
+        assert codes.count("crosscourse") == 1
+
+    def test_no_planned_codes_leaves_selection_unaffected(self, monkeypatch):
+        catalog = [_course("onlyoption", "specialization", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        selected = nodes._select_recommended_courses(targets={"specialization": 6})
+        assert {c["code"] for c in selected} == {"onlyoption"}
+
+    def test_end_to_end_planned_course_appears_in_the_formatted_answer(self, monkeypatch):
+        catalog = [
+            _course("planned1", "empirical", 6, offering="WiSe", name="Student's Planned Pick"),
+            _course("other1", "empirical", 6, offering="WiSe", name="Never Touched Course"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_CATEGORY_ECTS_TARGETS", {"empirical": 6})
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?",
+            completed_semesters=0,
+            planned_codes_by_category={"empirical": frozenset({"planned1"})},
+        )
+        assert answer is not None
+        assert "**Student's Planned Pick** (planned1)" in answer

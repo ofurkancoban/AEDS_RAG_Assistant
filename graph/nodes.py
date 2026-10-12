@@ -1293,7 +1293,7 @@ def _extract_completed_codes(text: str) -> frozenset[str]:
     return frozenset(c.strip().lower() for c in match.group(1).split(",") if c.strip())
 
 
-_CATEGORY_CODES_LINE_RE = re.compile(r"codes by category:\s*([^\n]*)", re.IGNORECASE)
+_CATEGORY_CODES_LINE_RE = re.compile(r"(?<!planned )codes by category:\s*([^\n]*)", re.IGNORECASE)
 
 
 def _extract_completed_codes_by_category(text: str) -> dict[str, frozenset[str]]:
@@ -1306,6 +1306,39 @@ def _extract_completed_codes_by_category(text: str) -> dict[str, frozenset[str]]
     without this exact line, in which case the caller falls back to
     _compute_remaining_targets's catalog-category behavior."""
     match = _CATEGORY_CODES_LINE_RE.search(text)
+    if not match:
+        return {}
+    result: dict[str, frozenset[str]] = {}
+    for chunk in match.group(1).split(";"):
+        if ":" not in chunk:
+            continue
+        category, codes_part = chunk.split(":", 1)
+        category = category.strip().lower()
+        codes = frozenset(c.strip().lower() for c in codes_part.split(",") if c.strip())
+        if category and codes:
+            result[category] = codes
+    return result
+
+
+_PLANNED_CATEGORY_CODES_LINE_RE = re.compile(r"planned codes by category:\s*([^\n]*)", re.IGNORECASE)
+
+
+def _extract_planned_codes_by_category(text: str) -> dict[str, frozenset[str]]:
+    """Parses the ECTS Tracker widget's optional 'Planned codes by category:
+    economics: wir874, wir895; ...' line - courses the student has already
+    chosen to take (status "planned" in their tracker) but hasn't completed
+    or started yet, grouped by their own category bucketing. These are
+    deliberately NOT in _extract_completed_codes's exclude set (a planned
+    course should still be recommendable, see _is_confirmed_unavailable's
+    docstring history), but when a category needs an elective and one of
+    the student's own planned picks qualifies, _select_recommended_courses
+    should offer that one first rather than a catalog course the student
+    has never indicated any interest in - found live: a student who had
+    already planned "Spatial Econometrics" for their Empirical requirement
+    was recommended "Operations Management" instead, a course they'd never
+    touched, because planned and never-touched electives were weighted
+    identically in the selection pool."""
+    match = _PLANNED_CATEGORY_CODES_LINE_RE.search(text)
     if not match:
         return {}
     result: dict[str, frozenset[str]] = {}
@@ -1501,6 +1534,7 @@ def _select_recommended_courses(
     real_target_label: str | None = None,
     substitutions_out: list[dict] | None = None,
     alternatives_out: dict[str, list[dict]] | None = None,
+    planned_codes_by_category: dict[str, frozenset[str]] | None = None,
 ) -> list[dict]:
     """Deterministic selection: every compulsory course is always included;
     electives are shuffled and then filled in until each component's
@@ -1537,25 +1571,43 @@ def _select_recommended_courses(
     pick) - unlike substitutions_out (only for a course that genuinely can't
     run), this is for every elective pick, so the student always sees what
     else would have counted toward the same requirement, not just the one
-    the algorithm happened to land on."""
+    the algorithm happened to land on.
+
+    planned_codes_by_category (see _extract_planned_codes_by_category), when
+    given, moves any elective the student has already planned for a category
+    to the front of that category's candidate list, ahead of the regular
+    shuffle-and-difficulty-sorted pool - a planned-but-not-yet-taken elective
+    is a decision the student already made, and should be offered back to
+    them before a catalog course they've never shown interest in."""
     if targets is None:
         targets = _CATEGORY_ECTS_TARGETS
     courses = get_catalog_courses()
     if exclude_codes:
         courses = [c for c in courses if c["code"].lower() not in exclude_codes]
     by_category: dict[str, list[dict]] = {}
+    courses_by_code: dict[str, dict] = {}
     for course in courses:
         by_category.setdefault(course["category"], []).append(course)
+        courses_by_code[course["code"].lower()] = course
 
+    globally_selected_codes: set[str] = set()
     selected: list[dict] = []
     for category, target in targets.items():
         category_courses = by_category.get(category, [])
         if category == "thesis":
             selected.extend(category_courses)
+            globally_selected_codes.update(c["code"] for c in category_courses)
             continue
 
         compulsory = [c for c in category_courses if c["compulsory"]]
-        electives = [c for c in category_courses if not c["compulsory"]]
+        # Excludes a code a prior category iteration already cross-pulled
+        # in for a student's planned pick (see the cross-listing handling
+        # below) - otherwise this category's own, perfectly normal pass
+        # would pick the same course again for its own target, double-
+        # counting it instead of respecting where the student put it.
+        electives = [
+            c for c in category_courses if not c["compulsory"] and c["code"] not in globally_selected_codes
+        ]
 
         # Shuffle within each offering type, then round-robin merge, so the
         # fill order alternates WiSe/SoSe/unspecified instead of randomly
@@ -1582,6 +1634,26 @@ def _select_recommended_courses(
             for group in groups:
                 if group:
                     electives.append(group.pop(0))
+
+        planned_codes = (planned_codes_by_category or {}).get(category, frozenset())
+        if planned_codes:
+            # A planned code may be cross-listed under a different catalog
+            # category than the one the student is counting it toward (same
+            # situation _compute_remaining_targets already handles for
+            # completed codes) - pull any such course in from the full
+            # catalog by code, not just this category's own catalog-matched
+            # pool, so it's still offered back to the student here.
+            present_codes = {c["code"] for c in electives} | {c["code"] for c in compulsory}
+            for code in planned_codes:
+                if code in present_codes or code in globally_selected_codes:
+                    continue
+                cross_course = courses_by_code.get(code)
+                if cross_course is not None and not cross_course["compulsory"]:
+                    electives.append(cross_course)
+            planned_first = [c for c in electives if c["code"] in planned_codes]
+            if planned_first:
+                rest = [c for c in electives if c["code"] not in planned_codes]
+                electives = planned_first + rest
 
         chosen = list(compulsory)
         if real_target_label is not None:
@@ -1611,6 +1683,7 @@ def _select_recommended_courses(
                 for course in chosen_electives:
                     alternatives_out[course["code"]] = leftover
         selected.extend(chosen)
+        globally_selected_codes.update(c["code"] for c in chosen)
 
     return selected
 
@@ -1728,6 +1801,7 @@ def _compute_schedule_terms(
     real_target_label: str | None = None,
     substitutions_out: list[dict] | None = None,
     alternatives_out: dict[str, list[dict]] | None = None,
+    planned_codes_by_category: dict[str, frozenset[str]] | None = None,
 ) -> list[tuple[str, list[dict]]]:
     """The single source of truth for what a correct schedule looks like:
     every compulsory course, electives filled to each component's ECTS
@@ -1744,8 +1818,8 @@ def _compute_schedule_terms(
     full programme. codes_by_category, when available, overrides which
     category each excluded course's ECTS counts against (see
     _compute_remaining_targets). real_target_label/substitutions_out/
-    alternatives_out are passed straight through to
-    _select_recommended_courses - see there."""
+    alternatives_out/planned_codes_by_category are passed straight through
+    to _select_recommended_courses - see there."""
     targets = _compute_remaining_targets(exclude_codes, codes_by_category)
     selected = _select_recommended_courses(
         exclude_codes=exclude_codes,
@@ -1753,6 +1827,7 @@ def _compute_schedule_terms(
         real_target_label=real_target_label,
         substitutions_out=substitutions_out,
         alternatives_out=alternatives_out,
+        planned_codes_by_category=planned_codes_by_category,
     )
     if not selected:
         return []
@@ -2000,6 +2075,7 @@ def _build_progress_aware_schedule_answer(
     completed_semesters: int,
     exclude_codes: frozenset[str] = frozenset(),
     codes_by_category: dict[str, frozenset[str]] | None = None,
+    planned_codes_by_category: dict[str, frozenset[str]] | None = None,
 ) -> str | None:
     """Builds the schedule answer for a request that we already know the
     user's progress for: a full multi-semester plan if they explicitly asked
@@ -2031,7 +2107,12 @@ def _build_progress_aware_schedule_answer(
     default "next semester" one - it means the term already in progress,
     not the upcoming one - so it anchors season/real_target_label to
     _current_running_semester_label instead, and the answer is labelled
-    "this semester" rather than "next semester"."""
+    "this semester" rather than "next semester".
+
+    planned_codes_by_category (see _extract_planned_codes_by_category) is
+    passed straight through to _select_recommended_courses, which prefers
+    a student's already-planned electives over the regular pool - see
+    there."""
     season = _extract_semester_preference(question_text)
     is_full_plan = _looks_like_full_plan_request(question_text)
     is_current = not is_full_plan and _looks_like_current_semester_request(question_text)
@@ -2053,6 +2134,7 @@ def _build_progress_aware_schedule_answer(
         real_target_label=real_target_label,
         substitutions_out=substitutions,
         alternatives_out=alternatives,
+        planned_codes_by_category=planned_codes_by_category,
     )
     if not full_terms:
         return None
@@ -2317,8 +2399,13 @@ def retrieve_node(state: RagState) -> dict:
             # "this semester" is a fixed calendar answer, not one indexed by
             # progress.
             codes_by_category = _extract_completed_codes_by_category(last_question) if exclude_codes else None
+            planned_codes_by_category = _extract_planned_codes_by_category(last_question)
             answer_text = _build_progress_aware_schedule_answer(
-                last_question, 0, exclude_codes=exclude_codes, codes_by_category=codes_by_category
+                last_question,
+                0,
+                exclude_codes=exclude_codes,
+                codes_by_category=codes_by_category,
+                planned_codes_by_category=planned_codes_by_category,
             )
             if answer_text:
                 return {"retrieved_docs": [], "direct_answer": answer_text, "awaiting_semester_number": False}
