@@ -990,3 +990,63 @@ class TestRetrieveNodeGpa:
         result = nodes.retrieve_node(state)
         assert result["direct_answer"] is not None
         assert "**1.80**" in result["direct_answer"]
+
+
+class TestContextDoesNotSelfTriggerAnyHint:
+    """Regression guard for the Target GPA hint-collision bug: the widget's
+    own injected context text (every line format aedsRagBuildCourseContext9
+    can produce) must never, by itself, satisfy a hint meant to detect the
+    user's actual question. A hint match inside pure boilerplate - no real
+    question appended - means a future context addition will silently
+    hijack routing for an unrelated question, exactly as the Target GPA
+    line's old "need average Y in remaining Z ECTS" phrasing did."""
+
+    FULL_CONTEXT = """\
+My ECTS Tracker progress (54/120 ECTS completed):
+Economics (18/36 ECTS) - completed: wir821 - International Trade; wir873 - Applied Economics; wir876 - Topics | in progress: wir893 - Development Economics | planned: wir874 - Advanced Microeconomics; wir895 - Industrial Organization | GPA: 1.67
+Empirical Methods (6/18 ECTS) - completed: wir875 - Forecasting Methods | planned: wir894 - Econometrics of Policy Evaluation; wir897 - Spatial Econometrics
+Data Science (18/18 ECTS) - completed: inf962 - Fundamentals; inf604 - BI I; inf607 - BI II
+Specialization (12/18 ECTS) - completed: inf530 - Artificial Intelligence; inf536 - CI II | planned: inf535 - Computational Intelligence I | GPA: 1.65
+Overall GPA: 1.66 (German scale, 1.0 best - 5.0 fail)
+Target GPA: 1.50 (need average 1.30 across the next 66 ECTS to reach this)
+Codes already completed or in progress: wir821, wir873, wir876, inf962, inf604, inf607, inf530, inf536, wir875, wir893
+Codes by category: economics: wir821, wir873, wir876, wir893; datascience: inf962, inf604, inf607; specialization: inf530, inf536; empirical: wir875
+Planned codes by category: economics: wir874, wir895; empirical: wir894, wir897; specialization: inf535"""
+
+    def test_full_context_alone_triggers_no_hint_set(self):
+        hint_sets = {
+            "schedule": nodes._SCHEDULE_REQUEST_HINTS,
+            "ects_progress": nodes._ECTS_PROGRESS_HINTS,
+            "gpa": nodes._GPA_HINTS,
+            "full_plan": nodes._FULL_PLAN_HINTS,
+            "current_semester": nodes._CURRENT_SEMESTER_HINTS,
+        }
+        lowered = self.FULL_CONTEXT.lower()
+        collisions = []
+        for set_name, hints in hint_sets.items():
+            for hint in hints:
+                match = nodes._compile_flexible_hint(hint).search(lowered)
+                if match:
+                    collisions.append(f"{set_name}: {hint!r} matched {match.group(0)!r}")
+        assert collisions == []
+
+    def test_each_progress_line_individually_triggers_no_hint_set(self):
+        # Catches a collision that only appears with a shorter context (one
+        # category, no Target GPA, etc.) that the combined fixture above
+        # might mask by sheer length/structure.
+        hint_sets = {
+            "schedule": nodes._SCHEDULE_REQUEST_HINTS,
+            "ects_progress": nodes._ECTS_PROGRESS_HINTS,
+            "gpa": nodes._GPA_HINTS,
+            "full_plan": nodes._FULL_PLAN_HINTS,
+            "current_semester": nodes._CURRENT_SEMESTER_HINTS,
+        }
+        collisions = []
+        for line in self.FULL_CONTEXT.splitlines():
+            lowered = line.lower()
+            for set_name, hints in hint_sets.items():
+                for hint in hints:
+                    match = nodes._compile_flexible_hint(hint).search(lowered)
+                    if match:
+                        collisions.append(f"{set_name}: {hint!r} matched {match.group(0)!r} in {line!r}")
+        assert collisions == []
