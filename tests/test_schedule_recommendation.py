@@ -801,8 +801,8 @@ class TestEctsProgressAnswer:
         assert answer is not None
         assert "You need **120 ECTS**" in answer
         assert "have completed **54/120**" in answer
-        assert "| Thesis | 0 | 30 | 30 |" in answer
-        assert "**66 ECTS remaining**" in answer
+        assert "| Thesis | 0 | 0 | 0 | 30 | 30 |" in answer
+        assert "**66 ECTS still needed**" in answer
 
     def test_a_fully_satisfied_category_shows_zero_remaining(self):
         context = (
@@ -811,7 +811,7 @@ class TestEctsProgressAnswer:
         )
         answer = nodes._build_ects_progress_answer(context)
         assert answer is not None
-        assert "| Data Science | 18 | 18 | 0 |" in answer
+        assert "| Data Science | 18 | 0 | 0 | 18 | 0 |" in answer
 
     def test_category_without_a_required_target_is_ignored(self):
         # "Further modules (6 ECTS) - ..." (no "/required" part, since it
@@ -826,6 +826,43 @@ class TestEctsProgressAnswer:
         names = {line["name"] for line in lines}
         assert "Further modules" not in names
         assert "Economics" in names
+
+    def test_in_progress_and_planned_ects_are_looked_up_from_the_catalog(self, monkeypatch):
+        catalog = [
+            _course("wir893", "economics", 6),
+            _course("wir874", "economics", 6),
+            _course("wir895", "economics", 6),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        context = (
+            "Economics (18/36 ECTS) - completed: wir821 - International Trade | "
+            "in progress: wir893 - Development Economics | "
+            "planned: wir874 - Advanced Microeconomics; wir895 - Industrial Organization\n"
+            "How many ECTS do I need to graduate?"
+        )
+        answer = nodes._build_ects_progress_answer(context)
+        assert answer is not None
+        # 18 completed, 6 in progress (wir893), 12 planned (wir874+wir895),
+        # target 36 -> still needed = 36-18-6-12 = 0.
+        assert "| Economics | 18 | 6 | 12 | 36 | 0 |" in answer
+
+    def test_summary_sentence_mentions_in_progress_and_planned_when_present(self, monkeypatch):
+        catalog = [_course("wir893", "economics", 6)]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        context = (
+            "Economics (18/36 ECTS) - completed: wir821 | in progress: wir893 - Development Economics\n"
+            "How many ECTS do I need to graduate?"
+        )
+        answer = nodes._build_ects_progress_answer(context)
+        assert answer is not None
+        assert "(6 in progress, 0 planned)" in answer
+
+    def test_summary_sentence_omits_the_parenthetical_when_only_completed(self, monkeypatch):
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: [])
+        context = "Economics (18/36 ECTS) - completed: wir821\nHow many ECTS do I need to graduate?"
+        answer = nodes._build_ects_progress_answer(context)
+        assert answer is not None
+        assert "in progress" not in answer.split("\n\n")[0]
 
 
 class TestLooksLikeEctsProgressRequest:

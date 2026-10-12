@@ -7,6 +7,15 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.28] - 2026-10-12
+### Added
+- The per-category ECTS breakdown now also shows In Progress and Planned
+  ECTS, not just Completed - "Still Needed" subtracts all three from each
+  category's target, matching AEDS_ECTS_Tracker's own "remaining" figure in
+  its UI exactly. In-progress/planned courses aren't given a ready-made
+  ECTS subtotal in the widget's context (only completed is), so their
+  codes are looked up against the catalog.
+
 ## [1.10.27] - 2026-10-12
 ### Added
 - "How many ECTS do I need to graduate?" now shows a per-category remaining

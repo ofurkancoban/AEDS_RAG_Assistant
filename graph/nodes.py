@@ -1507,29 +1507,49 @@ def _looks_like_ects_progress_request(text: str) -> bool:
 
 
 _PROGRESS_CATEGORY_LINE_RE = re.compile(
-    r"^(?P<name>[^(\n]+?)\s*\((?P<completed>\d+)(?:/(?P<required>\d+))?\s*ECTS\)", re.MULTILINE
+    r"^(?P<name>[^(\n]+?)\s*\((?P<completed>\d+)(?:/(?P<required>\d+))?\s*ECTS\)(?P<rest>[^\n]*)",
+    re.MULTILINE,
 )
+_PROGRESS_STATUS_SEGMENT_RE = re.compile(r"(in progress|planned):\s*([^|]+)")
+_PROGRESS_COURSE_CODE_RE = re.compile(r"\b([a-z]+\d+)\s*-", re.IGNORECASE)
+
+
+def _extract_course_codes(segment: str) -> list[str]:
+    return [m.group(1).lower() for m in _PROGRESS_COURSE_CODE_RE.finditer(segment)]
 
 
 def _parse_progress_lines(text: str) -> list[dict]:
     """Parses the ECTS Tracker widget's own per-category summary lines
-    (aedsRagBuildCourseContext9's 'Economics (18/36 ECTS) - completed: ...'
-    format) straight out of the injected context - no catalog lookup or
-    category-target constant needed, since the student's own tracker has
-    already done that arithmetic once and written the result directly into
-    the line. A category with no required target (e.g. 'Further modules'
-    does not count toward the 120 ECTS total) has no '/required' part and
-    is skipped, matching the total this is meant to reconcile against."""
+    (aedsRagBuildCourseContext9's 'Economics (18/36 ECTS) - completed: ... |
+    in progress: ... | planned: ...' format) straight out of the injected
+    context - completed/required need no catalog lookup, since the
+    student's own tracker has already done that arithmetic once and written
+    the result directly into the line, but in-progress/planned courses are
+    only named there (no running ECTS subtotal for them), so their codes
+    are extracted here for the caller to total against the catalog. A
+    category with no required target (e.g. 'Further modules' does not
+    count toward the 120 ECTS total) has no '/required' part and is
+    skipped, matching the total this is meant to reconcile against."""
     results: list[dict] = []
     for match in _PROGRESS_CATEGORY_LINE_RE.finditer(text):
         required = match.group("required")
         if required is None:
             continue
+        in_progress_codes: list[str] = []
+        planned_codes: list[str] = []
+        for seg_match in _PROGRESS_STATUS_SEGMENT_RE.finditer(match.group("rest") or ""):
+            codes = _extract_course_codes(seg_match.group(2))
+            if seg_match.group(1) == "in progress":
+                in_progress_codes = codes
+            else:
+                planned_codes = codes
         results.append(
             {
                 "name": match.group("name").strip(),
                 "completed": int(match.group("completed")),
                 "required": int(required),
+                "in_progress_codes": in_progress_codes,
+                "planned_codes": planned_codes,
             }
         )
     return results
@@ -1560,7 +1580,16 @@ def _build_ects_progress_answer(text: str) -> str | None:
     widget's own progress lines - returns None when none are present (no
     course-context toggle on), letting the caller fall back to the regular
     LLM/RAG answer, which already handles the fixed, student-independent
-    120/36/18/18/18/30 breakdown correctly on its own."""
+    120/36/18/18/18/30 breakdown correctly on its own.
+
+    "Still needed" subtracts completed, in-progress AND planned ECTS from
+    each category's target - the same three statuses AEDS_ECTS_Tracker's
+    own UI subtracts for its own "remaining" figure (index.html's
+    `Math.max(0, required - completed - inProgress - planned)`), so this
+    answer agrees with what the student already sees in their own tracker.
+    In-progress/planned courses aren't given a ready-made ECTS subtotal in
+    the context (only completed is), so their codes are looked up against
+    the catalog here."""
     lines = _parse_progress_lines(text)
     if not lines:
         return None
@@ -1568,7 +1597,9 @@ def _build_ects_progress_answer(text: str) -> str | None:
     seen_names = {line["name"].strip().lower() for line in lines}
     for name, required in _OFFICIAL_CATEGORY_TARGETS.items():
         if name.lower() not in seen_names:
-            lines.append({"name": name, "completed": 0, "required": required})
+            lines.append(
+                {"name": name, "completed": 0, "required": required, "in_progress_codes": [], "planned_codes": []}
+            )
 
     official_order = list(_OFFICIAL_CATEGORY_TARGETS.keys())
     lines.sort(
@@ -1577,20 +1608,34 @@ def _build_ects_progress_answer(text: str) -> str | None:
         else len(official_order)
     )
 
+    ects_by_code = {c["code"].lower(): c["ects"] for c in get_catalog_courses()}
+    for line in lines:
+        line["in_progress"] = sum(ects_by_code.get(code, 0) for code in line["in_progress_codes"])
+        line["planned"] = sum(ects_by_code.get(code, 0) for code in line["planned_codes"])
+
     total_completed = sum(line["completed"] for line in lines)
+    total_in_progress = sum(line["in_progress"] for line in lines)
+    total_planned = sum(line["planned"] for line in lines)
     total_required = sum(line["required"] for line in lines)
+    total_remaining = max(0, total_required - total_completed - total_in_progress - total_planned)
     rows = [
-        f"| {line['name']} | {line['completed']} | {line['required']} | "
-        f"{max(0, line['required'] - line['completed'])} |"
+        f"| {line['name']} | {line['completed']} | {line['in_progress']} | {line['planned']} | "
+        f"{line['required']} | "
+        f"{max(0, line['required'] - line['completed'] - line['in_progress'] - line['planned'])} |"
         for line in lines
     ]
+    progress_detail = (
+        f" ({total_in_progress} in progress, {total_planned} planned)"
+        if total_in_progress or total_planned
+        else ""
+    )
     return (
         f"You need **{total_required} ECTS** total to graduate, and have completed "
-        f"**{total_completed}/{total_required}** so far.\n\n"
+        f"**{total_completed}/{total_required}** so far{progress_detail}.\n\n"
         "### Remaining ECTS by category\n"
-        "| Category | Completed | Required | Remaining |\n"
-        "|---|---|---|---|\n" + "\n".join(rows) + "\n\n"
-        f"**{max(0, total_required - total_completed)} ECTS remaining** across all categories."
+        "| Category | Completed | In Progress | Planned | Required | Still Needed |\n"
+        "|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n\n"
+        f"**{total_remaining} ECTS still needed** - not yet completed, in progress, or planned."
     )
 
 
