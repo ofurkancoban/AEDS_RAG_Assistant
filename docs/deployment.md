@@ -85,8 +85,18 @@ before Monday classes regardless.
 `scripts/maintenance.py` (see crontab above) snapshots both `data/sqlite`
 and `data/chroma` nightly into `data/backups/`, keeping the last 14 of each.
 These backups live on the same disk as the data they protect - they cover a
-bad migration or an accidental delete, not a full disk failure. Copy
-`data/backups/` off the VPS periodically for that.
+bad migration or an accidental delete, not a full disk failure. For that,
+each night's encrypted snapshots are also uploaded to a Cloudflare R2 bucket
+(`scripts/offsite_backup.py`, called from `maintenance.py`; the newest 30 of
+each kind are kept there) when `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY` and `CLOUDFLARE_ACCOUNT_ID` are set. Unencrypted
+snapshots are never uploaded. A failed upload alerts the admin Telegram
+chat. To fetch one back:
+
+```
+PYTHONPATH=. .venv/bin/python scripts/offsite_backup.py --list
+PYTHONPATH=. .venv/bin/python scripts/offsite_backup.py --download app-<stamp>.db.enc
+```
 
 If `BACKUP_ENCRYPTION_KEY` is set (see `.env.example`), snapshots are
 written as `*.db.enc` / `*.tar.gz.enc` - readable only with that key, which
@@ -106,6 +116,24 @@ Existing pre-encryption backups already in `data/backups/` are left as-is;
 this only applies to snapshots written after the key is set. Losing the key
 means losing every encrypted backup - keep it somewhere other than the VPS
 itself.
+
+## Cloudflare proxy
+
+`docs/nginx-cloudflare-realip.conf` is installed as
+`/etc/nginx/conf.d/cloudflare-realip.conf`: on connections from Cloudflare's
+address ranges nginx takes the visitor's address from `CF-Connecting-IP`.
+Every limit keyed on the client address (nginx `limit_req`, and the app's
+limiters through `X-Forwarded-For`) depends on it once the domain is
+proxied through Cloudflare; without it all visitors would share a few
+Cloudflare edge addresses. It changes nothing for direct connections.
+Cloudflare publishes its ranges at https://www.cloudflare.com/ips-v4 and
+/ips-v6; they change rarely, but regenerate the file if they do.
+
+With the proxy on, Cloudflare's SSL/TLS mode must be **Full (strict)**: the
+origin already redirects HTTP to HTTPS with a Let's Encrypt certificate, so
+"Flexible" would loop. Streamed answers (server-sent events) pass through
+the proxy; Cloudflare closes a request after 100 s without any bytes, which
+the stage events sent from the start of every answer prevent.
 
 ## Load testing
 

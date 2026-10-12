@@ -51,6 +51,7 @@ os.environ["TELEGRAM_CHAT_ID"] = ""
 # went to Cloudflare (found when test_reranker_limits saw no local call).
 os.environ["CLOUDFLARE_ACCOUNT_ID"] = ""
 os.environ["CLOUDFLARE_API_TOKEN"] = ""
+os.environ["R2_BUCKET"] = ""
 
 from config import settings  # noqa: E402
 from db.models import Base, Role, SessionLocal, User, engine, init_db  # noqa: E402

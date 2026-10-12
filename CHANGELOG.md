@@ -7,6 +7,22 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.19] - 2026-10-12
+### Added
+- Off-site backups: each night's encrypted app.db and Chroma snapshots are
+  uploaded to a Cloudflare R2 bucket (newest 30 of each kept), with a
+  Telegram alert if the upload fails. Unencrypted snapshots are never
+  uploaded. Off until R2_BUCKET and its keys are set.
+- nginx takes the visitor's address from CF-Connecting-IP on connections
+  from Cloudflare's ranges, so rate limits keep working per visitor once
+  the domain is proxied through Cloudflare (docs/deployment.md).
+### Not changed
+- Embeddings stay local. Workers AI's bge-large-en-v1.5 is not
+  vector-identical to the local one (cosine 0.97; vector-search top-10
+  matched on 12 of 30 questions), so it would mean re-embedding the corpus,
+  for no speed gain (253ms vs 268ms) and with search depending on one
+  provider with no fallback.
+
 ## [1.10.18] - 2026-10-12
 ### Changed
 - Reranking runs on Cloudflare Workers AI's hosted bge-reranker-base (the

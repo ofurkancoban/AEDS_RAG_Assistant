@@ -313,6 +313,17 @@ class Settings(BaseSettings):
     # than the script refusing to run.
     backup_encryption_key: str = ""
 
+    # Off-site copy of the nightly snapshots in a Cloudflare R2 bucket
+    # (scripts/offsite_backup.py), so losing the VPS disk no longer loses the
+    # only copy of staff accounts, approved answers and admin corrections.
+    # Uses cloudflare_account_id for the endpoint. Empty bucket or keys means
+    # off. Only encrypted snapshots are ever uploaded: with no
+    # backup_encryption_key the upload is refused.
+    r2_bucket: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_keep: int = 30
+
     # Optional Sentry DSN (https://docs.sentry.io/product/sentry-basics/dsn-explainer/).
     # Empty (the default) means api/main.py never calls sentry_sdk.init and
     # every capture call becomes a no-op - local dev and CI need no DSN.

@@ -23,6 +23,8 @@ beautifulsoup4==4.12.3
 requests==2.34.2
 python-jose[cryptography]==3.3.0
 cryptography==49.0.0
+# Off-site backups to Cloudflare R2 (S3-compatible API), scripts/offsite_backup.py.
+boto3==1.43.111
 sentry-sdk==2.71.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
