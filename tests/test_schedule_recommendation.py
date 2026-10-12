@@ -927,7 +927,7 @@ class TestGpaAnswer:
     def test_target_gpa_required_average_is_parsed(self):
         context = (
             "Overall GPA: 1.43 (German scale, 1.0 best - 5.0 fail)\n"
-            "Target GPA: 1.50 (need average 1.51 in remaining 102 ECTS to reach this)\n"
+            "Target GPA: 1.50 (need average 1.51 across the next 102 ECTS to reach this)\n"
             "What grade do I need to reach my target GPA?"
         )
         answer = nodes._build_gpa_answer(context)
@@ -942,11 +942,27 @@ class TestGpaAnswer:
         assert answer is not None
         assert "target GPA" not in answer.lower()
 
+    def test_target_gpa_phrasing_does_not_collide_with_the_ects_progress_hint(self):
+        # Reproduces a real routing bug: "need average Y in remaining Z
+        # ECTS" (the old phrasing) satisfied _ECTS_PROGRESS_HINTS'
+        # "remaining ects" hint via gap-tolerant matching, hijacking a GPA
+        # question into the ECTS-progress answer instead. The context line
+        # itself must not trigger the ECTS-progress route.
+        context = (
+            "Overall GPA: 1.43 (German scale, 1.0 best - 5.0 fail)\n"
+            "Target GPA: 1.50 (need average 1.51 across the next 102 ECTS to reach this)\n"
+            "What grade do I need to reach my target GPA?"
+        )
+        assert nodes._looks_like_ects_progress_request(context) is False
+        assert nodes._looks_like_gpa_request(context) is True
+
     def test_target_gpa_alone_without_overall_still_answers(self):
         # Edge case: a Target GPA line with no "Overall GPA:" line at all
         # (e.g. no graded courses yet, just a target set) must still
         # produce an answer rather than falling through to the LLM.
-        context = "Target GPA: 1.50 (need average 1.50 in remaining 120 ECTS to reach this)\nWhat grade do I need?"
+        context = (
+            "Target GPA: 1.50 (need average 1.50 across the next 120 ECTS to reach this)\nWhat grade do I need?"
+        )
         answer = nodes._build_gpa_answer(context)
         assert answer is not None
         assert "target GPA of **1.50**" in answer

@@ -1681,8 +1681,13 @@ _OVERALL_GPA_RE = re.compile(r"Overall GPA:\s*([\d.]+)")
 _CATEGORY_GPA_RE = re.compile(
     r"^(?P<name>[^(\n]+?)\s*\(\d+(?:/\d+)?\s*ECTS\)[^\n]*?GPA:\s*(?P<gpa>[\d.]+)", re.MULTILINE
 )
+# "across the next X ECTS", not "in remaining X ECTS" - the latter
+# collided with _ECTS_PROGRESS_HINTS' "remaining ects" hint (gap-tolerant
+# matching let "remaining 102 ects" from this very line satisfy it),
+# hijacking a GPA question into the ECTS-progress answer instead - found
+# live, reproduced against the deployed API.
 _TARGET_GPA_RE = re.compile(
-    r"Target GPA:\s*(?P<target>[\d.]+)\s*\(need average (?P<required>[\d.]+) in remaining "
+    r"Target GPA:\s*(?P<target>[\d.]+)\s*\(need average (?P<required>[\d.]+) across the next "
     r"(?P<remaining_ects>\d+) ECTS to reach this\)"
 )
 

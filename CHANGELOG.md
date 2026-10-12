@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.32] - 2026-10-12
+### Fixed
+- Fixed a hint-collision routing bug found live right after 1.10.31
+  shipped: the Target GPA line's own text ("need average Y in remaining Z
+  ECTS") satisfied the ECTS-progress hint detector's "remaining ects"
+  phrase via its gap-tolerant matching, hijacking a GPA question into the
+  ECTS-progress table answer instead of the GPA one whenever a Target GPA
+  was set. Updated the regex to match AEDS_ECTS_Tracker's reworded line
+  ("across the next Z ECTS", which doesn't collide with anything) -
+  requires that widget update to already be live.
+
 ## [1.10.31] - 2026-10-12
 ### Added
 - "What grade do I need in my remaining courses?" is now answered from the
