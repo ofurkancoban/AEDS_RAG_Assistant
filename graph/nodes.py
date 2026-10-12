@@ -1639,6 +1639,56 @@ def _build_ects_progress_answer(text: str) -> str | None:
     )
 
 
+_GPA_HINTS = (
+    "what is my gpa", "what's my gpa", "my current gpa", "my overall gpa",
+    "my average grade", "my grade average", "how is my gpa", "my gpa in",
+    "my gpa for",
+)
+
+
+def _looks_like_gpa_request(text: str) -> bool:
+    """True for 'what's my GPA' / 'what's my average grade so far'. Checked
+    the same way as _looks_like_ects_progress_request: an LLM asked this
+    with the ECTS Tracker widget's GPA line sitting right there in its own
+    injected context nonetheless refused to answer, treating the student's
+    own tracker data as outside the "official programme documents" its
+    system prompt restricts it to - found live, reproduced against the
+    deployed API. There is no arithmetic risk here (the widget has already
+    computed the GPA, this just needs to find and restate the number), but
+    the refusal itself still needs a deterministic bypass."""
+    return _any_flexible_hint(text, _GPA_HINTS)
+
+
+_OVERALL_GPA_RE = re.compile(r"Overall GPA:\s*([\d.]+)")
+_CATEGORY_GPA_RE = re.compile(
+    r"^(?P<name>[^(\n]+?)\s*\(\d+(?:/\d+)?\s*ECTS\)[^\n]*?GPA:\s*(?P<gpa>[\d.]+)", re.MULTILINE
+)
+
+
+def _build_gpa_answer(text: str) -> str | None:
+    """Builds a direct answer from the widget's own 'Overall GPA: X' and
+    per-category 'GPA: X' lines (see aedsRagBuildCourseContext9) - returns
+    None when neither is present (no course-context toggle on, or no
+    graded completed courses yet), letting the caller fall back to the
+    regular LLM/RAG answer."""
+    overall_match = _OVERALL_GPA_RE.search(text)
+    category_matches = list(_CATEGORY_GPA_RE.finditer(text))
+    if not overall_match and not category_matches:
+        return None
+
+    lines = []
+    if overall_match:
+        lines.append(f"Your current overall GPA is **{overall_match.group(1)}** (German scale, 1.0 best - 5.0 fail).")
+    if category_matches:
+        lines.append("")
+        lines.append("### GPA by category")
+        lines.append("| Category | GPA |")
+        lines.append("|---|---|")
+        for match in category_matches:
+            lines.append(f"| {match.group('name').strip()} | {match.group('gpa')} |")
+    return "\n".join(lines)
+
+
 def _semester_sort_key(label: str) -> tuple[int, int] | None:
     """'WiSe26/27' -> (2026, 1), 'SoSe26' -> (2026, 0), matching
     scripts/fetch_catalog.py's semester_key ordering (SoSe sorts before WiSe
@@ -2546,6 +2596,11 @@ def retrieve_node(state: RagState) -> dict:
         progress_answer = _build_ects_progress_answer(last_question)
         if progress_answer:
             return {"retrieved_docs": [], "direct_answer": progress_answer, "awaiting_semester_number": False}
+
+    if _looks_like_gpa_request(last_question):
+        gpa_answer = _build_gpa_answer(last_question)
+        if gpa_answer:
+            return {"retrieved_docs": [], "direct_answer": gpa_answer, "awaiting_semester_number": False}
 
     if _looks_like_schedule_request(last_question):
         exclude_codes = _extract_completed_codes(last_question)

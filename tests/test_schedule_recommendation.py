@@ -890,3 +890,60 @@ class TestRetrieveNodeEctsProgress:
         result = nodes.retrieve_node(state)
         assert result["direct_answer"] is not None
         assert "Remaining ECTS by category" in result["direct_answer"]
+
+
+class TestGpaAnswer:
+    def test_no_gpa_context_returns_none(self):
+        assert nodes._build_gpa_answer("What is my GPA?") is None
+
+    def test_overall_and_per_category_gpa_are_parsed(self):
+        context = (
+            "Economics (18/36 ECTS) - completed: wir821; wir873; wir876 | GPA: 1.67\n"
+            "Specialization (12/18 ECTS) - completed: inf530; inf536 | GPA: 1.65\n"
+            "Overall GPA: 1.66 (German scale, 1.0 best - 5.0 fail)\n"
+            "What is my current GPA?"
+        )
+        answer = nodes._build_gpa_answer(context)
+        assert answer is not None
+        assert "**1.66**" in answer
+        assert "| Economics | 1.67 |" in answer
+        assert "| Specialization | 1.65 |" in answer
+
+    def test_overall_gpa_only_no_category_table(self):
+        context = "Overall GPA: 2.10 (German scale, 1.0 best - 5.0 fail)\nWhat is my GPA?"
+        answer = nodes._build_gpa_answer(context)
+        assert answer is not None
+        assert "**2.10**" in answer
+        assert "GPA by category" not in answer
+
+    def test_no_graded_courses_means_no_overall_gpa_line_and_returns_none(self):
+        # A category summary line can exist (completed ECTS) without any
+        # graded courses in it (ungraded pass/fail, or none completed yet) -
+        # aedsRagBuildCourseContext9 only emits "Overall GPA:" when at least
+        # one graded course exists anywhere.
+        context = "Empirical Methods (6/18 ECTS) - completed: wir894\nWhat is my GPA?"
+        assert nodes._build_gpa_answer(context) is None
+
+
+class TestLooksLikeGpaRequest:
+    def test_matches_real_phrasings(self):
+        assert nodes._looks_like_gpa_request("What is my GPA?")
+        assert nodes._looks_like_gpa_request("What's my current GPA?")
+        assert nodes._looks_like_gpa_request("What is my average grade so far?")
+
+    def test_does_not_match_unrelated_questions(self):
+        assert nodes._looks_like_gpa_request("How many ECTS do I need to graduate?") is False
+        assert nodes._looks_like_gpa_request("Which courses should I take next semester?") is False
+
+
+class TestRetrieveNodeGpa:
+    def test_retrieve_node_answers_directly_when_gpa_context_is_present(self):
+        class FakeMessage:
+            def __init__(self, content):
+                self.content = content
+
+        context = "Overall GPA: 1.80 (German scale, 1.0 best - 5.0 fail)\nWhat is my GPA?"
+        state = {"messages": [FakeMessage(context)]}
+        result = nodes.retrieve_node(state)
+        assert result["direct_answer"] is not None
+        assert "**1.80**" in result["direct_answer"]

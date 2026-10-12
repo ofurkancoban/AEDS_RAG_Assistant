@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.29] - 2026-10-12
+### Added
+- "What's my GPA?" is now answered from the ECTS Tracker widget's own
+  overall and per-category GPA lines (new in the widget's injected
+  context) - found live: with the GPA numbers sitting right there in the
+  context, the LLM still refused to answer, treating a student's own
+  tracker data as outside the "official programme documents" its system
+  prompt restricts it to. No course-context toggle, or no graded completed
+  courses yet, falls back to the regular answer as before.
+
 ## [1.10.28] - 2026-10-12
 ### Added
 - The per-category ECTS breakdown now also shows In Progress and Planned
