@@ -7,6 +7,19 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.23] - 2026-10-12
+### Added
+- The schedule recommender now factors in AEDS_ECTS_Tracker's anonymous
+  course-difficulty ratings (scripts/update_ratings.py, nightly, straight
+  after update_catalog.py): when a category's remaining ECTS target can be
+  met by more electives than are needed, the ones students rated easier are
+  preferred over harder ones with the same offering season. A course's
+  difficulty (e.g. "difficulty 1.7/5 (3 votes)") is now also shown next to
+  it in the answer, rated or not, so the student sees the same information
+  the pick was based on. Unrated courses are treated as a neutral mid-scale
+  3.0 - neither favored nor buried - and keep varying between requests as
+  before.
+
 ## [1.10.22] - 2026-10-12
 ### Fixed
 - The "next semester" recommendation now checks each candidate course's real

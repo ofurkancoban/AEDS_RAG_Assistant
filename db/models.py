@@ -136,6 +136,13 @@ class Course(Base):
     # have real gap years.
     semesters_offered: Mapped[str | None] = mapped_column(String, nullable=True)
     extra_semesters: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Anonymous student-submitted difficulty ratings (1 easiest - 5 hardest),
+    # synced from the AEDS_ECTS_Tracker project's own ratings.json (see
+    # ingestion/ratings.py) - that app, not this one, collects the votes.
+    # difficulty_avg is sum/count, kept alongside the raw count so a rating
+    # backed by one vote can be told apart from one backed by many.
+    difficulty_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    difficulty_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Deadline(Base):

@@ -1535,6 +1535,14 @@ def _select_recommended_courses(
         other_electives = [c for c in electives if c["offering"] not in ("WiSe", "SoSe")]
         for group in (wise_electives, sose_electives, other_electives):
             random.shuffle(group)
+            # Among same-offering electives, prefer the ones anonymous
+            # students rated easier when there's a genuine choice (more
+            # candidates than the category needs) - a stable sort after the
+            # shuffle above, so unrated courses (treated as a neutral
+            # mid-scale 3.0, neither favored nor buried) keep varying freely
+            # among themselves across requests, while a real difficulty gap
+            # between two rated electives consistently favors the easier one.
+            group.sort(key=lambda c: c["difficulty_avg"] if c.get("difficulty_avg") is not None else 3.0)
         electives = []
         groups = [wise_electives, sose_electives, other_electives]
         while any(groups):
@@ -1739,6 +1747,9 @@ def _format_schedule_terms(
             # Middle dots separate the attributes so each course stays one
             # scannable line instead of a comma-run that wraps unpredictably.
             parts = [f"{course['ects']} ECTS", f"offered {course['offering'] or 'not specified'}"]
+            if course.get("difficulty_avg") is not None and course.get("difficulty_count"):
+                vote_word = "vote" if course["difficulty_count"] == 1 else "votes"
+                parts.append(f"difficulty {course['difficulty_avg']:.1f}/5 ({course['difficulty_count']} {vote_word})")
             if course["compulsory"]:
                 parts.append("**compulsory**")
             lines.append(f"- **{course['name']}** ({course['code']}) - {' · '.join(parts)}")

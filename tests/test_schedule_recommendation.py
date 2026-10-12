@@ -21,6 +21,7 @@ from graph import nodes
 def _course(
     code, category, ects, compulsory=False, offering=None, name=None,
     semesters_offered=None, extra_semesters=None,
+    difficulty_avg=None, difficulty_count=None,
 ):
     return {
         "code": code,
@@ -33,6 +34,8 @@ def _course(
         "language": "en",
         "semesters_offered": semesters_offered,
         "extra_semesters": extra_semesters,
+        "difficulty_avg": difficulty_avg,
+        "difficulty_count": difficulty_count,
     }
 
 
@@ -518,3 +521,60 @@ class TestCurrentSemesterRequest:
         assert result["awaiting_semester_number"] is False
         assert result["direct_answer"] is not None
         assert "Semester" in result["direct_answer"]
+
+
+class TestDifficultyAwareSelection:
+    def test_easier_elective_is_preferred_when_only_one_is_needed(self, monkeypatch):
+        catalog = [
+            _course("hard", "specialization", 6, offering="WiSe", difficulty_avg=4.8, difficulty_count=5),
+            _course("easy", "specialization", 6, offering="WiSe", difficulty_avg=1.2, difficulty_count=5),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        # Run several times - the shuffle happens before the difficulty
+        # sort, so this must hold regardless of shuffle order, not just by
+        # chance once.
+        for _ in range(10):
+            selected = nodes._select_recommended_courses(targets={"specialization": 6})
+            assert {c["code"] for c in selected} == {"easy"}
+
+    def test_unrated_courses_still_vary_between_requests(self, monkeypatch):
+        # Neither course has a rating, so the neutral 3.0 key ties them -
+        # the pre-sort shuffle should still let either one come up.
+        catalog = [
+            _course("a", "specialization", 6, offering="WiSe"),
+            _course("b", "specialization", 6, offering="WiSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        seen = {
+            tuple(c["code"] for c in nodes._select_recommended_courses(targets={"specialization": 6}))
+            for _ in range(20)
+        }
+        assert seen == {("a",), ("b",)}
+
+    def test_difficulty_is_shown_in_the_formatted_answer(self, monkeypatch):
+        catalog = [_course("rated", "specialization", 6, offering="WiSe", difficulty_avg=2.3, difficulty_count=4)]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "difficulty 2.3/5 (4 votes)" in answer
+
+    def test_unrated_course_shows_no_difficulty_text(self, monkeypatch):
+        catalog = [_course("unrated", "specialization", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "difficulty" not in answer.lower()
+
+    def test_single_vote_uses_singular_word(self, monkeypatch):
+        catalog = [_course("rated", "specialization", 6, offering="WiSe", difficulty_avg=3.0, difficulty_count=1)]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "1 vote)" in answer
+        assert "1 votes)" not in answer

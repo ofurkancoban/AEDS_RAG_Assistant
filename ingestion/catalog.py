@@ -25,6 +25,8 @@ def get_catalog_courses() -> list[dict]:
                 "language": course.language,
                 "semesters_offered": course.semesters_offered,
                 "extra_semesters": course.extra_semesters,
+                "difficulty_avg": course.difficulty_avg,
+                "difficulty_count": course.difficulty_count,
             }
             for course in session.query(Course).all()
         ]
