@@ -7,6 +7,24 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.14] - 2026-10-12
+### Changed
+- The number guard now regenerates. Measured in log mode over the full
+  golden set on both models (160 answers): 4 triggers, none on a correct
+  figure - a credit total and a count of lecturers the model computed
+  itself, a difference it showed its working for (now accepted) and a
+  grade value from general knowledge.
+- The relevance gate is 0.01 instead of 0.05. Reranker scores do not
+  separate in-scope from off-topic questions ("How do I renew a US
+  passport?" 0.75, "Can I get more time for my Master's thesis?" 0.03), so
+  colloquial questions were refused although the right passage ranked
+  first. Of 12 colloquial in-scope questions 11 are now answered; the
+  off-topic ones that reach the model are refused by it.
+- The answer model stays apodex: on the 80-case golden set apodex and dots
+  each scored 79/80 (the same case, now fixed by the gate change); apodex
+  is faster and kept German answers and their figures intact. dots keeps
+  routing.
+
 ## [1.10.13] - 2026-10-11
 ### Added
 - Number guard: every figure in an answer (10 or more) is checked against

@@ -148,6 +148,7 @@ _UNANSWERED_MARKERS = (
     "does not contain",
     "not contain any information",
     "no information about",
+    "no information regarding",
     "not mentioned in",
     "not specified in",
     "not covered",

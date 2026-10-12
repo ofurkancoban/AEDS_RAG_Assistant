@@ -1222,5 +1222,36 @@
         "AEDS_website_working_while_studying"
       ]
     ]
+  },
+  {
+    "id": "colloquial-work-while-studying",
+    "question": "Can I work next to my studies?",
+    "expected_contains": [
+      "140"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Colloquial wording scored 0.015 at the reranker and was refused by the 0.05 relevance gate although the right passage ranked first; the gate is 0.01 since 2026-10-12."
+  },
+  {
+    "id": "off-topic-flight-price",
+    "question": "How much does a flight to Istanbul cost?",
+    "expected_contains": [
+      [
+        "do not contain",
+        "does not contain",
+        "no information",
+        "cannot answer"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "(eur|€|\\$)\\s?\\d{2,}"
+      }
+    ],
+    "notes": "Off-topic but scored 0.66 at the reranker, so it reaches the model after the gate was lowered; it must refuse, not quote a price."
   }
 ]

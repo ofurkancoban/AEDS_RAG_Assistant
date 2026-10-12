@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     # stealth/space-bunny-alpha, had been withdrawn ("No endpoints found"),
     # so every call was silently landing on the fallback. Reasoning is set
     # per call kind (see graph/nodes.py's _OPENROUTER_REASONING).
+    # Re-measured 2026-10-12 on the 80-case golden set: apodex 79/80, dots
+    # (as answer model) 79/80, the same case failing on both; apodex is
+    # faster and, unlike dots, kept German answers in German and their
+    # figures intact. So apodex writes answers and dots routes.
     openrouter_model: str = "apodex/apodex-1.1-mini:free"
     # Tried only if openrouter_model's own call fails (see graph/nodes.py's
     # _with_fallback): ":free" models are previews OpenRouter can pull or
@@ -222,9 +226,12 @@ class Settings(BaseSettings):
     # nowhere in its context, the question or the conversation (see
     # graph/nodes.py's unsupported_numbers): "regenerate" asks once more
     # with the offending figures named, "log" only records it, "off" skips.
-    # Starts in "log" (2026-10-11) until its false-alarm rate on real
-    # answers is measured; then "regenerate".
-    number_guard: str = "log"
+    # Measured 2026-10-12 in "log" mode over the full golden set on both
+    # models (160 answers): 4 triggers - a course-credit total and a count of
+    # lecturers the model computed itself (neither in the documents), a
+    # difference it showed its working for (now accepted) and a grade value
+    # from general knowledge. None on a correct figure, so regenerate.
+    number_guard: str = "regenerate"
     rerank_max_candidates: int = 10
     reranker_max_length: int = 256
     # Minimum cross-encoder score the best retrieved chunk must reach before
@@ -239,7 +246,15 @@ class Settings(BaseSettings):
     # high silently refuses real questions, which is worse and harder to
     # notice than letting a borderline one through, and the sample behind
     # these bounds is only five questions per side.
-    retrieval_relevance_threshold: float = 0.05
+    #
+    # Re-measured 2026-10-12 on 25 off-topic and 12 colloquial in-scope
+    # questions: the classes do not separate. "How do I renew a US
+    # passport?" scored 0.75, "Can I get more time for my Master's thesis?"
+    # 0.03 and "Can I work next to my studies?" 0.015 - both refused at 0.05
+    # although the right passage ranked first. Lowered to 0.01: 11 of the 12
+    # in-scope questions are answered, and the off-topic ones that now reach
+    # the model are refused by it ("the documents do not contain ...").
+    retrieval_relevance_threshold: float = 0.01
     # Minimum Laya "noul" probability for a chat message to be treated as a
     # possible correction/new-fact contribution, worth an LLM call to extract
     # (see db/contribution_gate.py). Measured on 74 hand-labelled English
