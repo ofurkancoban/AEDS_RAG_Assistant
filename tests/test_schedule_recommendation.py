@@ -606,3 +606,83 @@ class TestFlexibleHintMatching:
         # appearing elsewhere in the sentence - this is specifically about
         # "make a plan"'s own internal gap.)
         assert nodes._looks_like_schedule_request("Can you make me a really quite elaborate plan?") is False
+
+
+class TestAlternatives:
+    def test_select_recommended_courses_records_alternatives_for_each_elective_pick(self, monkeypatch):
+        catalog = [
+            _course("picked", "specialization", 6, offering="WiSe"),
+            _course("alt1", "specialization", 6, offering="WiSe"),
+            _course("alt2", "specialization", 6, offering="WiSe"),
+            _course("alt3", "specialization", 6, offering="WiSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        alternatives: dict = {}
+        selected = nodes._select_recommended_courses(targets={"specialization": 6}, alternatives_out=alternatives)
+        assert len(selected) == 1
+        picked_code = selected[0]["code"]
+        assert picked_code in alternatives
+        # At most 2 alternatives, and the picked course never lists itself.
+        alt_codes = {a["code"] for a in alternatives[picked_code]}
+        assert len(alt_codes) == 2
+        assert picked_code not in alt_codes
+        assert alt_codes <= {"picked", "alt1", "alt2", "alt3"} - {picked_code}
+
+    def test_compulsory_courses_never_get_an_alternatives_entry(self, monkeypatch):
+        catalog = [_course("mustcourse", "economics", 6, compulsory=True, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        alternatives: dict = {}
+        nodes._select_recommended_courses(targets={"economics": 6}, alternatives_out=alternatives)
+        assert "mustcourse" not in alternatives
+
+    def test_no_alternatives_entry_when_every_elective_in_the_category_was_chosen(self, monkeypatch):
+        catalog = [_course("onlyoption", "specialization", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        alternatives: dict = {}
+        nodes._select_recommended_courses(targets={"specialization": 6}, alternatives_out=alternatives)
+        # Chosen because it was the only candidate - nothing left to list as
+        # an alternative, so no (empty) entry is added for it.
+        assert "onlyoption" not in alternatives
+
+    def test_alternatives_are_shown_under_the_elective_in_the_formatted_answer(self, monkeypatch):
+        # Which of the two electives gets picked vs. left as the
+        # alternative is randomized by design (same as the plain selection
+        # tests elsewhere in this file) - a smaller, overridden target keeps
+        # this deterministic: exactly one is picked, the other is always
+        # the leftover, regardless of which one wins the shuffle.
+        catalog = [
+            _course("picked", "specialization", 6, offering="WiSe", name="Picked Course"),
+            _course("alt1", "specialization", 6, offering="WiSe", name="Alt Course One"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_CATEGORY_ECTS_TARGETS", {"specialization": 6})
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "Also counts:" in answer
+        assert "(picked)" in answer or "(alt1)" in answer
+        # Whichever course was picked, the OTHER one must be listed as its
+        # alternative - never itself.
+        if "**Picked Course** (picked)" in answer:
+            assert "Also counts: Alt Course One (alt1)" in answer
+        else:
+            assert "Also counts: Picked Course (picked)" in answer
+
+    def test_compulsory_only_term_has_no_alternatives_section(self, monkeypatch):
+        catalog = [_course("mustcourse", "economics", 6, compulsory=True, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "Also counts:" not in answer
+
+    def test_the_intro_sentence_is_always_present(self, monkeypatch):
+        catalog = [_course("mustcourse", "economics", 6, compulsory=True, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "Every compulsory module you still owe is included" in answer

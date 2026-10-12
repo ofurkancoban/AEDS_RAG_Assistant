@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.25] - 2026-10-12
+### Added
+- Schedule recommendations are more explanatory: a short lead-in explains
+  what the list is (compulsory requirements due, plus electives toward each
+  component's remaining ECTS target), and each elective pick now shows up
+  to 2 other courses from the same component that would have counted
+  toward the same requirement, not just the one the algorithm landed on -
+  e.g. "Also counts: Computational Intelligence I (inf535), Business
+  Intelligence II (inf607)" under a picked elective. Applies to both the
+  single-term and full multi-semester plan answers.
+
 ## [1.10.24] - 2026-10-12
 ### Fixed
 - The schedule-request hint phrases (e.g. "make a schedule") now tolerate

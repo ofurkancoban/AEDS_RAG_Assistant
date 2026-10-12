@@ -1500,6 +1500,7 @@ def _select_recommended_courses(
     targets: dict[str, int] | None = None,
     real_target_label: str | None = None,
     substitutions_out: list[dict] | None = None,
+    alternatives_out: dict[str, list[dict]] | None = None,
 ) -> list[dict]:
     """Deterministic selection: every compulsory course is always included;
     electives are shuffled and then filled in until each component's
@@ -1529,7 +1530,14 @@ def _select_recommended_courses(
     when that list is supplied, so the caller can tell the student exactly
     what changed and why - "gerekiyorsa alternatifler de önermeli" (suggest
     alternatives when needed) rather than silently presenting a course that
-    was never actually offered."""
+    was never actually offered.
+
+    alternatives_out, when supplied, is filled in as {chosen course code:
+    [other same-category electives not chosen for this slot]} (up to 2 per
+    pick) - unlike substitutions_out (only for a course that genuinely can't
+    run), this is for every elective pick, so the student always sees what
+    else would have counted toward the same requirement, not just the one
+    the algorithm happened to land on."""
     if targets is None:
         targets = _CATEGORY_ECTS_TARGETS
     courses = get_catalog_courses()
@@ -1581,15 +1589,27 @@ def _select_recommended_courses(
                 if _is_confirmed_unavailable(course, real_target_label) and substitutions_out is not None:
                     substitutions_out.append({"course": course, "reason": "compulsory_unconfirmed"})
         total = sum(c["ects"] for c in chosen)
+        chosen_electives: list[dict] = []
+        skipped_codes: set[str] = set()
         for course in electives:
             if total >= target:
                 break
             if real_target_label is not None and _is_confirmed_unavailable(course, real_target_label):
                 if substitutions_out is not None:
                     substitutions_out.append({"course": course, "reason": "elective_skipped"})
+                skipped_codes.add(course["code"])
                 continue
             chosen.append(course)
+            chosen_electives.append(course)
             total += course["ects"]
+        if alternatives_out is not None and chosen_electives:
+            chosen_codes = {c["code"] for c in chosen_electives}
+            leftover = [
+                c for c in electives if c["code"] not in chosen_codes and c["code"] not in skipped_codes
+            ][:2]
+            if leftover:
+                for course in chosen_electives:
+                    alternatives_out[course["code"]] = leftover
         selected.extend(chosen)
 
     return selected
@@ -1707,6 +1727,7 @@ def _compute_schedule_terms(
     codes_by_category: dict[str, frozenset[str]] | None = None,
     real_target_label: str | None = None,
     substitutions_out: list[dict] | None = None,
+    alternatives_out: dict[str, list[dict]] | None = None,
 ) -> list[tuple[str, list[dict]]]:
     """The single source of truth for what a correct schedule looks like:
     every compulsory course, electives filled to each component's ECTS
@@ -1722,14 +1743,16 @@ def _compute_schedule_terms(
     the resulting schedule reflects what's actually left, not a from-scratch
     full programme. codes_by_category, when available, overrides which
     category each excluded course's ECTS counts against (see
-    _compute_remaining_targets). real_target_label/substitutions_out are
-    passed straight through to _select_recommended_courses - see there."""
+    _compute_remaining_targets). real_target_label/substitutions_out/
+    alternatives_out are passed straight through to
+    _select_recommended_courses - see there."""
     targets = _compute_remaining_targets(exclude_codes, codes_by_category)
     selected = _select_recommended_courses(
         exclude_codes=exclude_codes,
         targets=targets,
         real_target_label=real_target_label,
         substitutions_out=substitutions_out,
+        alternatives_out=alternatives_out,
     )
     if not selected:
         return []
@@ -1751,17 +1774,37 @@ def _format_schedule_terms(
     single_term: bool,
     substitutions: list[dict] | None = None,
     when: str = "next",
+    alternatives: dict[str, list[dict]] | None = None,
 ) -> str:
     """when is "next" (the default, forward-looking planning question) or
     "this" (the question was specifically about the semester already in
     progress - see _looks_like_current_semester_request); only used for the
-    single-term heading/label text, never the full multi-semester plan."""
+    single-term heading/label text, never the full multi-semester plan.
+
+    alternatives (see _select_recommended_courses) is shown under each
+    elective pick it has an entry for - every elective had other same-
+    category courses that would have counted toward the same requirement,
+    not just the one the algorithm landed on, and the student should see
+    that rather than read the list as the one fixed answer."""
     heading = (
         f"Recommended courses for {when} semester"
         if single_term
         else "Recommended semester-by-semester schedule"
     )
-    lines = [f"### {heading}"]
+    intro = (
+        "Every compulsory module you still owe is included, and the remaining "
+        "slots are electives filled toward each component's ECTS target - "
+        "where a component had more qualifying electives than it needed, the "
+        "one students rated easier was picked, with the other options it was "
+        "weighed against listed underneath it."
+        if alternatives
+        else (
+            "Every compulsory module you still owe is included, with the "
+            "remaining slots filled by electives toward each component's "
+            "ECTS target."
+        )
+    )
+    lines = [f"### {heading}", "", intro]
     grand_total = 0
     for i, (term_type, term_courses) in enumerate(terms, start=1):
         subtotal = sum(c["ects"] for c in term_courses)
@@ -1778,6 +1821,10 @@ def _format_schedule_terms(
             if course["compulsory"]:
                 parts.append("**compulsory**")
             lines.append(f"- **{course['name']}** ({course['code']}) - {' · '.join(parts)}")
+            course_alternatives = (alternatives or {}).get(course["code"])
+            if course_alternatives:
+                alt_text = ", ".join(f"{alt['name']} ({alt['code']})" for alt in course_alternatives)
+                lines.append(f"  - *Also counts: {alt_text}*")
     lines.append(f"\n**Total: {grand_total} ECTS**")
     if substitutions:
         # Real offering-data gaps (see _is_confirmed_unavailable) only ever
@@ -1997,6 +2044,7 @@ def _build_progress_aware_schedule_answer(
     if season is None and real_target_label is not None:
         season = "WiSe" if real_target_label.startswith("WiSe") else "SoSe"
     substitutions: list[dict] = []
+    alternatives: dict[str, list[dict]] = {}
     full_terms = _compute_schedule_terms(
         season,
         single_term=False,
@@ -2004,16 +2052,21 @@ def _build_progress_aware_schedule_answer(
         codes_by_category=codes_by_category,
         real_target_label=real_target_label,
         substitutions_out=substitutions,
+        alternatives_out=alternatives,
     )
     if not full_terms:
         return None
 
     if is_full_plan:
-        return _format_schedule_terms(full_terms, single_term=False)
+        return _format_schedule_terms(full_terms, single_term=False, alternatives=alternatives)
 
     idx = 0 if (exclude_codes or is_current) else min(max(completed_semesters, 0), len(full_terms) - 1)
     return _format_schedule_terms(
-        full_terms[idx : idx + 1], single_term=True, substitutions=substitutions, when="this" if is_current else "next"
+        full_terms[idx : idx + 1],
+        single_term=True,
+        substitutions=substitutions,
+        when="this" if is_current else "next",
+        alternatives=alternatives,
     )
 
 
