@@ -393,6 +393,19 @@ class QueryLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class RouteDecision(Base):
+    """The tool router's decision for a question (graph/nodes.py's route
+    cache), kept here so a restart or deploy does not empty it. The key
+    carries a fingerprint of the router prompt, tools and model, so a change
+    to any of them makes old decisions unreachable instead of wrong."""
+
+    __tablename__ = "route_decisions"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    tool_calls_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class EvalRun(Base):
     """One golden-set evaluation run (scripts/eval_and_notify.py, weekly):
     the score and which cases failed, so the admin panel can show the trend

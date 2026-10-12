@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 from langchain_core.callbacks.base import BaseCallbackHandler
@@ -966,21 +966,72 @@ _ROUTE_CACHE_TTL_S = 24 * 3600
 _ROUTE_CACHE_MAX = 2000
 
 
+@lru_cache(maxsize=1)
+def _router_fingerprint() -> str:
+    """Changes whenever the router prompt, its tools or its model change, so
+    decisions stored before a deploy that changed any of them are not reused."""
+    import hashlib
+
+    schemas = json.dumps([t.args_schema.model_json_schema() for t in _ROUTING_TOOLS], sort_keys=True, default=str)
+    descriptions = "".join(t.description for t in _ROUTING_TOOLS)
+    payload = "|".join([_ROUTER_SYSTEM_PROMPT, schemas, descriptions, settings.openrouter_router_model])
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
+
+
 def _route_key(question: str) -> str:
-    return re.sub(r"[^a-z0-9äöüß]+", " ", question.casefold()).strip()
+    normalized = re.sub(r"[^a-z0-9äöüß]+", " ", question.casefold()).strip()
+    return f"{_router_fingerprint()}:{normalized}"
 
 
 def _cached_route(question: str) -> list[dict] | None:
-    entry = _ROUTE_CACHE.get(_route_key(question))
-    if entry and time.monotonic() - entry[0] < _ROUTE_CACHE_TTL_S:
+    """The stored decision for this question, from memory or, after a
+    restart, from the route_decisions table."""
+    key = _route_key(question)
+    entry = _ROUTE_CACHE.get(key)
+    if entry and time.time() - entry[0] < _ROUTE_CACHE_TTL_S:
         return entry[1]
-    return None
+    try:
+        from db.models import RouteDecision, SessionLocal
+
+        session = SessionLocal()
+        try:
+            row = session.get(RouteDecision, key)
+            if row is None:
+                return None
+            # SQLite returns naive datetimes; they were written in UTC.
+            stored_at = row.created_at.replace(tzinfo=row.created_at.tzinfo or timezone.utc).timestamp()
+            if time.time() - stored_at >= _ROUTE_CACHE_TTL_S:
+                return None
+            tool_calls = json.loads(row.tool_calls_json)
+        finally:
+            session.close()
+    except Exception:  # noqa: BLE001 - a cache miss, never a failed question
+        logger.warning("Route cache lookup failed", exc_info=True)
+        return None
+    _ROUTE_CACHE[key] = (stored_at, tool_calls)
+    return tool_calls
 
 
 def _remember_route(question: str, tool_calls: list[dict]) -> None:
+    key = _route_key(question)
     if len(_ROUTE_CACHE) >= _ROUTE_CACHE_MAX:
         _ROUTE_CACHE.pop(next(iter(_ROUTE_CACHE)))
-    _ROUTE_CACHE[_route_key(question)] = (time.monotonic(), tool_calls)
+    _ROUTE_CACHE[key] = (time.time(), tool_calls)
+    try:
+        from db.models import RouteDecision, SessionLocal
+
+        session = SessionLocal()
+        try:
+            now = datetime.now(timezone.utc)
+            session.merge(RouteDecision(key=key, tool_calls_json=json.dumps(tool_calls), created_at=now))
+            session.query(RouteDecision).filter(
+                RouteDecision.created_at < now - timedelta(seconds=_ROUTE_CACHE_TTL_S)
+            ).delete()
+            session.commit()
+        finally:
+            session.close()
+    except Exception:  # noqa: BLE001 - the decision is still cached in memory
+        logger.warning("Could not store the route decision", exc_info=True)
 
 
 # Every routing tool answers from structured data about applications,

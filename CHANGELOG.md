@@ -7,6 +7,20 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.21] - 2026-10-12
+### Changed
+- Router decisions are stored in a route_decisions table as well as in
+  memory, so a restart or deploy no longer empties the 24-hour cache. The
+  key includes a fingerprint of the router prompt, tool definitions and
+  router model: a deploy that changes any of them asks the router again
+  instead of reusing a decision made under the old ones. A database error
+  only means a cache miss.
+- Measured but not changed: trimming the context sent to the answer model.
+  Parent sections make up 68% of it (median 6,000 characters), but every
+  smaller variant lost golden facts (children only 64/67, a 4,000-character
+  window 66/67), and on the ten largest contexts the most aggressive cut
+  saved 0.4s at the median, partly by producing shorter answers.
+
 ## [1.10.20] - 2026-10-12
 ### Removed
 - Reverted 1.10.19: the R2 off-site backup upload and the nginx
