@@ -578,3 +578,31 @@ class TestDifficultyAwareSelection:
         assert answer is not None
         assert "1 vote)" in answer
         assert "1 votes)" not in answer
+
+
+class TestFlexibleHintMatching:
+    def test_a_word_inserted_into_a_hint_phrase_still_matches(self):
+        # Reproduces a real failure: "make a schedule" (a listed hint)
+        # didn't match "make a FULL schedule" under the old exact-substring
+        # check, so the whole deterministic schedule-builder path was
+        # silently skipped in favor of a free-form LLM answer.
+        assert nodes._looks_like_schedule_request("Can you make a full schedule until graduation?")
+        assert nodes._looks_like_full_plan_request("Can you make a full schedule until graduation?")
+
+    def test_exact_hint_phrases_still_match_unchanged(self):
+        assert nodes._looks_like_schedule_request("What should I take next semester?")
+        assert nodes._looks_like_schedule_request("Can you recommend courses for me?")
+        assert nodes._looks_like_full_plan_request("Give me the full plan.")
+        assert nodes._looks_like_current_semester_request("Which courses should I take this semester?")
+
+    def test_unrelated_text_does_not_match(self):
+        assert nodes._looks_like_schedule_request("What is the weather like today?") is False
+        assert nodes._looks_like_schedule_request("Can you recommend a good restaurant for dinner?") is False
+
+    def test_gap_tolerance_is_bounded_not_a_free_fuzzy_match(self):
+        # More than one inserted word between the hint's own words must not
+        # match - this is deliberately tight, not a general fuzzy matcher.
+        # (Avoids any other listed hint, like "schedule for" or "plan for",
+        # appearing elsewhere in the sentence - this is specifically about
+        # "make a plan"'s own internal gap.)
+        assert nodes._looks_like_schedule_request("Can you make me a really quite elaborate plan?") is False

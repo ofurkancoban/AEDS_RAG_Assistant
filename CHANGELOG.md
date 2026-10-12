@@ -7,6 +7,18 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.24] - 2026-10-12
+### Fixed
+- The schedule-request hint phrases (e.g. "make a schedule") now tolerate
+  one inserted word ("make a FULL schedule") and still match - previously
+  an exact-substring check, so a phrasing like "Can you make a full
+  schedule until graduation?" missed every hint entirely and fell through
+  to a free-form LLM answer instead of the deterministic schedule builder.
+  Deliberately bounded to one inserted word, not a general fuzzy match -
+  tightened from two after it let an unrelated sentence ("make an
+  appointment, a form, and then maybe a schedule for my doctor visit")
+  false-match "make a schedule".
+
 ## [1.10.23] - 2026-10-12
 ### Added
 - The schedule recommender now factors in AEDS_ECTS_Tracker's anonymous

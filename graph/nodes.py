@@ -1203,6 +1203,34 @@ def _build_curriculum_context() -> Document | None:
     return Document(page_content="\n".join(lines), metadata={"source_id": "catalog"})
 
 
+@lru_cache(maxsize=None)
+def _compile_flexible_hint(phrase: str, max_extra_words: int = 1) -> re.Pattern:
+    """Turns a hint phrase like "make a schedule" into a regex that still
+    matches with up to max_extra_words inserted between any two of its
+    words - "make a FULL schedule" still hits "make a schedule", which a
+    plain substring check (the original approach) missed entirely, silently
+    falling through the whole deterministic schedule-builder path to the
+    LLM for a question it was specifically meant to catch. Deliberately
+    tight (1, not more): measured live, 2 let an unrelated sentence with its
+    own "make ... a ... schedule" spread across a comma-separated list
+    ("make an appointment, a form, and then maybe a schedule for my doctor
+    visit") false-match "make a schedule" - these are short, front-loaded
+    imperative phrases, not a general fuzzy-match engine, so a single
+    inserted adjective ("a FULL schedule") is the realistic case to cover,
+    not an arbitrary unrelated clause in between.
+    Cached: every hint tuple is a small fixed set checked on every schedule-
+    ish message, so each phrase's pattern is only ever compiled once."""
+    words = [re.escape(w) for w in phrase.split()]
+    gap = rf"(?:\s+\S+){{0,{max_extra_words}}}\s+"
+    pattern = words[0] + "".join(gap + w for w in words[1:])
+    return re.compile(r"\b" + pattern + r"\b")
+
+
+def _any_flexible_hint(text: str, hints: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(_compile_flexible_hint(hint).search(lowered) for hint in hints)
+
+
 _SCHEDULE_REQUEST_HINTS = (
     "recommend a schedule", "recommend courses for", "recommend a course",
     "schedule for next semester", "schedule for the next semester",
@@ -1216,8 +1244,7 @@ _SCHEDULE_REQUEST_HINTS = (
 
 
 def _looks_like_schedule_request(text: str) -> bool:
-    lowered = text.lower()
-    return any(hint in lowered for hint in _SCHEDULE_REQUEST_HINTS)
+    return _any_flexible_hint(text, _SCHEDULE_REQUEST_HINTS)
 
 
 _FULL_PLAN_HINTS = (
@@ -1233,8 +1260,7 @@ def _looks_like_full_plan_request(text: str) -> bool:
     full, multi-semester-through-thesis plan is only produced when explicitly
     asked for, since otherwise users asking about their immediate next
     semester were getting a 4-semester plan they didn't ask for."""
-    lowered = text.lower()
-    return any(hint in lowered for hint in _FULL_PLAN_HINTS)
+    return _any_flexible_hint(text, _FULL_PLAN_HINTS)
 
 
 _CATEGORY_ECTS_TARGETS = {
@@ -1420,8 +1446,7 @@ def _looks_like_current_semester_request(text: str) -> bool:
     semester' planning question. Checked only when _looks_like_schedule_
     request is already true, so a generic mention of 'currently' elsewhere
     in an unrelated question never reaches this."""
-    lowered = text.lower()
-    return any(hint in lowered for hint in _CURRENT_SEMESTER_HINTS)
+    return _any_flexible_hint(text, _CURRENT_SEMESTER_HINTS)
 
 
 def _semester_sort_key(label: str) -> tuple[int, int] | None:
