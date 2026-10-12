@@ -7,6 +7,20 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.22] - 2026-10-12
+### Fixed
+- The "next semester" recommendation now checks each candidate course's real
+  offering history (catalog.csv's semesters_offered/extra_semesters) instead
+  of only its generic WiSe-or-SoSe season: a course with a confirmed gap
+  year (e.g. offered every SoSe except one) is skipped in favor of an
+  available elective, or, if compulsory, kept but flagged with a note to
+  double-check with the examinations office - the "suggest an alternative
+  when needed" rule the recommendation didn't previously follow.
+- When the question doesn't state a season, the default also now follows
+  the real calendar (the actual upcoming WiSe or SoSe) instead of always
+  assuming WiSe - asking in autumn/winter previously still labelled the
+  answer "(WiSe)" even though the real next term is a SoSe.
+
 ## [1.10.21] - 2026-10-12
 ### Changed
 - Router decisions are stored in a route_decisions table as well as in

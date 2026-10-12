@@ -127,6 +127,15 @@ class Course(Base):
     professor: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     language: Mapped[str | None] = mapped_column(String, nullable=True)
     exam_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ';'-separated semester labels (e.g. "WiSe24/25;WiSe25/26"), straight
+    # from catalog.csv's own columns of the same name - the real, per-course
+    # offering history/near-future schedule, as opposed to `offering`'s
+    # generic WiSe-or-SoSe pattern. Used to check whether a specific upcoming
+    # term actually ran/will run a course (see graph/nodes.py's
+    # _is_confirmed_unavailable), since a course's regular season can still
+    # have real gap years.
+    semesters_offered: Mapped[str | None] = mapped_column(String, nullable=True)
+    extra_semesters: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Deadline(Base):

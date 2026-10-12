@@ -11,12 +11,17 @@ selection."""
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from graph import nodes
 
 
-def _course(code, category, ects, compulsory=False, offering=None, name=None):
+def _course(
+    code, category, ects, compulsory=False, offering=None, name=None,
+    semesters_offered=None, extra_semesters=None,
+):
     return {
         "code": code,
         "category": category,
@@ -26,6 +31,8 @@ def _course(code, category, ects, compulsory=False, offering=None, name=None):
         "name": name or code,
         "professor": "",
         "language": "en",
+        "semesters_offered": semesters_offered,
+        "extra_semesters": extra_semesters,
     }
 
 
@@ -251,3 +258,181 @@ class TestBuildProgressAwareScheduleAnswer:
         assert answer is not None
         assert "extra_specialization" not in answer.lower()
         assert "mam" in answer.lower()
+
+
+class TestCurrentRealSemesterLabel:
+    def test_during_sose_next_is_this_years_wise(self):
+        assert nodes._current_real_semester_label(date(2026, 6, 15)) == "WiSe26/27"
+
+    def test_early_in_wise_next_is_next_years_sose(self):
+        assert nodes._current_real_semester_label(date(2026, 11, 1)) == "SoSe27"
+
+    def test_start_of_year_still_in_wise_next_is_this_years_sose(self):
+        assert nodes._current_real_semester_label(date(2027, 2, 1)) == "SoSe27"
+
+
+class TestSemesterSortKey:
+    def test_parses_wise_and_sose_labels(self):
+        assert nodes._semester_sort_key("WiSe26/27") == (2026, 1)
+        assert nodes._semester_sort_key("SoSe26") == (2026, 0)
+
+    def test_sose_sorts_before_wise_in_the_same_year(self):
+        assert nodes._semester_sort_key("SoSe26") < nodes._semester_sort_key("WiSe26/27")
+
+    def test_malformed_label_returns_none(self):
+        assert nodes._semester_sort_key("not a semester") is None
+
+
+class TestIsConfirmedUnavailable:
+    def test_real_gap_year_is_confirmed_unavailable(self):
+        # Reproduces wir821's real catalog data: a SoSe-pattern course whose
+        # history skips SoSe25 even though its data otherwise covers SoSe26.
+        course = _course("wir821", "economics", 6, semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26")
+        assert nodes._is_confirmed_unavailable(course, "SoSe25") is True
+
+    def test_label_present_in_history_is_available(self):
+        course = _course("wir821", "economics", 6, semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26")
+        assert nodes._is_confirmed_unavailable(course, "SoSe26") is False
+
+    def test_label_beyond_known_data_horizon_is_not_flagged(self):
+        # The data only confirms up to SoSe26 - a term further out than that
+        # is simply unknown yet, not a confirmed gap.
+        course = _course("wir821", "economics", 6, semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26")
+        assert nodes._is_confirmed_unavailable(course, "SoSe28") is False
+
+    def test_extra_semesters_counts_as_confirmed_available(self):
+        course = _course(
+            "wir897", "empirical", 6,
+            semesters_offered="SoSe25;WiSe26/27", extra_semesters="WiSe26/27;SoSe27",
+        )
+        assert nodes._is_confirmed_unavailable(course, "SoSe27") is False
+
+    def test_course_with_no_offering_data_is_never_flagged(self):
+        course = _course("wir888", "empirical", 6)
+        assert nodes._is_confirmed_unavailable(course, "SoSe26") is False
+
+
+class TestSelectRecommendedCoursesRealAvailability:
+    def test_unavailable_elective_is_skipped_for_an_available_alternative(self, monkeypatch):
+        catalog = [
+            _course(
+                "gapcourse", "specialization", 6, offering="SoSe",
+                semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26",
+            ),
+            _course("altcourse", "specialization", 6, offering="SoSe", semesters_offered="SoSe25;SoSe26;SoSe27"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        substitutions: list[dict] = []
+        # target covers both electives' combined ECTS, so the fill loop
+        # always considers both regardless of their random shuffle order -
+        # otherwise an early `total >= target` break could skip evaluating
+        # gapcourse at all, making the substitution count nondeterministic.
+        selected = nodes._select_recommended_courses(
+            targets={"specialization": 12}, real_target_label="SoSe25", substitutions_out=substitutions
+        )
+        codes = {c["code"] for c in selected}
+        assert "gapcourse" not in codes
+        assert "altcourse" in codes
+        assert len(substitutions) == 1
+        assert substitutions[0]["course"]["code"] == "gapcourse"
+        assert substitutions[0]["reason"] == "elective_skipped"
+
+    def test_unavailable_compulsory_is_kept_but_flagged(self, monkeypatch):
+        catalog = [
+            _course(
+                "mustcourse", "economics", 6, compulsory=True, offering="SoSe",
+                semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26",
+            ),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        substitutions: list[dict] = []
+        selected = nodes._select_recommended_courses(
+            targets={"economics": 6}, real_target_label="SoSe25", substitutions_out=substitutions
+        )
+        assert "mustcourse" in {c["code"] for c in selected}
+        assert len(substitutions) == 1
+        assert substitutions[0]["course"]["code"] == "mustcourse"
+        assert substitutions[0]["reason"] == "compulsory_unconfirmed"
+
+    def test_no_real_target_label_means_no_filtering(self, monkeypatch):
+        catalog = [
+            _course(
+                "gapcourse", "specialization", 6, offering="SoSe",
+                semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26",
+            ),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        selected = nodes._select_recommended_courses(targets={"specialization": 6})
+        assert "gapcourse" in {c["code"] for c in selected}
+
+
+class TestBuildProgressAwareScheduleAnswerRealAvailability:
+    def test_next_semester_answer_substitutes_and_notes_a_confirmed_gap(self, monkeypatch):
+        catalog = [
+            _course(
+                "gapcourse", "specialization", 6, offering="SoSe",
+                semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26",
+            ),
+            _course("altcourse", "specialization", 6, offering="SoSe", semesters_offered="SoSe25;SoSe26;SoSe27"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_real_semester_label", lambda: "SoSe25")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "altcourse" in answer
+        assert "gapcourse" in answer  # named in the note, even though not recommended
+        assert "isn't confirmed as offered next term" in answer
+
+    def test_full_plan_request_is_not_filtered_by_real_availability(self, monkeypatch):
+        # A multi-semester plan spans real years the catalog can't confirm
+        # that far out, so it must not apply the real-target-label filter at
+        # all - the course should appear normally, with no gap note.
+        catalog = [
+            _course(
+                "gapcourse", "specialization", 6, offering="SoSe",
+                semesters_offered="SoSe22;SoSe23;SoSe24;SoSe26",
+            ),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_real_semester_label", lambda: "SoSe25")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "Give me the full plan until graduation", completed_semesters=0
+        )
+        assert answer is not None
+        assert "gapcourse" in answer
+        assert "isn't confirmed as offered next term" not in answer
+
+
+class TestDefaultSeasonMatchesRealCalendar:
+    def test_unstated_season_defaults_to_the_real_upcoming_one_not_always_wise(self, monkeypatch):
+        # Before this fix, no explicit season in the question always fell
+        # back to a hardcoded "WiSe" regardless of the real time of year -
+        # wrong whenever asked during WiSe, when the real next term is SoSe.
+        catalog = [
+            _course("wisecourse", "specialization", 6, offering="WiSe"),
+            _course("sosecourse", "specialization", 6, offering="SoSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_real_semester_label", lambda: "SoSe27")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "(SoSe)" in answer
+        assert "sosecourse" in answer
+
+    def test_explicit_season_in_the_question_still_overrides_the_default(self, monkeypatch):
+        catalog = [
+            _course("wisecourse", "specialization", 6, offering="WiSe"),
+            _course("sosecourse", "specialization", 6, offering="SoSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_real_semester_label", lambda: "SoSe27")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "What should I take next WiSe semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "(WiSe)" in answer
+        assert "wisecourse" in answer

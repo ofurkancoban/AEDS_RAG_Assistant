@@ -1375,8 +1375,75 @@ def _extract_semester_number(text: str) -> int | None:
 _COURSES_PER_TERM = 5
 
 
+def _current_real_semester_label(today: date | None = None) -> str:
+    """The real, calendar-anchored upcoming semester label, in the same
+    WiSe{yy}/{yy+1} / SoSe{yy} format catalog.csv's semesters_offered column
+    uses (see scripts/fetch_catalog.py's semester_key/pick_semesters, same
+    season-boundary convention: SoSe runs Apr-Sep, WiSe runs Oct-Mar, and
+    'upcoming' means the term after the one currently running) - used to
+    check whether a specific course is actually confirmed to run next term,
+    as opposed to the schedule builder's generic, year-less WiSe/SoSe
+    alternation."""
+    d = today or date.today()
+    year, month = d.year, d.month
+    if 4 <= month <= 9:
+        return f"WiSe{str(year)[-2:]}/{str(year + 1)[-2:]}"
+    if month >= 10:
+        return f"SoSe{str(year + 1)[-2:]}"
+    return f"SoSe{str(year)[-2:]}"
+
+
+def _semester_sort_key(label: str) -> tuple[int, int] | None:
+    """'WiSe26/27' -> (2026, 1), 'SoSe26' -> (2026, 0), matching
+    scripts/fetch_catalog.py's semester_key ordering (SoSe sorts before WiSe
+    within the same year) - lets two labels be compared chronologically."""
+    m = re.match(r"WiSe(\d{2})/(\d{2})$", label)
+    if m:
+        return (2000 + int(m.group(1)), 1)
+    m = re.match(r"SoSe(\d{2})$", label)
+    if m:
+        return (2000 + int(m.group(1)), 0)
+    return None
+
+
+def _course_offered_terms(course: dict) -> set[str]:
+    """The union of a course's known offering history (semesters_offered)
+    and any confirmed near-future terms (extra_semesters), both ';'-separated
+    label strings straight from catalog.csv."""
+    terms: set[str] = set()
+    for key in ("semesters_offered", "extra_semesters"):
+        raw = course.get(key) or ""
+        terms.update(t.strip() for t in raw.split(";") if t.strip())
+    return terms
+
+
+def _is_confirmed_unavailable(course: dict, target_label: str) -> bool:
+    """True only when there is enough real data to say this course will NOT
+    run in target_label - not merely that target_label hasn't been recorded
+    yet because it's further out than the catalog's current data reaches.
+    Requires: the course has some offering-history data at all, that data's
+    own horizon already reaches target_label's time or later (so a gap is a
+    real, confirmed gap rather than an unconfirmed future term), and
+    target_label is absent from it. This is what catches a course like one
+    offered 'SoSe22;SoSe23;SoSe24;SoSe26' (skipping SoSe25) actually missing
+    a term its generic WiSe/SoSe pattern alone would have suggested."""
+    offered_terms = _course_offered_terms(course)
+    if not offered_terms:
+        return False
+    target_key = _semester_sort_key(target_label)
+    if target_key is None:
+        return False
+    known_keys = [k for k in (_semester_sort_key(t) for t in offered_terms) if k is not None]
+    if not known_keys or max(known_keys) < target_key:
+        return False
+    return target_label not in offered_terms
+
+
 def _select_recommended_courses(
-    exclude_codes: frozenset[str] = frozenset(), targets: dict[str, int] | None = None
+    exclude_codes: frozenset[str] = frozenset(),
+    targets: dict[str, int] | None = None,
+    real_target_label: str | None = None,
+    substitutions_out: list[dict] | None = None,
 ) -> list[dict]:
     """Deterministic selection: every compulsory course is always included;
     electives are shuffled and then filled in until each component's
@@ -1392,7 +1459,21 @@ def _select_recommended_courses(
     _compute_remaining_targets(exclude_codes) - is each category's
     remaining ECTS need, so this naturally stops recommending the thesis
     once its code is excluded and stops over-filling an already-satisfied
-    elective category."""
+    elective category.
+
+    real_target_label (see _current_real_semester_label), when given, is
+    checked against each candidate's real offering history: an elective
+    confirmed NOT to run that term is skipped in favor of the next
+    candidate instead (a genuine substitution - the student still gets a
+    full, real, takeable list), and a compulsory course confirmed not to
+    run that term is still included (there is no substitute for a mandatory
+    module) but reported via substitutions_out so the answer can flag it.
+    Every skip/flag is also appended to substitutions_out (as
+    {"course": ..., "reason": "elective_skipped" | "compulsory_unconfirmed"})
+    when that list is supplied, so the caller can tell the student exactly
+    what changed and why - "gerekiyorsa alternatifler de önermeli" (suggest
+    alternatives when needed) rather than silently presenting a course that
+    was never actually offered."""
     if targets is None:
         targets = _CATEGORY_ECTS_TARGETS
     courses = get_catalog_courses()
@@ -1431,10 +1512,18 @@ def _select_recommended_courses(
                     electives.append(group.pop(0))
 
         chosen = list(compulsory)
+        if real_target_label is not None:
+            for course in compulsory:
+                if _is_confirmed_unavailable(course, real_target_label) and substitutions_out is not None:
+                    substitutions_out.append({"course": course, "reason": "compulsory_unconfirmed"})
         total = sum(c["ects"] for c in chosen)
         for course in electives:
             if total >= target:
                 break
+            if real_target_label is not None and _is_confirmed_unavailable(course, real_target_label):
+                if substitutions_out is not None:
+                    substitutions_out.append({"course": course, "reason": "elective_skipped"})
+                continue
             chosen.append(course)
             total += course["ects"]
         selected.extend(chosen)
@@ -1552,6 +1641,8 @@ def _compute_schedule_terms(
     single_term: bool = False,
     exclude_codes: frozenset[str] = frozenset(),
     codes_by_category: dict[str, frozenset[str]] | None = None,
+    real_target_label: str | None = None,
+    substitutions_out: list[dict] | None = None,
 ) -> list[tuple[str, list[dict]]]:
     """The single source of truth for what a correct schedule looks like:
     every compulsory course, electives filled to each component's ECTS
@@ -1567,9 +1658,15 @@ def _compute_schedule_terms(
     the resulting schedule reflects what's actually left, not a from-scratch
     full programme. codes_by_category, when available, overrides which
     category each excluded course's ECTS counts against (see
-    _compute_remaining_targets)."""
+    _compute_remaining_targets). real_target_label/substitutions_out are
+    passed straight through to _select_recommended_courses - see there."""
     targets = _compute_remaining_targets(exclude_codes, codes_by_category)
-    selected = _select_recommended_courses(exclude_codes=exclude_codes, targets=targets)
+    selected = _select_recommended_courses(
+        exclude_codes=exclude_codes,
+        targets=targets,
+        real_target_label=real_target_label,
+        substitutions_out=substitutions_out,
+    )
     if not selected:
         return []
 
@@ -1585,7 +1682,9 @@ def _compute_schedule_terms(
     return terms
 
 
-def _format_schedule_terms(terms: list[tuple[str, list[dict]]], single_term: bool) -> str:
+def _format_schedule_terms(
+    terms: list[tuple[str, list[dict]]], single_term: bool, substitutions: list[dict] | None = None
+) -> str:
     heading = (
         "Recommended courses for next semester"
         if single_term
@@ -1606,6 +1705,24 @@ def _format_schedule_terms(terms: list[tuple[str, list[dict]]], single_term: boo
                 parts.append("**compulsory**")
             lines.append(f"- **{course['name']}** ({course['code']}) - {' · '.join(parts)}")
     lines.append(f"\n**Total: {grand_total} ECTS**")
+    if substitutions:
+        # Real offering-data gaps (see _is_confirmed_unavailable) only ever
+        # get collected when this is the single-next-term answer, so every
+        # note here is relevant to it - no per-term filtering needed.
+        lines.append("")
+        for note in substitutions:
+            c = note["course"]
+            if note["reason"] == "compulsory_unconfirmed":
+                lines.append(
+                    f"*Note: **{c['name']}** ({c['code']}) is compulsory, but isn't confirmed as "
+                    "offered next term based on its past offering record - double-check with the "
+                    "examinations office before planning your semester around it.*"
+                )
+            else:
+                lines.append(
+                    f"*Note: **{c['name']}** ({c['code']}) isn't confirmed as offered next term, so "
+                    "another elective was suggested instead.*"
+                )
     return "\n".join(lines)
 
 
@@ -1773,19 +1890,42 @@ def _build_progress_aware_schedule_answer(
     over only what's remaining, so the very first term of it is the correct
     "next semester" answer regardless of completed_semesters - there's no
     need for, or meaning to, indexing by a semester number the student never
-    even had to state."""
+    even had to state.
+
+    A full multi-semester plan spans real-world years the catalog's offering
+    data can't confirm that far out, so real_target_label (see
+    _current_real_semester_label) is only applied for the single, immediate
+    "next semester" answer - the one request where "next term" has one
+    concrete, checkable calendar label.
+
+    When the question doesn't state a season (_extract_semester_preference
+    returns None) and this isn't a full-plan request, the season also
+    defaults to the real upcoming one instead of always "WiSe" - without
+    this, asking in autumn/winter (when the real next term is a SoSe)
+    still labelled the answer "(WiSe)", a calendar-wrong answer regardless
+    of which specific courses it listed."""
     season = _extract_semester_preference(question_text)
+    is_full_plan = _looks_like_full_plan_request(question_text)
+    real_target_label = None if is_full_plan else _current_real_semester_label()
+    if season is None and real_target_label is not None:
+        season = "WiSe" if real_target_label.startswith("WiSe") else "SoSe"
+    substitutions: list[dict] = []
     full_terms = _compute_schedule_terms(
-        season, single_term=False, exclude_codes=exclude_codes, codes_by_category=codes_by_category
+        season,
+        single_term=False,
+        exclude_codes=exclude_codes,
+        codes_by_category=codes_by_category,
+        real_target_label=real_target_label,
+        substitutions_out=substitutions,
     )
     if not full_terms:
         return None
 
-    if _looks_like_full_plan_request(question_text):
+    if is_full_plan:
         return _format_schedule_terms(full_terms, single_term=False)
 
     idx = 0 if exclude_codes else min(max(completed_semesters, 0), len(full_terms) - 1)
-    return _format_schedule_terms(full_terms[idx : idx + 1], single_term=True)
+    return _format_schedule_terms(full_terms[idx : idx + 1], single_term=True, substitutions=substitutions)
 
 
 # Document search runs speculatively, in parallel with the tool router.

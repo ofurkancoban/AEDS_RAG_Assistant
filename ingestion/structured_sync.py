@@ -43,6 +43,8 @@ def sync_catalog_to_sql(path: Path) -> int:
                         professor=(row.get("professor") or "").strip() or None,
                         language=(row.get("language") or "").strip() or None,
                         exam_type=(row.get("exam_type") or "").strip() or None,
+                        semesters_offered=(row.get("semesters_offered") or "").strip() or None,
+                        extra_semesters=(row.get("extra_semesters") or "").strip() or None,
                     )
                 )
                 count += 1

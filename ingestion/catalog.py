@@ -23,6 +23,8 @@ def get_catalog_courses() -> list[dict]:
                 "offering": course.offering,
                 "professor": course.professor,
                 "language": course.language,
+                "semesters_offered": course.semesters_offered,
+                "extra_semesters": course.extra_semesters,
             }
             for course in session.query(Course).all()
         ]
