@@ -7,6 +7,12 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.20] - 2026-10-12
+### Removed
+- Reverted 1.10.19: the R2 off-site backup upload and the nginx
+  Cloudflare real-IP setting (removed from the VPS as well). Backups stay
+  local in data/backups/; the Cloudflare reranker (1.10.18) is unchanged.
+
 ## [1.10.19] - 2026-10-12
 ### Added
 - Off-site backups: each night's encrypted app.db and Chroma snapshots are

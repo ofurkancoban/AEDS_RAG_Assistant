@@ -383,22 +383,8 @@ def main() -> int:
 
     if not args.prune_only:
         print("backups:")
-        written = [
-            snapshot(settings.sqlite_path, args.keep, args.dry_run),
-            snapshot_directory(settings.chroma_persist_dir, "chroma", args.keep, args.dry_run),
-        ]
-        # Off the server: data/backups/ shares the disk it protects.
-        from scripts import offsite_backup
-
-        if offsite_backup.enabled() and not args.dry_run:
-            try:
-                sent = offsite_backup.upload([p for p in written if p])
-                print(f"  off-site (R2): {', '.join(sent) or 'nothing new'}")
-            except Exception as exc:  # never let this fail the local backups
-                print(f"  off-site upload failed: {exc}")
-                from api.telegram_bot import _notify_admins
-
-                _notify_admins(f"Off-site backup to R2 failed: {exc}")
+        snapshot(settings.sqlite_path, args.keep, args.dry_run)
+        snapshot_directory(settings.chroma_persist_dir, "chroma", args.keep, args.dry_run)
         # Opt-in: checkpoints.db is machine state, an order of magnitude larger
         # than app.db, and losing it costs nothing a user would notice - the
         # readable conversation lives in app.db's chat_history. Keeping 14
