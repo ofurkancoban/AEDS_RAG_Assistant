@@ -7,6 +7,21 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.27] - 2026-10-12
+### Added
+- "How many ECTS do I need to graduate?" now shows a per-category remaining
+  breakdown (completed/required/remaining per component) when the ECTS
+  Tracker widget's course-progress context is present, instead of just the
+  fixed totals - computed deterministically from the widget's own
+  per-category summary lines rather than left to the LLM, which has
+  gotten this kind of category-by-category subtraction wrong before (see
+  the earlier schedule-recommendation fixes). A category with zero
+  progress (most commonly Thesis, before a student starts it) is still
+  included as a 0/required row, since the widget only writes a line for a
+  category with at least one logged course - omitting it would otherwise
+  silently total less than the real 120 ECTS. Without the course-context
+  toggle on, this question is answered exactly as before.
+
 ## [1.10.26] - 2026-10-12
 ### Fixed
 - The schedule recommender now prefers a student's already-planned

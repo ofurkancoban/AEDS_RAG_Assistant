@@ -1482,6 +1482,118 @@ def _looks_like_current_semester_request(text: str) -> bool:
     return _any_flexible_hint(text, _CURRENT_SEMESTER_HINTS)
 
 
+_ECTS_PROGRESS_HINTS = (
+    "how many ects", "how much ects", "ects do i need", "ects left",
+    "ects remaining", "remaining ects", "how many credits", "how much credits",
+    "credits do i need", "credits left", "credits remaining", "remaining credits",
+    "ects to graduate", "ects until graduation", "ects am i missing",
+    "ects do i still need",
+)
+
+
+def _looks_like_ects_progress_request(text: str) -> bool:
+    """True for 'how many ECTS do I need to graduate' / 'how many credits do
+    I have left' - a question an LLM answers correctly for the fixed
+    120/36/18/18/18/30 targets on its own, but has gotten wrong (dropped or
+    miscalculated a category, skipped doing the subtraction entirely) once a
+    student's own progress is folded in and turning "the targets" into "the
+    targets minus what I've completed" requires real arithmetic - the same
+    class of failure _select_recommended_courses exists to avoid for course
+    selection. Checked only when the ECTS Tracker widget's progress lines
+    are actually present (see _parse_progress_lines) - without them there's
+    no student-specific arithmetic to get wrong, and the LLM's own answer
+    for the fixed targets is already correct and well-formatted."""
+    return _any_flexible_hint(text, _ECTS_PROGRESS_HINTS)
+
+
+_PROGRESS_CATEGORY_LINE_RE = re.compile(
+    r"^(?P<name>[^(\n]+?)\s*\((?P<completed>\d+)(?:/(?P<required>\d+))?\s*ECTS\)", re.MULTILINE
+)
+
+
+def _parse_progress_lines(text: str) -> list[dict]:
+    """Parses the ECTS Tracker widget's own per-category summary lines
+    (aedsRagBuildCourseContext9's 'Economics (18/36 ECTS) - completed: ...'
+    format) straight out of the injected context - no catalog lookup or
+    category-target constant needed, since the student's own tracker has
+    already done that arithmetic once and written the result directly into
+    the line. A category with no required target (e.g. 'Further modules'
+    does not count toward the 120 ECTS total) has no '/required' part and
+    is skipped, matching the total this is meant to reconcile against."""
+    results: list[dict] = []
+    for match in _PROGRESS_CATEGORY_LINE_RE.finditer(text):
+        required = match.group("required")
+        if required is None:
+            continue
+        results.append(
+            {
+                "name": match.group("name").strip(),
+                "completed": int(match.group("completed")),
+                "required": int(required),
+            }
+        )
+    return results
+
+
+# The widget only emits a category's summary line when it has at least one
+# completed/in-progress/planned course in it (see aedsRagBuildCourseContext9
+# - "if(parts.length)"), so a category with zero progress (most commonly
+# Thesis, before a student has touched it) is simply absent from the
+# context entirely. Parsing only what's present would then silently total
+# less than the real 120 ECTS - found live: a profile with nothing logged
+# under Thesis summed to 90, not 120. These are the fixed official targets
+# (matching Zs in AEDS_ECTS_Tracker/index.html, excluding Further modules
+# and Additional, which don't count toward the 120 ECTS total) used to
+# backfill any category _parse_progress_lines didn't see, as a zero-
+# progress row.
+_OFFICIAL_CATEGORY_TARGETS = {
+    "Economics": 36,
+    "Empirical Methods": 18,
+    "Data Science": 18,
+    "Specialization": 18,
+    "Thesis": 30,
+}
+
+
+def _build_ects_progress_answer(text: str) -> str | None:
+    """Builds a deterministic per-category ECTS-remaining table from the
+    widget's own progress lines - returns None when none are present (no
+    course-context toggle on), letting the caller fall back to the regular
+    LLM/RAG answer, which already handles the fixed, student-independent
+    120/36/18/18/18/30 breakdown correctly on its own."""
+    lines = _parse_progress_lines(text)
+    if not lines:
+        return None
+
+    seen_names = {line["name"].strip().lower() for line in lines}
+    for name, required in _OFFICIAL_CATEGORY_TARGETS.items():
+        if name.lower() not in seen_names:
+            lines.append({"name": name, "completed": 0, "required": required})
+
+    official_order = list(_OFFICIAL_CATEGORY_TARGETS.keys())
+    lines.sort(
+        key=lambda line: official_order.index(line["name"])
+        if line["name"] in official_order
+        else len(official_order)
+    )
+
+    total_completed = sum(line["completed"] for line in lines)
+    total_required = sum(line["required"] for line in lines)
+    rows = [
+        f"| {line['name']} | {line['completed']} | {line['required']} | "
+        f"{max(0, line['required'] - line['completed'])} |"
+        for line in lines
+    ]
+    return (
+        f"You need **{total_required} ECTS** total to graduate, and have completed "
+        f"**{total_completed}/{total_required}** so far.\n\n"
+        "### Remaining ECTS by category\n"
+        "| Category | Completed | Required | Remaining |\n"
+        "|---|---|---|---|\n" + "\n".join(rows) + "\n\n"
+        f"**{max(0, total_required - total_completed)} ECTS remaining** across all categories."
+    )
+
+
 def _semester_sort_key(label: str) -> tuple[int, int] | None:
     """'WiSe26/27' -> (2026, 1), 'SoSe26' -> (2026, 0), matching
     scripts/fetch_catalog.py's semester_key ordering (SoSe sorts before WiSe
@@ -2384,6 +2496,11 @@ def retrieve_node(state: RagState) -> dict:
             ),
             "awaiting_semester_number": True,
         }
+
+    if _looks_like_ects_progress_request(last_question):
+        progress_answer = _build_ects_progress_answer(last_question)
+        if progress_answer:
+            return {"retrieved_docs": [], "direct_answer": progress_answer, "awaiting_semester_number": False}
 
     if _looks_like_schedule_request(last_question):
         exclude_codes = _extract_completed_codes(last_question)

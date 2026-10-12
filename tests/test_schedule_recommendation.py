@@ -777,3 +777,79 @@ class TestPlannedCoursesPrioritized:
         )
         assert answer is not None
         assert "**Student's Planned Pick** (planned1)" in answer
+
+
+class TestEctsProgressAnswer:
+    def test_no_progress_context_returns_none(self):
+        assert nodes._build_ects_progress_answer("How many ECTS do I need to graduate?") is None
+
+    def test_breakdown_sums_to_120_even_with_an_untouched_category(self):
+        # The widget only emits a line for a category with at least one
+        # logged course (see aedsRagBuildCourseContext9) - Thesis is
+        # commonly absent entirely before a student starts it, and must
+        # still be backfilled as a zero-progress row so the total is the
+        # real 120, not just the sum of what happened to be present.
+        context = (
+            "My ECTS Tracker progress (54/120 ECTS completed):\n"
+            "Economics (18/36 ECTS) - completed: wir821; wir873; wir876\n"
+            "Empirical Methods (6/18 ECTS) - completed: wir875\n"
+            "Data Science (18/18 ECTS) - completed: inf962; inf604; inf607\n"
+            "Specialization (12/18 ECTS) - completed: inf530; inf536\n"
+            "How many ECTS do I need to graduate?"
+        )
+        answer = nodes._build_ects_progress_answer(context)
+        assert answer is not None
+        assert "You need **120 ECTS**" in answer
+        assert "have completed **54/120**" in answer
+        assert "| Thesis | 0 | 30 | 30 |" in answer
+        assert "**66 ECTS remaining**" in answer
+
+    def test_a_fully_satisfied_category_shows_zero_remaining(self):
+        context = (
+            "Data Science (18/18 ECTS) - completed: inf962; inf604; inf607\n"
+            "How many ECTS do I need to graduate?"
+        )
+        answer = nodes._build_ects_progress_answer(context)
+        assert answer is not None
+        assert "| Data Science | 18 | 18 | 0 |" in answer
+
+    def test_category_without_a_required_target_is_ignored(self):
+        # "Further modules (6 ECTS) - ..." (no "/required" part, since it
+        # doesn't count toward the 120 ECTS total) must not be parsed as a
+        # category row at all.
+        context = (
+            "Further modules (6 ECTS) - completed: wir837\n"
+            "Economics (36/36 ECTS) - completed: wir821\n"
+            "How many ECTS do I need to graduate?"
+        )
+        lines = nodes._parse_progress_lines(context)
+        names = {line["name"] for line in lines}
+        assert "Further modules" not in names
+        assert "Economics" in names
+
+
+class TestLooksLikeEctsProgressRequest:
+    def test_matches_real_phrasings(self):
+        assert nodes._looks_like_ects_progress_request("How many ECTS do I need to graduate?")
+        assert nodes._looks_like_ects_progress_request("How many credits do I have left?")
+        assert nodes._looks_like_ects_progress_request("How much ECTS do I still need?")
+
+    def test_does_not_match_unrelated_or_schedule_questions(self):
+        assert nodes._looks_like_ects_progress_request("What is the application deadline?") is False
+        assert nodes._looks_like_ects_progress_request("Which courses should I take next semester?") is False
+
+
+class TestRetrieveNodeEctsProgress:
+    def test_retrieve_node_answers_directly_when_progress_context_is_present(self, monkeypatch):
+        class FakeMessage:
+            def __init__(self, content):
+                self.content = content
+
+        context = (
+            "Economics (18/36 ECTS) - completed: wir821; wir873; wir876\n"
+            "How many ECTS do I need to graduate?"
+        )
+        state = {"messages": [FakeMessage(context)]}
+        result = nodes.retrieve_node(state)
+        assert result["direct_answer"] is not None
+        assert "Remaining ECTS by category" in result["direct_answer"]
