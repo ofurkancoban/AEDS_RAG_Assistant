@@ -41,6 +41,50 @@ def get_reranker() -> CrossEncoder:
     return CrossEncoder(settings.reranker_model, device=_select_device(), **kwargs)
 
 
+_CLOUDFLARE_RERANK_URL = "https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/baai/bge-reranker-base"
+# After a failed API call the local model is used for this long, so an
+# outage costs one timeout rather than one per question.
+_API_BACKOFF_S = 300
+_api_down_until = 0.0
+
+
+def _api_configured() -> bool:
+    return bool(settings.cloudflare_account_id and settings.cloudflare_api_token)
+
+
+def _api_scores(query: str, passages: list[str]) -> list[float] | None:
+    """Scores from the hosted model, in passage order, or None to fall back
+    to the local one."""
+    global _api_down_until
+    import time
+
+    import httpx
+
+    if not _api_configured() or time.monotonic() < _api_down_until:
+        return None
+    try:
+        response = httpx.post(
+            _CLOUDFLARE_RERANK_URL.format(account=settings.cloudflare_account_id),
+            headers={"Authorization": f"Bearer {settings.cloudflare_api_token}"},
+            json={"query": query, "contexts": [{"text": p} for p in passages], "top_k": len(passages)},
+            timeout=settings.reranker_api_timeout_s,
+        )
+        response.raise_for_status()
+        scores = [0.0] * len(passages)
+        ranked = response.json()["result"]["response"]
+        for item in ranked:
+            scores[item["id"]] = float(item["score"])
+        if len(ranked) != len(passages):
+            raise ValueError(f"{len(ranked)} scores for {len(passages)} passages")
+        return scores
+    except Exception as exc:  # noqa: BLE001 - any failure means: use the local model
+        import logging
+
+        logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", exc)
+        _api_down_until = time.monotonic() + _API_BACKOFF_S
+        return None
+
+
 def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
     """Re-scores a candidate pool for actual relevance to the query via a
     cross-encoder (which jointly encodes query+document, unlike the
@@ -56,9 +100,11 @@ def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
         # keeps its strongest candidates; see config.rerank_max_candidates.
         docs = docs[: settings.rerank_max_candidates]
 
-    pairs = [(query, doc.page_content) for doc in docs]
-    with MODEL_LOCK:
-        scores = get_reranker().predict(pairs)
+    scores = _api_scores(query, [doc.page_content for doc in docs])
+    if scores is None:
+        pairs = [(query, doc.page_content) for doc in docs]
+        with MODEL_LOCK:
+            scores = get_reranker().predict(pairs)
 
     # Stashed on metadata (not written back to Chroma - these Document objects
     # are transient, freshly read copies) so the Vector Analytics view can show

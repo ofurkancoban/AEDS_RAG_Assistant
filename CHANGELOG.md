@@ -7,6 +7,18 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.18] - 2026-10-12
+### Changed
+- Reranking runs on Cloudflare Workers AI's hosted bge-reranker-base (the
+  same model) instead of the VPS CPU: median 544ms instead of 3066ms over
+  30 golden questions on the VPS. Golden-set retrieval stays at 73/73
+  context recall and 59/59 source hits; the same questions fall under the
+  relevance gate. The hosted model reads more of each passage, so some
+  scores differ ("Can I get more time for my Master's thesis?" 0.13
+  instead of 0.03). Any error or a 3s timeout falls back to the local
+  model, which stays loaded, and the API is then skipped for 5 minutes.
+  Off when CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are unset.
+
 ## [1.10.17] - 2026-10-12
 ### Changed
 - A question that names nothing a routing tool knows about (no

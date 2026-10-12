@@ -47,6 +47,10 @@ os.environ["LLM_PROVIDER"] = "ollama"
 # and nothing here stopped it from using the real bot token).
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = ""
+# Same for the hosted reranker: with keys in .env every rerank in the suite
+# went to Cloudflare (found when test_reranker_limits saw no local call).
+os.environ["CLOUDFLARE_ACCOUNT_ID"] = ""
+os.environ["CLOUDFLARE_API_TOKEN"] = ""
 
 from config import settings  # noqa: E402
 from db.models import Base, Role, SessionLocal, User, engine, init_db  # noqa: E402

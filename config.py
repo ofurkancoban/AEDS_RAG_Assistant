@@ -233,6 +233,16 @@ class Settings(BaseSettings):
     # from general knowledge. None on a correct figure, so regenerate.
     number_guard: str = "regenerate"
     rerank_max_candidates: int = 10
+    # Rerank through Cloudflare Workers AI's hosted @cf/baai/bge-reranker-base
+    # (the same model) when both are set, falling back to the local model on
+    # any error or after reranker_api_timeout_s. The local cross-encoder took
+    # about 3s of the VPS's 3.3s retrieval (2026-10-12), and neither ONNX nor
+    # int8 nor a smaller workload sped it up without losing golden cases.
+    # Workers AI does not train on request content; the free plan's daily
+    # allocation covers thousands of questions a day.
+    cloudflare_account_id: str = ""
+    cloudflare_api_token: str = ""
+    reranker_api_timeout_s: float = 3.0
     reranker_max_length: int = 256
     # Minimum cross-encoder score the best retrieved chunk must reach before
     # the pipeline will answer from documents at all. Below it, retrieval is
