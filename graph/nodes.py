@@ -983,6 +983,33 @@ def _remember_route(question: str, tool_calls: list[dict]) -> None:
     _ROUTE_CACHE[_route_key(question)] = (time.monotonic(), tool_calls)
 
 
+# Every routing tool answers from structured data about applications,
+# courses, lecturers, the curriculum or the examinations office, so a
+# question that names none of these cannot need one. Deliberately broad: a
+# question let through only costs the routing call it always cost, while
+# one wrongly skipped would miss its tool. Measured over the golden set
+# (see tests/test_router_gate.py) it lets every tool question through.
+_TOOL_CUE_RE = re.compile(
+    r"deadline|\bappl(y|ies|ied|ying|ica\w*)\b|bewerb|\bfrist|"
+    r"\bcourses?\b|\bkurs|\bmodul|\blectures?\b|\blecturers?\b|vorlesung|\bteach|\btaught\b|\blehr|"
+    r"unterricht|professor|\bprof\b|\bdozent|instructor|\bwho is\b|\bwer ist\b|\bwho\b.*\b(teach|lectur|run)|"
+    r"curricul|studienplan|compulsory|mandatory|pflicht|elective|\bwahl|"
+    r"exam(ination)?s? office|examining board|prüfungsamt|prüfungsausschuss|contact person|ansprechp",
+    re.IGNORECASE,
+)
+
+
+def _could_need_a_tool(question: str) -> bool:
+    if _TOOL_CUE_RE.search(question):
+        return True
+    courses = get_catalog_courses()
+    if _match_courses_by_name_or_abbreviation(courses, question):
+        return True
+    words = set(re.findall(r"\w+", question.casefold()))
+    surnames = {c["professor"].split()[-1].casefold() for c in courses if c.get("professor")}
+    return bool(words & surnames)
+
+
 def _route_with_tools(question: str) -> dict | None:
     """LLM-driven routing: replaces what used to be a chain of regex hint-word
     checks (one per fact type - course/professor lookup, person lookup,
@@ -994,6 +1021,10 @@ def _route_with_tools(question: str) -> dict | None:
     def build_router():
         router_llm, router_model = get_router_llm()
         return _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
+
+    if not _could_need_a_tool(question):
+        progress.record_timing("route_skipped", 0.0)
+        return None
 
     route_started = time.monotonic()
     tool_calls = _cached_route(question)

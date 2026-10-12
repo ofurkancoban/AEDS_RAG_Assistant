@@ -5,7 +5,7 @@ import { EvalRun, getAnalytics, getEvalRuns, getNodeLatencyStats, getOpsStatus, 
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
-const SUB_STEP_TIMINGS = new Set(['route', 'route_cached', 'first_token']);
+const SUB_STEP_TIMINGS = new Set(['route', 'route_cached', 'route_skipped', 'first_token']);
 
 const ORIGIN_BAR_COLORS = ['bg-accent-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500'];
 

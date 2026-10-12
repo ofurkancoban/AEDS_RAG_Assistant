@@ -7,6 +7,23 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.17] - 2026-10-12
+### Changed
+- A question that names nothing a routing tool knows about (no
+  application, course, lecturer, curriculum or examinations office cue, no
+  catalog course name, abbreviation or lecturer surname) skips the routing
+  call and goes straight to the document search. Over the 111 golden
+  questions it skips 64; of the 29 the router sends to a tool it lets 28
+  through, and the remaining one (thesis credit points) is answered from
+  the regulations just as well. The search already ran alongside the
+  router, so the saving is the router's overrun: about 0.7s at the median,
+  around 6s for the slowest tenth, and one LLM request per skipped
+  question.
+- Measured but not changed: the reranker takes about 3s of the 3.3s
+  retrieval on the VPS CPU. ONNX Runtime was no faster, int8 quantization
+  changed the top four passages in 8 to 17 of 30 questions, and fewer
+  candidates or shorter passages each lost a golden case.
+
 ## [1.10.16] - 2026-10-12
 ### Added
 - /review in the Telegram admin bot: pending answers one at a time, most
