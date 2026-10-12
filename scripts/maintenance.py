@@ -438,6 +438,18 @@ def main() -> int:
         except Exception as exc:  # never let this fail the backups above
             print(f"  contradiction check failed: {exc}")
 
+    # Mondays: the weekly summary for the admins (scripts/weekly_report.py),
+    # after Sunday's golden-set run so it reports that score.
+    if not args.dry_run and datetime.now().weekday() == 0:
+        print("weekly report:")
+        try:
+            from scripts.weekly_report import build_report
+            from api.telegram_bot import _notify_admins
+
+            _notify_admins(build_report())
+        except Exception as exc:  # never let this fail the backups above
+            print(f"  weekly report failed: {exc}")
+
     return 0
 
 

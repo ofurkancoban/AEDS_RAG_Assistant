@@ -1253,5 +1253,550 @@
       }
     ],
     "notes": "Off-topic but scored 0.66 at the reranker, so it reaches the model after the gate was lowered; it must refuse, not quote a price."
+  },
+  {
+    "id": "de-retake-exam",
+    "question": "Wie oft kann ich eine nicht bestandene Modulprüfung wiederholen?",
+    "expected_contains": [
+      [
+        "zweimal",
+        "zwei mal",
+        "2 mal",
+        "zwei Mal",
+        "2-mal"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-thesis-ects",
+    "question": "Wie viele ECTS hat das Modul Masterarbeit?",
+    "expected_contains": [
+      "30",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-thesis-admission",
+    "question": "Wie viele ECTS brauche ich, bevor ich mich zur Masterarbeit anmelden kann?",
+    "expected_contains": [
+      "60",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-thesis-grading",
+    "question": "Wie lange dauert die Bewertung der Masterarbeit nach der Abgabe?",
+    "expected_contains": [
+      [
+        "sechs wochen",
+        "6 wochen"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      "acht wochen",
+      "8 wochen",
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-language",
+    "question": "Welche Sprachkenntnisse brauche ich für den Studiengang?",
+    "expected_contains": [
+      "B2",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      "DSH",
+      "TestDaF",
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-semester-fee",
+    "question": "Wie hoch ist der Semesterbeitrag?",
+    "expected_contains": [
+      [
+        "457,90",
+        "457.90"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-ticket-bike",
+    "question": "Darf ich mit dem Semesterticket mein Fahrrad mitnehmen?",
+    "expected_contains": [
+      [
+        "nicht",
+        "kein"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-library-sunday",
+    "question": "Ist die Bibliothek am Sonntag geöffnet?",
+    "expected_contains": [
+      [
+        "10:00",
+        "10 uhr"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-residence-funding",
+    "question": "Wie viel Geld muss ich für die Aufenthaltserlaubnis nachweisen?",
+    "expected_contains": [
+      [
+        "11.904",
+        "11,904",
+        "11 904"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-work-days",
+    "question": "Wie viele Tage im Jahr dürfen Studierende aus Nicht-EU-Ländern arbeiten?",
+    "expected_contains": [
+      "140",
+      "280",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-health-over-30",
+    "question": "Ich bin 31. Kann ich mich als Student gesetzlich krankenversichern?",
+    "expected_contains": [
+      "privat",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-total-ects",
+    "question": "Wie viele ECTS umfasst der Studiengang insgesamt?",
+    "expected_contains": [
+      "120",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-seminar-paper",
+    "question": "Wie lang soll eine Hausarbeit in einem Modul sein?",
+    "expected_contains": [
+      [
+        "30.000",
+        "30,000",
+        "30 000"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-thesis-writing",
+    "question": "Wie viel Zeit habe ich für die Masterarbeit?",
+    "expected_contains": [
+      [
+        "fünf monate",
+        "5 monate"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-compulsory",
+    "question": "Welche Kurse sind Pflichtkurse?",
+    "expected_contains": [
+      "Advanced Microeconomics",
+      "Econometrics of Policy Evaluation",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "de-deadline-non-eu",
+    "question": "Wann ist die Bewerbungsfrist für Bewerber aus Nicht-EU-Ländern?",
+    "expected_contains": [
+      [
+        "15. juni",
+        "15 juni",
+        "june 15",
+        "15.06"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
+      }
+    ],
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+  },
+  {
+    "id": "mt-deadline-then-eu",
+    "setup": [
+      "What is the application deadline for non-EU applicants?"
+    ],
+    "question": "And for EU applicants?",
+    "expected_contains": [
+      [
+        "july 15",
+        "15 july",
+        "15. july"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-thesis-then-grading",
+    "setup": [
+      "How long do I have to write the Master's thesis?"
+    ],
+    "question": "And how long does the grading take after that?",
+    "expected_contains": [
+      [
+        "six weeks",
+        "6 weeks"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-ticket-then-bike",
+    "setup": [
+      "How do I get the Deutschland semester ticket?"
+    ],
+    "question": "Can I take my bike with it?",
+    "expected_contains": [
+      {
+        "regex": "\\b(no|not|cannot|can't)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-course-then-teacher",
+    "setup": [
+      "What kinds of classes make up the Computational Intelligence II module?"
+    ],
+    "question": "Who teaches it?",
+    "expected_contains": [
+      "Kramer"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-fee-then-pay",
+    "setup": [
+      "How much is the semester contribution?"
+    ],
+    "question": "How do I pay it?",
+    "expected_contains": [
+      "IBAN"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-residence-then-where",
+    "setup": [
+      "Do I need a residence permit as a non-EU student?"
+    ],
+    "question": "Where do I apply for it?",
+    "expected_contains": [
+      "Hochschulservice"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-german-fee-then-pay",
+    "setup": [
+      "Wie hoch ist der Semesterbeitrag?"
+    ],
+    "question": "Und wie bezahle ich ihn?",
+    "expected_contains": [
+      "IBAN",
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "mt-topic-switch",
+    "setup": [
+      "How many times can I retake a failed exam?"
+    ],
+    "question": "When is the university library open on weekends?",
+    "expected_contains": [
+      [
+        "10:00",
+        "10 am"
+      ]
+    ],
+    "expected_absent": [
+      "resit",
+      "retake",
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)"
+      }
+    ],
+    "notes": "Multi-turn (2026-10-12): the follow-up only makes sense with the previous turn; it must be resolved against it, and a topic change must not carry the old topic over."
+  },
+  {
+    "id": "intl-broadcast-fee-amount",
+    "question": "How much is the Rundfunkbeitrag for students?",
+    "expected_contains": [
+      "18.36"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_broadcast_fee"
+    ]
+  },
+  {
+    "id": "intl-broadcast-fee-wg",
+    "question": "I live in a shared flat with two others. Do we all have to pay the broadcast fee?",
+    "expected_contains": [
+      "one"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_broadcast_fee"
+    ]
+  },
+  {
+    "id": "intl-broadcast-fee-exempt",
+    "question": "As an international student, can I get an exemption from the GEZ fee?",
+    "expected_contains": [
+      {
+        "regex": "(generally|normally|usually) (not|pay)|not (be )?possible|no exemption|have to pay|must pay"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_broadcast_fee"
+    ]
+  },
+  {
+    "id": "intl-german-course-cost",
+    "question": "Are the German courses at the university free for me as an AEDS student?",
+    "expected_contains": [
+      {
+        "regex": "free"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_german_courses"
+    ]
+  },
+  {
+    "id": "intl-german-course-placement",
+    "question": "When is the placement test for German courses this winter semester?",
+    "expected_contains": [
+      "29 September"
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_german_courses"
+    ]
+  },
+  {
+    "id": "intl-german-course-levels",
+    "question": "Which German levels does the Language Centre offer and how many credits do I get?",
+    "expected_contains": [
+      "A1.1",
+      "C1.1",
+      {
+        "regex": "6\\s*[-–]\\s*9|6 to 9"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from|(does not|doesn't|do not) (state|contain|specify|mention|provide)|not (stated|specified|covered)"
+      }
+    ],
+    "notes": "Added 2026-10-12 from rundfunkbeitrag.de and uol.de Language Centre, verified against the raw pages.",
+    "expected_source_ids": [
+      "AEDS_website_german_courses"
+    ]
   }
 ]

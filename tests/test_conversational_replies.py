@@ -50,3 +50,16 @@ def test_small_talk_skips_contribution_detection(monkeypatch):
     monkeypatch.setattr(nodes, "could_be_a_contribution", lambda text: pytest.fail("gate ran"))
     state = {"messages": [HumanMessage(content="thanks a lot"), AIMessage(content="You're welcome!")]}
     assert nodes.detect_contribution_node(state) == {"detected_contribution": None}
+
+
+def test_a_follow_up_searches_with_itself_and_the_previous_question():
+    from langchain_core.messages import AIMessage
+
+    messages = [
+        HumanMessage(content="Do I need a residence permit as a non-EU student?"),
+        AIMessage(content="Yes. You also register at the Bürgerbüro within two weeks."),
+        HumanMessage(content="Where do I apply for it?"),
+    ]
+    query = nodes._build_retrieval_query(messages)
+    assert query.splitlines()[0] == "Where do I apply for it?"
+    assert "residence permit" in query and "Bürgerbüro" not in query

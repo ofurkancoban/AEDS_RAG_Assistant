@@ -890,6 +890,33 @@ _ROUTER_SYSTEM_PROMPT = (
 )
 
 
+# The router decision depends only on the question (it is not given the
+# conversation), so it is remembered per normalised question for a day: a
+# repeated question skips a 2-4s model call and its quota. Only the decision
+# is kept - the tool itself runs every time, so a deadline countdown is
+# computed for today. Per process, and bounded.
+_ROUTE_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_ROUTE_CACHE_TTL_S = 24 * 3600
+_ROUTE_CACHE_MAX = 2000
+
+
+def _route_key(question: str) -> str:
+    return re.sub(r"[^a-z0-9äöüß]+", " ", question.casefold()).strip()
+
+
+def _cached_route(question: str) -> list[dict] | None:
+    entry = _ROUTE_CACHE.get(_route_key(question))
+    if entry and time.monotonic() - entry[0] < _ROUTE_CACHE_TTL_S:
+        return entry[1]
+    return None
+
+
+def _remember_route(question: str, tool_calls: list[dict]) -> None:
+    if len(_ROUTE_CACHE) >= _ROUTE_CACHE_MAX:
+        _ROUTE_CACHE.pop(next(iter(_ROUTE_CACHE)))
+    _ROUTE_CACHE[_route_key(question)] = (time.monotonic(), tool_calls)
+
+
 def _route_with_tools(question: str) -> dict | None:
     """LLM-driven routing: replaces what used to be a chain of regex hint-word
     checks (one per fact type - course/professor lookup, person lookup,
@@ -902,17 +929,27 @@ def _route_with_tools(question: str) -> dict | None:
         router_llm, router_model = get_router_llm()
         return _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
 
-    llm_with_tools = _with_resilience(build_router(), rebuild=build_router)
-    try:
-        response = llm_with_tools.invoke(
-            [SystemMessage(content=_ROUTER_SYSTEM_PROMPT), HumanMessage(content=question)]
-        )
-    except Exception:
-        logger.warning("Tool-calling router failed", exc_info=True)
+    tool_calls = _cached_route(question)
+    if tool_calls is None:
+        llm_with_tools = _with_resilience(build_router(), rebuild=build_router)
+        try:
+            response = llm_with_tools.invoke(
+                [SystemMessage(content=_ROUTER_SYSTEM_PROMPT), HumanMessage(content=question)]
+            )
+        except Exception:
+            logger.warning("Tool-calling router failed", exc_info=True)
+            return None
+        tool_calls = [{"name": c["name"], "args": c["args"]} for c in response.tool_calls]
+        _remember_route(question, tool_calls)
+
+    if not tool_calls:
         return None
 
-    if not response.tool_calls:
-        return None
+    class _Calls:  # the code below reads response.tool_calls
+        pass
+
+    response = _Calls()
+    response.tool_calls = tool_calls
 
     # A question can ask about several categories at once (e.g. "deadlines for
     # Non-EU, EU, and German applicants") - the model then emits one tool call
@@ -1446,8 +1483,13 @@ def _build_retrieval_query(messages: list) -> str:
     exchange and pollutes retrieval with unrelated chunks."""
     last_message = messages[-1]
     if _is_context_dependent_followup(last_message.content):
-        recent = messages[-3:]
-        return "\n".join(m.content for m in recent if getattr(m, "content", None))
+        # The follow-up first, then the user's previous question - not the
+        # assistant's previous answer, which named everything it mentioned
+        # and pulled retrieval towards it: after "Do I need a residence
+        # permit?", "Where do I apply for it?" retrieved the Bürgerbüro
+        # registration step above the passage saying where to apply.
+        earlier = [m.content for m in messages[-3:-1] if isinstance(m, HumanMessage) and m.content]
+        return "\n".join([last_message.content, *earlier])
     return last_message.content
 
 

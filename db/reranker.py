@@ -1,4 +1,6 @@
 
+import threading
+
 from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
 
@@ -19,6 +21,15 @@ def _select_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
+
+
+# One forward pass at a time through each resident model (this cross-encoder
+# and the local embedding model in db/chroma_client.py). Speculative
+# retrieval runs searches on several pool threads; concurrent passes through
+# one model on MPS were seen to spin forever in transformers' mask setup
+# (three threads, no progress for 28 minutes). Each pass takes milliseconds,
+# so serialising them costs next to nothing.
+MODEL_LOCK = threading.Lock()
 
 
 @once
@@ -46,7 +57,8 @@ def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
         docs = docs[: settings.rerank_max_candidates]
 
     pairs = [(query, doc.page_content) for doc in docs]
-    scores = get_reranker().predict(pairs)
+    with MODEL_LOCK:
+        scores = get_reranker().predict(pairs)
 
     # Stashed on metadata (not written back to Chroma - these Document objects
     # are transient, freshly read copies) so the Vector Analytics view can show

@@ -79,12 +79,18 @@ class _LocalEmbeddings(Embeddings):
         self._query_instruction = _BGE_QUERY_INSTRUCTION if "bge" in model_name.lower() else ""
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return self._model.encode(texts, convert_to_numpy=True, normalize_embeddings=True).tolist()
+        from db.reranker import MODEL_LOCK
+
+        with MODEL_LOCK:
+            return self._model.encode(texts, convert_to_numpy=True, normalize_embeddings=True).tolist()
 
     def embed_query(self, text: str) -> list[float]:
-        vector = self._model.encode(
-            [self._query_instruction + text], convert_to_numpy=True, normalize_embeddings=True
-        )
+        from db.reranker import MODEL_LOCK
+
+        with MODEL_LOCK:
+            vector = self._model.encode(
+                [self._query_instruction + text], convert_to_numpy=True, normalize_embeddings=True
+            )
         return vector[0].tolist()
 
 

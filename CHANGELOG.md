@@ -7,6 +7,31 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.15] - 2026-10-12
+### Added
+- Documents on the broadcast fee (Rundfunkbeitrag: amount, shared flats,
+  student residences, exemption rules for international students) and on
+  the Language Centre's German courses (free for enrolled students, levels,
+  credits, placement test, registration dates), both checked against the
+  official pages, with six golden cases.
+- Weekly summary to Telegram on Mondays: questions and conversations,
+  unanswered questions, ratings, review queue, latest golden-set score and
+  the document contradiction check (scripts/weekly_report.py).
+- Golden set: 16 German questions and 8 multi-turn conversations.
+### Changed
+- A follow-up question now searches with itself first plus the earlier
+  user questions, without the previous answer. The answer's own wording
+  pulled in unrelated passages ("Where do I apply for it?" after a
+  residence-permit answer that mentioned the Bürgerbüro).
+- Router decisions are cached for 24 hours per normalised question, so a
+  repeated question skips the routing call.
+### Fixed
+- The embedding model and the reranker now run one pass at a time.
+  Speculative retrieval searched on several threads at once, and on Apple
+  Silicon (MPS) three concurrent passes spun forever without progress,
+  hanging the multi-turn eval for 28 minutes. Each pass takes milliseconds,
+  so the lock costs next to nothing.
+
 ## [1.10.14] - 2026-10-12
 ### Changed
 - The number guard now regenerates. Measured in log mode over the full
