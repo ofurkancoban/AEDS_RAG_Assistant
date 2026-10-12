@@ -394,7 +394,7 @@
   {
     "id": "schedule-request-first-semester",
     "setup": [
-      "Can you recommend courses for next semester?"
+      "Can you recommend courses for next WiSe semester?"
     ],
     "question": "1st semester",
     "expected_contains": [
@@ -403,7 +403,7 @@
       "30 ECTS"
     ],
     "expected_absent": [],
-    "notes": "Multi-turn: exercises the deterministic schedule builder (retrieve_node's awaiting_semester_number state machine), not the LLM - a 1st-semester student's recommended term must include both early-pinned compulsory courses and sum to a full 30 ECTS term."
+    "notes": "Multi-turn: exercises the deterministic schedule builder (retrieve_node's awaiting_semester_number state machine), not the LLM - a 1st-semester student's recommended term must include both early-pinned compulsory courses and sum to a full 30 ECTS term. The setup question states WiSe explicitly so the case stays deterministic year-round - since 2026-10, the unstated-season default correctly follows the real calendar (see _current_real_semester_label) rather than always assuming WiSe, which would otherwise make this fixture date-dependent."
   },
   {
     "id": "specialization-component-target",

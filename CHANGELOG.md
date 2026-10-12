@@ -20,6 +20,13 @@ to keep in sync).
   the real calendar (the actual upcoming WiSe or SoSe) instead of always
   assuming WiSe - asking in autumn/winter previously still labelled the
   answer "(WiSe)" even though the real next term is a SoSe.
+### Added
+- "Which courses should I take this semester?" is now answered for the
+  semester actually in progress, not the upcoming one - previously it was
+  silently treated the same as "next semester", which during WiSe could
+  recommend SoSe-only courses for a term that's already running. It also
+  skips the "which semester are you starting?" clarifying question, same as
+  a full-plan request - neither needs it anymore.
 
 ## [1.10.21] - 2026-10-12
 ### Changed

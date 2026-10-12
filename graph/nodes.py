@@ -1393,6 +1393,37 @@ def _current_real_semester_label(today: date | None = None) -> str:
     return f"SoSe{str(year)[-2:]}"
 
 
+def _current_running_semester_label(today: date | None = None) -> str:
+    """The real, calendar-anchored semester actually in progress right now
+    (as opposed to _current_real_semester_label's *upcoming* one) - same
+    format and season boundaries. Used when the question is specifically
+    about 'this semester' / 'the current semester' rather than the default
+    'next semester' planning question."""
+    d = today or date.today()
+    year, month = d.year, d.month
+    if 4 <= month <= 9:
+        return f"SoSe{str(year)[-2:]}"
+    if month >= 10:
+        return f"WiSe{str(year)[-2:]}/{str(year + 1)[-2:]}"
+    return f"WiSe{str(year - 1)[-2:]}/{str(year)[-2:]}"
+
+
+_CURRENT_SEMESTER_HINTS = (
+    "this semester", "this term", "current semester", "currently offered",
+    "right now", "at the moment",
+)
+
+
+def _looks_like_current_semester_request(text: str) -> bool:
+    """True for 'which courses should I take this semester' - the semester
+    already in progress - as opposed to the default, forward-looking 'next
+    semester' planning question. Checked only when _looks_like_schedule_
+    request is already true, so a generic mention of 'currently' elsewhere
+    in an unrelated question never reaches this."""
+    lowered = text.lower()
+    return any(hint in lowered for hint in _CURRENT_SEMESTER_HINTS)
+
+
 def _semester_sort_key(label: str) -> tuple[int, int] | None:
     """'WiSe26/27' -> (2026, 1), 'SoSe26' -> (2026, 0), matching
     scripts/fetch_catalog.py's semester_key ordering (SoSe sorts before WiSe
@@ -1683,10 +1714,17 @@ def _compute_schedule_terms(
 
 
 def _format_schedule_terms(
-    terms: list[tuple[str, list[dict]]], single_term: bool, substitutions: list[dict] | None = None
+    terms: list[tuple[str, list[dict]]],
+    single_term: bool,
+    substitutions: list[dict] | None = None,
+    when: str = "next",
 ) -> str:
+    """when is "next" (the default, forward-looking planning question) or
+    "this" (the question was specifically about the semester already in
+    progress - see _looks_like_current_semester_request); only used for the
+    single-term heading/label text, never the full multi-semester plan."""
     heading = (
-        "Recommended courses for next semester"
+        f"Recommended courses for {when} semester"
         if single_term
         else "Recommended semester-by-semester schedule"
     )
@@ -1695,7 +1733,7 @@ def _format_schedule_terms(
     for i, (term_type, term_courses) in enumerate(terms, start=1):
         subtotal = sum(c["ects"] for c in term_courses)
         grand_total += subtotal
-        label = f"Next semester ({term_type})" if single_term else f"Semester {i} ({term_type})"
+        label = f"{when.capitalize()} semester ({term_type})" if single_term else f"Semester {i} ({term_type})"
         lines.append(f"\n**{label}** - {subtotal} ECTS")
         for course in term_courses:
             # Middle dots separate the attributes so each course stays one
@@ -1903,10 +1941,23 @@ def _build_progress_aware_schedule_answer(
     defaults to the real upcoming one instead of always "WiSe" - without
     this, asking in autumn/winter (when the real next term is a SoSe)
     still labelled the answer "(WiSe)", a calendar-wrong answer regardless
-    of which specific courses it listed."""
+    of which specific courses it listed.
+
+    "Which courses should I take THIS semester" (see
+    _looks_like_current_semester_request) is a different question from the
+    default "next semester" one - it means the term already in progress,
+    not the upcoming one - so it anchors season/real_target_label to
+    _current_running_semester_label instead, and the answer is labelled
+    "this semester" rather than "next semester"."""
     season = _extract_semester_preference(question_text)
     is_full_plan = _looks_like_full_plan_request(question_text)
-    real_target_label = None if is_full_plan else _current_real_semester_label()
+    is_current = not is_full_plan and _looks_like_current_semester_request(question_text)
+    if is_full_plan:
+        real_target_label = None
+    elif is_current:
+        real_target_label = _current_running_semester_label()
+    else:
+        real_target_label = _current_real_semester_label()
     if season is None and real_target_label is not None:
         season = "WiSe" if real_target_label.startswith("WiSe") else "SoSe"
     substitutions: list[dict] = []
@@ -1924,8 +1975,10 @@ def _build_progress_aware_schedule_answer(
     if is_full_plan:
         return _format_schedule_terms(full_terms, single_term=False)
 
-    idx = 0 if exclude_codes else min(max(completed_semesters, 0), len(full_terms) - 1)
-    return _format_schedule_terms(full_terms[idx : idx + 1], single_term=True, substitutions=substitutions)
+    idx = 0 if (exclude_codes or is_current) else min(max(completed_semesters, 0), len(full_terms) - 1)
+    return _format_schedule_terms(
+        full_terms[idx : idx + 1], single_term=True, substitutions=substitutions, when="this" if is_current else "next"
+    )
 
 
 # Document search runs speculatively, in parallel with the tool router.
@@ -2163,11 +2216,18 @@ def retrieve_node(state: RagState) -> dict:
 
     if _looks_like_schedule_request(last_question):
         exclude_codes = _extract_completed_codes(last_question)
-        if exclude_codes:
-            # The ECTS Tracker widget already told us exactly which courses
-            # the student has - no need to ask which semester they're
-            # starting, that question only existed to approximate this.
-            codes_by_category = _extract_completed_codes_by_category(last_question)
+        is_full_plan_request = _looks_like_full_plan_request(last_question)
+        is_current_semester_request = (
+            not is_full_plan_request and _looks_like_current_semester_request(last_question)
+        )
+        if exclude_codes or is_full_plan_request or is_current_semester_request:
+            # None of these need the "which semester are you starting?"
+            # clarifying question: exclude_codes (the ECTS Tracker widget)
+            # already tells us exactly what's done; a full plan spans every
+            # semester regardless of where the student currently is; and
+            # "this semester" is a fixed calendar answer, not one indexed by
+            # progress.
+            codes_by_category = _extract_completed_codes_by_category(last_question) if exclude_codes else None
             answer_text = _build_progress_aware_schedule_answer(
                 last_question, 0, exclude_codes=exclude_codes, codes_by_category=codes_by_category
             )

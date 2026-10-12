@@ -436,3 +436,85 @@ class TestDefaultSeasonMatchesRealCalendar:
         assert answer is not None
         assert "(WiSe)" in answer
         assert "wisecourse" in answer
+
+
+class TestCurrentSemesterRequest:
+    def test_looks_like_current_semester_request_detects_this_semester_phrasing(self):
+        assert nodes._looks_like_current_semester_request("Which courses should I take this semester?")
+        assert nodes._looks_like_current_semester_request("What's offered currently?") is False
+        assert nodes._looks_like_current_semester_request("What should I take this term?")
+
+    def test_default_next_semester_question_is_not_treated_as_current(self):
+        assert nodes._looks_like_current_semester_request("What should I take next semester?") is False
+
+    def test_current_running_semester_label_during_wise(self):
+        assert nodes._current_running_semester_label(date(2026, 11, 1)) == "WiSe26/27"
+        assert nodes._current_running_semester_label(date(2027, 2, 1)) == "WiSe26/27"
+
+    def test_current_running_semester_label_during_sose(self):
+        assert nodes._current_running_semester_label(date(2026, 6, 15)) == "SoSe26"
+
+    def test_this_semester_answer_is_labelled_this_not_next(self, monkeypatch):
+        catalog = [_course("wisecourse", "specialization", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_running_semester_label", lambda: "WiSe26/27")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "Which courses should I take this semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "this semester" in answer.lower()
+        assert "next semester" not in answer.lower()
+        assert "wisecourse" in answer
+
+    def test_this_semester_uses_the_running_not_the_upcoming_term(self, monkeypatch):
+        # During WiSe, "this semester" must anchor to the WiSe courses, not
+        # the upcoming SoSe that "next semester" would use.
+        catalog = [
+            _course("wisecourse", "specialization", 6, offering="WiSe"),
+            _course("sosecourse", "specialization", 6, offering="SoSe"),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_running_semester_label", lambda: "WiSe26/27")
+        monkeypatch.setattr(nodes, "_current_real_semester_label", lambda: "SoSe27")
+        answer = nodes._build_progress_aware_schedule_answer(
+            "Which courses should I take this semester?", completed_semesters=0
+        )
+        assert answer is not None
+        assert "wisecourse" in answer
+        assert "sosecourse" not in answer
+
+    def test_retrieve_node_skips_the_clarifying_question_for_this_semester(self, monkeypatch):
+        catalog = [_course("wisecourse", "specialization", 6, offering="WiSe")]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+        monkeypatch.setattr(nodes, "_current_running_semester_label", lambda: "WiSe26/27")
+
+        class FakeMessage:
+            def __init__(self, content):
+                self.content = content
+
+        state = {"messages": [FakeMessage("Which courses should I take this semester?")]}
+        result = nodes.retrieve_node(state)
+        assert result["awaiting_semester_number"] is False
+        assert result["direct_answer"] is not None
+        assert "wisecourse" in result["direct_answer"]
+
+    def test_retrieve_node_skips_the_clarifying_question_for_full_plan(self, monkeypatch):
+        catalog = [
+            _course("wisecourse", "economics", 6, compulsory=True, offering="WiSe"),
+            _course("mam", "thesis", 30, compulsory=True),
+        ]
+        monkeypatch.setattr(nodes, "get_catalog_courses", lambda: catalog)
+
+        class FakeMessage:
+            def __init__(self, content):
+                self.content = content
+
+        state = {
+            "messages": [
+                FakeMessage("Can you make a schedule for the full programme, all the way until graduation?")
+            ]
+        }
+        result = nodes.retrieve_node(state)
+        assert result["awaiting_semester_number"] is False
+        assert result["direct_answer"] is not None
+        assert "Semester" in result["direct_answer"]
