@@ -1659,7 +1659,8 @@ def _build_ects_progress_answer(text: str) -> str | None:
 _GPA_HINTS = (
     "what is my gpa", "what's my gpa", "my current gpa", "my overall gpa",
     "my average grade", "my grade average", "how is my gpa", "my gpa in",
-    "my gpa for",
+    "my gpa for", "my target gpa", "grade do i need", "average do i need",
+    "grades do i need", "average grade do i need",
 )
 
 
@@ -1680,22 +1681,33 @@ _OVERALL_GPA_RE = re.compile(r"Overall GPA:\s*([\d.]+)")
 _CATEGORY_GPA_RE = re.compile(
     r"^(?P<name>[^(\n]+?)\s*\(\d+(?:/\d+)?\s*ECTS\)[^\n]*?GPA:\s*(?P<gpa>[\d.]+)", re.MULTILINE
 )
+_TARGET_GPA_RE = re.compile(
+    r"Target GPA:\s*(?P<target>[\d.]+)\s*\(need average (?P<required>[\d.]+) in remaining "
+    r"(?P<remaining_ects>\d+) ECTS to reach this\)"
+)
 
 
 def _build_gpa_answer(text: str) -> str | None:
-    """Builds a direct answer from the widget's own 'Overall GPA: X' and
-    per-category 'GPA: X' lines (see aedsRagBuildCourseContext9) - returns
-    None when neither is present (no course-context toggle on, or no
-    graded completed courses yet), letting the caller fall back to the
-    regular LLM/RAG answer."""
+    """Builds a direct answer from the widget's own 'Overall GPA: X',
+    per-category 'GPA: X', and 'Target GPA: X (need average Y in remaining
+    Z ECTS to reach this)' lines (see aedsRagBuildCourseContext9) - returns
+    None when none of them are present (no course-context toggle on, no
+    graded completed courses yet, or no Target GPA set in the tracker),
+    letting the caller fall back to the regular LLM/RAG answer."""
     overall_match = _OVERALL_GPA_RE.search(text)
     category_matches = list(_CATEGORY_GPA_RE.finditer(text))
-    if not overall_match and not category_matches:
+    target_match = _TARGET_GPA_RE.search(text)
+    if not overall_match and not category_matches and not target_match:
         return None
 
     lines = []
     if overall_match:
         lines.append(f"Your current overall GPA is **{overall_match.group(1)}** (German scale, 1.0 best - 5.0 fail).")
+    if target_match:
+        lines.append(
+            f"To reach your target GPA of **{target_match.group('target')}**, you need an average of "
+            f"**{target_match.group('required')}** across your remaining **{target_match.group('remaining_ects')} ECTS**."
+        )
     if category_matches:
         lines.append("")
         lines.append("### GPA by category")

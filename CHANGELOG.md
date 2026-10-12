@@ -7,6 +7,16 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.31] - 2026-10-12
+### Added
+- "What grade do I need in my remaining courses?" is now answered from the
+  ECTS Tracker widget's own Target GPA field - the widget sends a "Target
+  GPA: X (need average Y in remaining Z ECTS to reach this)" line, computed
+  with the exact same formula its own UI already uses, and the assistant
+  states it directly rather than needing to attempt that arithmetic itself.
+  No Target GPA set in the tracker falls back to the regular GPA answer (or
+  the general LLM/RAG answer) as before.
+
 ## [1.10.30] - 2026-10-12
 ### Fixed
 - The system prompt now explicitly tells the model that a "My ECTS Tracker

@@ -924,6 +924,33 @@ class TestGpaAnswer:
         context = "Empirical Methods (6/18 ECTS) - completed: wir894\nWhat is my GPA?"
         assert nodes._build_gpa_answer(context) is None
 
+    def test_target_gpa_required_average_is_parsed(self):
+        context = (
+            "Overall GPA: 1.43 (German scale, 1.0 best - 5.0 fail)\n"
+            "Target GPA: 1.50 (need average 1.51 in remaining 102 ECTS to reach this)\n"
+            "What grade do I need to reach my target GPA?"
+        )
+        answer = nodes._build_gpa_answer(context)
+        assert answer is not None
+        assert "target GPA of **1.50**" in answer
+        assert "average of **1.51**" in answer
+        assert "remaining **102 ECTS**" in answer
+
+    def test_no_target_gpa_set_omits_that_line(self):
+        context = "Overall GPA: 1.43 (German scale, 1.0 best - 5.0 fail)\nWhat is my GPA?"
+        answer = nodes._build_gpa_answer(context)
+        assert answer is not None
+        assert "target GPA" not in answer.lower()
+
+    def test_target_gpa_alone_without_overall_still_answers(self):
+        # Edge case: a Target GPA line with no "Overall GPA:" line at all
+        # (e.g. no graded courses yet, just a target set) must still
+        # produce an answer rather than falling through to the LLM.
+        context = "Target GPA: 1.50 (need average 1.50 in remaining 120 ECTS to reach this)\nWhat grade do I need?"
+        answer = nodes._build_gpa_answer(context)
+        assert answer is not None
+        assert "target GPA of **1.50**" in answer
+
 
 class TestLooksLikeGpaRequest:
     def test_matches_real_phrasings(self):
