@@ -7,6 +7,34 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.16] - 2026-10-12
+### Added
+- /review in the Telegram admin bot: pending answers one at a time, most
+  asked first, with their sources; Approve, Reject or Skip sends the next
+  one straight away.
+- Thumbs-down ratings become draft test cases on Sundays, next to the ones
+  from review decisions, with the downvoted answer's figures as candidates
+  to rule out.
+- Nightly retrieval check (golden set through the real search, no LLM
+  calls): a Telegram alert when recall or source hits drop, for example
+  after the source refresh re-ingested a changed document.
+- Time to the first word on screen and the router step's time (or a router
+  cache hit) are logged per answer; the weekly summary gives p50/p95 answer
+  time, first-word time and the router cache rate.
+### Changed
+- A model OpenRouter reports as unavailable is skipped for 6 hours, going
+  straight to the fallback model, with one Telegram alert. Until now every
+  question paid for a failed call first and the daily check noticed a day
+  later (Kilo withdrew apodex on 2026-10-12).
+- The retrieval eval checks tool-answered questions (deadlines,
+  examinations office, course catalog) against the tool's output instead of
+  the search, which never sees that data: 73/73 context recall and 59/59
+  source hits. The deploy gate rises from 88%/95% to 96%/96%.
+### Fixed
+- Test cases mined on the server were deleted by the next deploy (rsync
+  --delete over tests/). Drafts now live in data/eval/case_drafts.json,
+  which deploys leave alone.
+
 ## [1.10.15] - 2026-10-12
 ### Added
 - Documents on the broadcast fee (Rundfunkbeitrag: amount, shared flats,

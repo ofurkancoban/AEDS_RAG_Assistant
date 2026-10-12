@@ -40,3 +40,25 @@ def report_stage(stage: str) -> None:
     except Exception:
         # Progress is cosmetic; it must never fail an answer.
         pass
+
+
+# Sub-step timings a node records about itself (the router call inside
+# retrieve), merged into that turn's node_latencies by the node wrapper so
+# they reach query_log alongside the per-node figures.
+_timings: ContextVar[dict | None] = ContextVar("node_sub_timings", default=None)
+
+
+def start_timings():
+    return _timings.set({})
+
+
+def record_timing(name: str, elapsed_ms: float) -> None:
+    timings = _timings.get()
+    if timings is not None:
+        timings[name] = round(elapsed_ms, 1)
+
+
+def finish_timings(token) -> dict:
+    timings = _timings.get() or {}
+    _timings.reset(token)
+    return timings

@@ -23,9 +23,18 @@ and capitalised names - because those are what the existing golden set asserts
 on and what this model actually gets wrong. Extracting arbitrary prose would
 produce assertions that fail on harmless rewording.
 
-Output goes to tests/golden_qa_review.json, which tests/eval_golden.py loads
-alongside the hand-written set. Existing entries are never overwritten, so
-hand-trimmed assertions survive re-runs; use --overwrite to rebuild one.
+It also mines thumbs-down ratings (query_log.rating = -1) on answers that
+never reached the review queue: the first question of a conversation, still
+personal-free, with the hard facts of the downvoted answer as candidate
+expected_absent terms and needs_review set, like a rejection.
+
+New cases go to data/eval/case_drafts.json, not to the committed
+tests/golden_qa_review.json: scripts/deploy.sh rsyncs tests/ with --delete
+(and leaves data/ alone), so cases mined on the server used to be wiped by
+the next deploy. A human trims a draft and moves it into
+tests/golden_qa_review.json, which tests/eval_golden.py loads alongside the
+hand-written set. A case already in either file is never overwritten, so
+hand-trimmed assertions survive re-runs; --overwrite rebuilds drafts only.
 
 Usage:
     PYTHONPATH=. python scripts/export_review_cases.py
@@ -43,9 +52,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from db.models import AnswerStatus, CachedAnswer, SessionLocal  # noqa: E402
+from config import settings  # noqa: E402
+from db.models import AnswerStatus, CachedAnswer, QueryLog, SessionLocal  # noqa: E402
 
-OUTPUT_PATH = Path(__file__).resolve().parent.parent / "tests" / "golden_qa_review.json"
+REVIEW_SET_PATH = Path(__file__).resolve().parent.parent / "tests" / "golden_qa_review.json"
+DRAFTS_PATH = settings.documents_dir.parent / "eval" / "case_drafts.json"
 
 # Markdown emphasis is stripped before matching by the eval runner, so it must
 # be stripped here too or an extracted term would carry markers the runner has
@@ -169,18 +180,58 @@ def build_case(row: CachedAnswer) -> dict | None:
     return case
 
 
-def load_existing() -> list[dict]:
-    if not OUTPUT_PATH.exists():
+def build_downvote_case(session, entry: QueryLog) -> dict | None:
+    """A draft case from a thumbs-down on an answer, or None when the rating
+    carries nothing testable: a follow-up (meaningless without the turns
+    before it), a student's own progress or small talk, or an answer that
+    is no longer in the conversation history."""
+    from db.answer_flags import _answer_text
+    from db.semantic_cache import is_reusable_question
+
+    first_in_thread = (
+        session.query(QueryLog.id).filter(QueryLog.thread_id == entry.thread_id).order_by(QueryLog.id).first()
+    )
+    if first_in_thread is None or first_in_thread[0] != entry.id:
+        return None
+    if not is_reusable_question(entry.question):
+        return None
+    answer = _answer_text(session, entry)
+    if not answer:
+        return None
+    case = {
+        "id": f"downvoted-{entry.id}",
+        "question": entry.question,
+        "expected_contains": [],
+        "expected_absent": extract_facts(answer),
+        "needs_review": True,
+        "notes": (
+            "Derived from a student's thumbs-down on query #%d (%s). expected_absent "
+            "lists the hard facts of the downvoted answer as candidates only - delete "
+            "any that were correct, add what the answer should have said."
+            % (entry.id, entry.created_at.strftime("%Y-%m-%d") if entry.created_at else "?")
+        ),
+    }
+    if entry.source_ids:
+        case["expected_source_ids"] = sorted({s for s in entry.source_ids.split(",") if s})
+    return case
+
+
+def _read(path: Path) -> list[dict]:
+    if not path.exists():
         return []
-    return json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_existing() -> list[dict]:
+    return _read(REVIEW_SET_PATH) + _read(DRAFTS_PATH)
 
 
 def mine_review_cases(overwrite: bool = False, dry_run: bool = False) -> dict:
     """The actual work, independent of argparse, so other code (see
     scripts/eval_and_notify.py) can call this directly without going through
     a CLI invocation. Returns the summary counts main() prints."""
-    existing = load_existing()
-    by_id = {case["id"]: case for case in existing}
+    committed = {case["id"] for case in _read(REVIEW_SET_PATH)}
+    drafts = {case["id"]: case for case in _read(DRAFTS_PATH)}
 
     session = SessionLocal()
     try:
@@ -191,25 +242,34 @@ def mine_review_cases(overwrite: bool = False, dry_run: bool = False) -> dict:
             .all()
         )
         built = [case for case in (build_case(row) for row in rows) if case]
+        downvoted = session.query(QueryLog).filter(QueryLog.rating == -1).order_by(QueryLog.id).all()
+        reviewed_questions = {case["question"].strip().lower() for case in built}
+        for entry in downvoted:
+            case = build_downvote_case(session, entry)
+            # A reviewed answer to the same question already yields a better
+            # case (the admin's correction or rejection).
+            if case and case["question"].strip().lower() not in reviewed_questions:
+                built.append(case)
     finally:
         session.close()
 
     added, refreshed, skipped = 0, 0, 0
     for case in built:
-        if case["id"] in by_id and not overwrite:
+        if case["id"] in committed or (case["id"] in drafts and not overwrite):
             skipped += 1
             continue
-        if case["id"] in by_id:
+        if case["id"] in drafts:
             refreshed += 1
         else:
             added += 1
-        by_id[case["id"]] = case
+        drafts[case["id"]] = case
 
-    merged = sorted(by_id.values(), key=lambda c: c["id"])
+    merged = sorted(drafts.values(), key=lambda c: c["id"])
     needs_review = sum(1 for c in merged if c.get("needs_review"))
 
     if not dry_run:
-        OUTPUT_PATH.write_text(
+        DRAFTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DRAFTS_PATH.write_text(
             json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
 
@@ -242,7 +302,7 @@ def main() -> int:
     print(f"new                       : {result['added']}")
     print(f"refreshed (--overwrite)   : {result['refreshed']}")
     print(f"kept as-is                : {result['skipped']}")
-    print(f"total in file             : {result['total']} ({result['needs_review']} still need human trimming)")
+    print(f"drafts                    : {result['total']} ({result['needs_review']} still need human trimming)")
 
     if args.dry_run:
         print("\n--dry-run: nothing written")
@@ -250,7 +310,7 @@ def main() -> int:
             print(json.dumps(case, indent=2, ensure_ascii=False))
         return 0
 
-    print(f"\nwrote {OUTPUT_PATH}")
+    print(f"\nwrote {DRAFTS_PATH}")
     return 0
 
 

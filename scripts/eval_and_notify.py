@@ -50,22 +50,16 @@ from tests.eval_golden import load_cases, run  # noqa: E402
 
 
 def main() -> int:
-    # Mined first so a review decision made since the last run (an admin
-    # correcting or rejecting an answer) is already reflected in this same
-    # eval pass, not just the next one. Existing hand-trimmed cases are never
-    # touched (overwrite=False) - only genuinely new review outcomes are
-    # added. This writes tests/golden_qa_review.json on the machine running
-    # the cron job (the VPS); it is not committed to git automatically, so a
-    # human still has to pull it down and commit it for CI and future local
-    # runs to see it, and to trim any new needs_review case's candidate
-    # assertions before they count for anything (see eval_golden.load_cases,
-    # which skips needs_review entries).
+    # Mined first: review decisions and thumbs-down ratings since the last
+    # run become draft cases in data/eval/case_drafts.json on the server (not
+    # rsynced, so a deploy no longer wipes them). Drafts are not run: a human
+    # trims one and moves it into tests/golden_qa_review.json, which is.
     mined = mine_review_cases()
     if mined["added"]:
         _notify_admins(
-            f"Golden eval: mined {mined['added']} new regression case(s) from "
-            f"reviewed answers ({mined['needs_review']} total still need human "
-            f"trimming). Pull tests/golden_qa_review.json and commit it."
+            f"Golden eval: {mined['added']} new draft case(s) from reviewed or downvoted "
+            f"answers ({mined['needs_review']} drafts waiting in data/eval/case_drafts.json). "
+            "Trim one and move it into tests/golden_qa_review.json to make it count."
         )
 
     config = get_runtime_config()

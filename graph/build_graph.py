@@ -31,18 +31,24 @@ def _with_latency_logging(node_name: str, fn):
     def wrapper(state, config: RunnableConfig):
         reporter = (config or {}).get("configurable", {}).get("report_stage")
         token = progress.set_reporter(reporter)
+        timings_token = progress.start_timings()
         start = time.monotonic()
         try:
             result = fn(state)
         finally:
             progress.reset_reporter(token)
+            sub_timings = progress.finish_timings(timings_token)
         elapsed_ms = (time.monotonic() - start) * 1000
         logger.info("node=%s latency_ms=%.0f", node_name, elapsed_ms)
         # Also surfaced in the API response (see run_chat/stream_chat) for the
         # Vector Analytics view's "Last Query Latency" breakdown - a real
         # per-node timing instead of the prototype's single fabricated number.
         result = dict(result)
-        result["node_latencies"] = {**state.get("node_latencies", {}), node_name: round(elapsed_ms, 1)}
+        result["node_latencies"] = {
+            **state.get("node_latencies", {}),
+            **sub_timings,
+            node_name: round(elapsed_ms, 1),
+        }
         return result
 
     wrapper.__name__ = getattr(fn, "__name__", node_name)

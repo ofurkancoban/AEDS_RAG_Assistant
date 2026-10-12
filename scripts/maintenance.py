@@ -423,6 +423,22 @@ def main() -> int:
         except Exception as exc:  # never let this fail the backups above
             print(f"  model check failed: {exc}")
 
+    # Nightly, after source_refresh.py (03:00) may have re-ingested a changed
+    # document: the golden set through the real search and reranker, no LLM
+    # calls, so no quota. Alerts only when it drops below the deploy floors.
+    if not args.dry_run:
+        print("retrieval check:")
+        try:
+            from api.telegram_bot import _notify_admins
+            from tests.eval_retrieval import nightly_check
+
+            alert = nightly_check()
+            print("  " + (alert.splitlines()[0] if alert else "ok"))
+            if alert:
+                _notify_admins(alert)
+        except Exception as exc:  # never let this fail the backups above
+            print(f"  retrieval check failed: {exc}")
+
     # Weekly (Sundays): documents that state different values for the same
     # fact, which no single document shows (scripts/check_contradictions.py).
     if not args.dry_run and datetime.now().weekday() == 6:

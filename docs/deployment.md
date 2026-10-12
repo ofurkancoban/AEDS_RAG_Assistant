@@ -65,8 +65,8 @@ response (this shipped once already, for `/version`).
 ```
 0 2 * * *    scripts/update_catalog.py       - refreshes the course catalog cache
 0 3 * * *    scripts/source_refresh.py       - checks source documents for changes, notifies on drift
-30 3 * * *   scripts/maintenance.py          - backs up app.db and data/chroma, prunes old checkpoints/history
-0 5 * * 0    scripts/eval_and_notify.py      - mines new regression cases from admin review decisions, then runs the golden-set quality eval and alerts on regression (Sundays only)
+30 3 * * *   scripts/maintenance.py          - backs up app.db and data/chroma, prunes old checkpoints/history, checks the LLM models and retrieval quality (golden set, no LLM calls); contradiction check on Sundays, weekly summary on Mondays
+0 5 * * 0    scripts/eval_and_notify.py      - drafts regression cases from admin review decisions and thumbs-down ratings (data/eval/case_drafts.json), then runs the golden-set quality eval and alerts on regression (Sundays only)
 */15 * * * * scripts/system_health_check.py  - checks VPS disk/memory/load, alerts on breach and on recovery
 ```
 

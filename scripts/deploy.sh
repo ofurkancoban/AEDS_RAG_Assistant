@@ -23,12 +23,15 @@ cd "$REPO_ROOT"
 # through the real search and reranker with no LLM calls (no quota), against
 # the local index - which matches production when data/documents was synced
 # as part of the change. Catches a document, chunking or reranker change
-# that stops the right passages reaching the model. Thresholds sit a little
-# under the values measured 2026-10-11 (context recall 92%, source hits 98%).
+# that stops the right passages reaching the model. Measured 2026-10-12 at
+# 100% on both once tool-answered cases are checked against their tool
+# (context recall 73/73, source hits 59/59); the thresholds allow one or two
+# misses on each before blocking. Same floors as tests/eval_retrieval.py's
+# MIN_RECALL / MIN_SOURCE_HIT, which the nightly check uses.
 # SKIP_RETRIEVAL_CHECK=1 skips it, e.g. to ship an urgent fix.
 if [ "${SKIP_RETRIEVAL_CHECK:-0}" != "1" ]; then
   echo "==> Retrieval check (golden set, no LLM calls)"
-  if ! PYTHONPATH=. .venv/bin/python -m tests.eval_retrieval --min-recall 0.88 --min-source-hit 0.95 2>/dev/null | tail -3; then
+  if ! PYTHONPATH=. .venv/bin/python -m tests.eval_retrieval --min-recall 0.96 --min-source-hit 0.96 2>/dev/null | tail -3; then
     echo "Retrieval quality is below the threshold - not deploying. SKIP_RETRIEVAL_CHECK=1 overrides." >&2
     exit 1
   fi

@@ -440,6 +440,8 @@ def chat_stream(
     def event_stream():
         answer_parts: list[str] = []
         log_id = None
+        # What the student actually waits for: the first word on screen.
+        first_token_ms = None
 
         for event_type, data in stream_chat(
             thread_id=thread_id,
@@ -450,6 +452,8 @@ def chat_stream(
                 yield f"event: stage\ndata: {json.dumps(data)}\n\n"
                 continue
             if event_type == "token":
+                if first_token_ms is None:
+                    first_token_ms = round((time.monotonic() - started) * 1000, 1)
                 answer_parts.append(data["text"])
                 yield f"event: token\ndata: {json.dumps(data)}\n\n"
                 continue
@@ -511,7 +515,10 @@ def chat_stream(
                 latency_ms=int((time.monotonic() - started) * 1000),
                 served_from_cache=False,
                 origin=origin,
-                node_latencies=data.get("node_latencies"),
+                node_latencies={
+                    **(data.get("node_latencies") or {}),
+                    **({"first_token": first_token_ms} if first_token_ms is not None else {}),
+                },
                 retrieval=data.get("retrieval", []),
             )
 

@@ -113,7 +113,8 @@ def _export(tmp_path, monkeypatch, argv):
     from scripts import export_review_cases
 
     output = tmp_path / "golden_qa_review.json"
-    monkeypatch.setattr(export_review_cases, "OUTPUT_PATH", output)
+    monkeypatch.setattr(export_review_cases, "DRAFTS_PATH", output)
+    monkeypatch.setattr(export_review_cases, "REVIEW_SET_PATH", tmp_path / "committed.json")
     monkeypatch.setattr(sys, "argv", ["export_review_cases.py", *argv])
     export_review_cases.main()
     return output

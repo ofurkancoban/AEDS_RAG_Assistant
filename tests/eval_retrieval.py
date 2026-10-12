@@ -12,7 +12,13 @@ things about the passages that would reach the model:
 
 Multi-turn cases (with "setup" messages) and German questions are skipped:
 the first depends on conversation state, the second needs the LLM
-translation step before search.
+translation step before search. So is a case marked "retrieval": false (an
+off-topic question the model must refuse: there is nothing to retrieve).
+
+A case answered by a router tool in production (application deadlines, the
+examinations office, the course catalog) names that call in "tool_call";
+its facts are checked against the tool's output instead of the search,
+which never sees that data.
 
 Usage:
     python -m tests.eval_retrieval
@@ -30,21 +36,38 @@ from tests.eval_golden import _matches, _normalize_for_matching, load_cases
 def evaluate(cases: list[dict]) -> list[dict]:
     from db.chroma_client import hybrid_search
     from db.reranker import rerank
-    from graph.nodes import _conversational_reply, _looks_german
+    from graph.nodes import _TOOL_NAME_TO_FUNC, _conversational_reply, _looks_german
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
     rows = []
     for case in cases:
         # Small talk is answered before any search, so it has nothing to measure.
-        if case.get("setup") or _looks_german(case["question"]) or _conversational_reply(case["question"]):
+        if case.get("setup") or case.get("retrieval") is False:
+            continue
+        if _looks_german(case["question"]) or _conversational_reply(case["question"]):
+            continue
+        facts = case.get("expected_contains", [])
+        if case.get("tool_call"):
+            call = case["tool_call"]
+            output = _normalize_for_matching(_TOOL_NAME_TO_FUNC[call["name"]].invoke(call.get("args", {})))
+            missing = [term for term in facts if not _matches(term, output)]
+            rows.append(
+                {
+                    "id": case["id"],
+                    "recall": not missing and bool(facts),
+                    "has_facts": bool(facts),
+                    "missing": missing,
+                    "source_hit": None,
+                    "retrieved": [f"tool:{call['name']}"],
+                }
+            )
             continue
         docs = rerank(case["question"], hybrid_search(case["question"], k=config.retrieval_top_k), config.rerank_top_k)
         context = _normalize_for_matching(
             "\n".join(doc.metadata.get("parent_content") or doc.page_content for doc in docs)
         )
         retrieved = {doc.metadata.get("source_id") for doc in docs}
-        facts = case.get("expected_contains", [])
         missing = [term for term in facts if not _matches(term, context)]
         sources = case.get("expected_source_ids")
         source_hit = None
@@ -76,6 +99,37 @@ def summarize(rows: list[dict]) -> str:
     )
 
 
+# The deploy gate and the nightly check (scripts/maintenance.py) use the same
+# floors: measured 2026-10-12 at 73/73 and 59/59.
+MIN_RECALL = 0.96
+MIN_SOURCE_HIT = 0.96
+
+
+def shares(rows: list[dict]) -> tuple[float, float]:
+    with_facts = [r for r in rows if r["has_facts"]]
+    with_sources = [r for r in rows if r["source_hit"] is not None]
+    recall = sum(r["recall"] for r in with_facts) / max(1, len(with_facts))
+    hits = sum(bool(r["source_hit"]) for r in with_sources) / max(1, len(with_sources))
+    return recall, hits
+
+
+def nightly_check() -> str | None:
+    """None when retrieval is at its floors, else an alert naming what the
+    search stopped finding - after a document was re-ingested by the source
+    refresh, say, rather than at the next deploy or Sunday's golden run."""
+    rows = evaluate(load_cases(include_review=False))
+    recall, hits = shares(rows)
+    if recall >= MIN_RECALL and hits >= MIN_SOURCE_HIT:
+        return None
+    lines = [f"Retrieval check below its floor: {summarize(rows)}"]
+    for row in rows:
+        if row["has_facts"] and not row["recall"]:
+            lines.append(f"- {row['id']}: missing {row['missing']}")
+        elif row["source_hit"] is False:
+            lines.append(f"- {row['id']}: expected source not retrieved (got {', '.join(row['retrieved'])})")
+    return "\n".join(lines[:15])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", default=None, help="Write per-case results as JSON to this path")
@@ -91,10 +145,7 @@ def main():
     if args.report:
         Path(args.report).write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    with_facts = [r for r in rows if r["has_facts"]]
-    with_sources = [r for r in rows if r["source_hit"] is not None]
-    recall = sum(r["recall"] for r in with_facts) / max(1, len(with_facts))
-    hits = sum(bool(r["source_hit"]) for r in with_sources) / max(1, len(with_sources))
+    recall, hits = shares(rows)
     too_low = []
     if args.min_recall is not None and recall < args.min_recall:
         too_low.append(f"context recall {recall:.0%} < {args.min_recall:.0%}")

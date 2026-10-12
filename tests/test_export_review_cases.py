@@ -84,7 +84,8 @@ def test_mine_review_cases_writes_only_buildable_cases(tmp_path, monkeypatch):
     import scripts.export_review_cases as mod
 
     output = tmp_path / "golden_qa_review.json"
-    monkeypatch.setattr(mod, "OUTPUT_PATH", output)
+    monkeypatch.setattr(mod, "DRAFTS_PATH", output)
+    monkeypatch.setattr(mod, "REVIEW_SET_PATH", tmp_path / "committed.json")
 
     session = SessionLocal()
     try:
@@ -110,7 +111,8 @@ def test_mine_review_cases_dry_run_writes_nothing(tmp_path, monkeypatch):
     import scripts.export_review_cases as mod
 
     output = tmp_path / "golden_qa_review.json"
-    monkeypatch.setattr(mod, "OUTPUT_PATH", output)
+    monkeypatch.setattr(mod, "DRAFTS_PATH", output)
+    monkeypatch.setattr(mod, "REVIEW_SET_PATH", tmp_path / "committed.json")
 
     session = SessionLocal()
     try:
@@ -130,9 +132,8 @@ def test_mine_review_cases_keeps_hand_trimmed_cases_unless_overwrite(tmp_path, m
     import scripts.export_review_cases as mod
 
     output = tmp_path / "golden_qa_review.json"
-    hand_trimmed = [{"id": "review-corrected-1", "question": "x", "expected_contains": ["kept"]}]
-    output.write_text(json.dumps(hand_trimmed))
-    monkeypatch.setattr(mod, "OUTPUT_PATH", output)
+    monkeypatch.setattr(mod, "DRAFTS_PATH", output)
+    monkeypatch.setattr(mod, "REVIEW_SET_PATH", tmp_path / "committed.json")
 
     session = SessionLocal()
     try:
@@ -146,11 +147,72 @@ def test_mine_review_cases_keeps_hand_trimmed_cases_unless_overwrite(tmp_path, m
     finally:
         session.close()
 
-    monkeypatch.setattr(mod, "load_existing", lambda: [
+    output.write_text(json.dumps([
         {"id": f"review-corrected-{real_id}", "question": "x", "expected_contains": ["kept"]}
-    ])
+    ]))
 
     result = mine_review_cases()
     assert result["skipped"] == 1
     written = json.loads(output.read_text())
     assert written[0]["expected_contains"] == ["kept"]
+
+
+def _rated_turn(session, thread_id, question, answer, rating):
+    from db.models import ChatMessage, QueryLog, User
+
+    user = session.query(User).first()
+    if user is None:
+        user = User(email="student@example.org", hashed_password="x")
+        session.add(user)
+        session.flush()
+    session.add(ChatMessage(thread_id=thread_id, user_id=user.id, role="user", content=question))
+    session.add(ChatMessage(thread_id=thread_id, user_id=user.id, role="assistant", content=answer))
+    entry = QueryLog(question=question, thread_id=thread_id, user_id=user.id, rating=rating, source_ids="AEDS_x")
+    session.add(entry)
+    session.flush()
+    return entry.id
+
+
+def test_a_downvoted_first_question_becomes_a_draft(tmp_path, monkeypatch):
+    import scripts.export_review_cases as mod
+
+    drafts = tmp_path / "case_drafts.json"
+    monkeypatch.setattr(mod, "DRAFTS_PATH", drafts)
+    monkeypatch.setattr(mod, "REVIEW_SET_PATH", tmp_path / "committed.json")
+
+    session = SessionLocal()
+    try:
+        bad = _rated_turn(session, "t-down", "How long is the thesis?", "You have 9 months and 45 ECTS.", -1)
+        _rated_turn(session, "t-down", "And the colloquium?", "It is graded with 2 ECTS.", -1)  # follow-up
+        _rated_turn(session, "t-up", "When is the deadline?", "15 July 2026.", 1)
+        session.commit()
+    finally:
+        session.close()
+
+    result = mine_review_cases()
+
+    written = {case["id"]: case for case in json.loads(drafts.read_text())}
+    assert list(written) == [f"downvoted-{bad}"]
+    case = written[f"downvoted-{bad}"]
+    assert case["needs_review"] is True
+    assert "45 ECTS" in case["expected_absent"]
+    assert case["expected_source_ids"] == ["AEDS_x"]
+    assert result["added"] == 1
+
+
+def test_a_case_already_committed_is_not_drafted_again(tmp_path, monkeypatch):
+    import scripts.export_review_cases as mod
+
+    session = SessionLocal()
+    try:
+        bad = _rated_turn(session, "t-done", "How long is the thesis?", "You have 9 months.", -1)
+        session.commit()
+    finally:
+        session.close()
+
+    committed = tmp_path / "committed.json"
+    committed.write_text(json.dumps([{"id": f"downvoted-{bad}", "question": "x", "expected_contains": ["6 months"]}]))
+    monkeypatch.setattr(mod, "REVIEW_SET_PATH", committed)
+    monkeypatch.setattr(mod, "DRAFTS_PATH", tmp_path / "case_drafts.json")
+
+    assert mine_review_cases()["added"] == 0

@@ -335,7 +335,73 @@ def _with_fallback(
     fallback = _get_openrouter_llm_cached(fallback_model, purpose)
     if tools:
         fallback = fallback.bind_tools(tools)
-    return runnable.with_fallbacks([fallback])
+    if _model_is_gone(primary) and not _model_is_gone(fallback_model):
+        # Known withdrawn: go straight to the fallback instead of paying for
+        # a failed call on every question.
+        return fallback
+    return _watch_for_withdrawal(runnable, primary).with_fallbacks([fallback])
+
+
+# Models OpenRouter answered "unavailable" / "not found" for, with the time
+# they did. Free models are withdrawn without notice (Kilo dropped apodex on
+# 2026-10-12); the daily check in scripts/check_llm_models.py only noticed a
+# day later, and until then every question paid for a failed call first. A
+# marked model is skipped for _MODEL_GONE_TTL_S, then tried again.
+_GONE_MODELS: dict[str, float] = {}
+_MODEL_GONE_TTL_S = 6 * 3600
+_GONE_MARKERS = ("no endpoints found", "not a valid model", "currently unavailable", "model not found")
+
+
+def _is_model_gone_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    text = str(exc).lower()
+    return status == 404 or any(marker in text for marker in _GONE_MARKERS)
+
+
+def _model_is_gone(model: str) -> bool:
+    since = _GONE_MODELS.get(model)
+    if since is None:
+        return False
+    if time.time() - since > _MODEL_GONE_TTL_S:
+        del _GONE_MODELS[model]
+        return False
+    return True
+
+
+def _mark_model_gone(model: str, exc: Exception) -> None:
+    first = model not in _GONE_MODELS
+    _GONE_MODELS[model] = time.time()
+    if not first:
+        return
+    logger.warning("OpenRouter model %s is unavailable, using the fallback: %s", model, exc)
+
+    def notify():
+        try:
+            from api.telegram_bot import _notify_admins
+
+            _notify_admins(
+                f"LLM model unavailable: {model}\n{str(exc)[:200]}\n"
+                f"Answers use the fallback model for the next {_MODEL_GONE_TTL_S // 3600} hours. "
+                "If it stays unavailable, pick another model in the admin panel."
+            )
+        except Exception:  # noqa: BLE001 - an alert must never break an answer
+            logger.warning("Could not send the model-unavailable alert", exc_info=True)
+
+    threading.Thread(target=notify, daemon=True).start()
+
+
+def _watch_for_withdrawal(runnable, model: str):
+    from langchain_core.runnables import RunnableLambda
+
+    def call(input, config):
+        try:
+            return runnable.invoke(input, config)
+        except Exception as exc:
+            if _is_model_gone_error(exc):
+                _mark_model_gone(model, exc)
+            raise
+
+    return RunnableLambda(call)
 
 
 _RETRY_ATTEMPTS = 6
@@ -929,8 +995,11 @@ def _route_with_tools(question: str) -> dict | None:
         router_llm, router_model = get_router_llm()
         return _with_fallback(router_llm.bind_tools(_ROUTING_TOOLS), tools=_ROUTING_TOOLS, primary_model=router_model)
 
+    route_started = time.monotonic()
     tool_calls = _cached_route(question)
-    if tool_calls is None:
+    if tool_calls is not None:
+        progress.record_timing("route_cached", (time.monotonic() - route_started) * 1000)
+    else:
         llm_with_tools = _with_resilience(build_router(), rebuild=build_router)
         try:
             response = llm_with_tools.invoke(
@@ -941,6 +1010,7 @@ def _route_with_tools(question: str) -> dict | None:
             return None
         tool_calls = [{"name": c["name"], "args": c["args"]} for c in response.tool_calls]
         _remember_route(question, tool_calls)
+        progress.record_timing("route", (time.monotonic() - route_started) * 1000)
 
     if not tool_calls:
         return None

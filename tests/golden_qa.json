@@ -94,7 +94,13 @@
     "expected_absent": [
       "July 15"
     ],
-    "notes": "The deadline answer must state where today sits relative to the deadline, not just the date. Computed in code (ingestion/deadlines.py describe_deadline_status) because the model has no reliable notion of the current date. NOTE: 'cycle is closed' is only correct while the 2026 dates in the corpus are in the past - once the deadlines table is re-scraped for a future intake this expectation must change to the open-window wording."
+    "notes": "The deadline answer must state where today sits relative to the deadline, not just the date. Computed in code (ingestion/deadlines.py describe_deadline_status) because the model has no reliable notion of the current date. NOTE: 'cycle is closed' is only correct while the 2026 dates in the corpus are in the past - once the deadlines table is re-scraped for a future intake this expectation must change to the open-window wording.",
+    "tool_call": {
+      "name": "lookup_application_deadline",
+      "args": {
+        "entry_qualification": "Non-EU (third countries)"
+      }
+    }
   },
   {
     "id": "professor-lookup-ci1",
@@ -130,7 +136,13 @@
     "notes": "EPE (Econometrics of Policy Evaluation) referenced only by abbreviation, no full course name in the question.",
     "expected_source_ids": [
       "catalog"
-    ]
+    ],
+    "tool_call": {
+      "name": "search_course_catalog",
+      "args": {
+        "course_name_or_abbreviation": "EPE"
+      }
+    }
   },
   {
     "id": "compulsory-course-economics",
@@ -173,7 +185,13 @@
     "notes": "Enumeration question - the catalog has exactly these two German-only courses; a partial list would indicate the enumeration/filter path silently fell back to plain top-k retrieval.",
     "expected_source_ids": [
       "catalog"
-    ]
+    ],
+    "tool_call": {
+      "name": "search_course_catalog",
+      "args": {
+        "language_exact": "German"
+      }
+    }
   },
   {
     "id": "ects-total-programme",
@@ -425,7 +443,11 @@
     "notes": "Generic 'show me everything' request - must hit the full category-grouped curriculum dump (_build_curriculum_context), covering courses from multiple categories, not the attribute-filtered enumeration path or a partial top-k retrieval.",
     "expected_source_ids": [
       "catalog"
-    ]
+    ],
+    "tool_call": {
+      "name": "get_full_curriculum",
+      "args": {}
+    }
   },
   {
     "id": "person-lookup-who-is",
@@ -491,7 +513,11 @@
       "Emmanuel Asane-Otoo"
     ],
     "expected_absent": [],
-    "notes": "Fact from AEDS_website_exams_regulations.md, a document that's otherwise mostly navigation links rather than prose."
+    "notes": "Fact from AEDS_website_exams_regulations.md, a document that's otherwise mostly navigation links rather than prose.",
+    "tool_call": {
+      "name": "lookup_examinations_office_contact",
+      "args": {}
+    }
   },
   {
     "id": "german-enumeration-compulsory",
@@ -705,7 +731,11 @@
       [
         "catalog"
       ]
-    ]
+    ],
+    "tool_call": {
+      "name": "search_course_catalog",
+      "args": {}
+    }
   },
   {
     "id": "german-studierendenwerk-rent",
@@ -1252,7 +1282,8 @@
         "regex": "(eur|€|\\$)\\s?\\d{2,}"
       }
     ],
-    "notes": "Off-topic but scored 0.66 at the reranker, so it reaches the model after the gate was lowered; it must refuse, not quote a price."
+    "notes": "Off-topic but scored 0.66 at the reranker, so it reaches the model after the gate was lowered; it must refuse, not quote a price.",
+    "retrieval": false
   },
   {
     "id": "de-retake-exam",

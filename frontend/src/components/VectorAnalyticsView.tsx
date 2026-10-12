@@ -5,6 +5,8 @@ import { EvalRun, getAnalytics, getEvalRuns, getNodeLatencyStats, getOpsStatus, 
 
 // A small fixed palette, cycled by rank so the biggest origin always gets
 // the same accent colour across refreshes rather than reshuffling.
+const SUB_STEP_TIMINGS = new Set(['route', 'route_cached', 'first_token']);
+
 const ORIGIN_BAR_COLORS = ['bg-accent-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500'];
 
 interface VectorAnalyticsViewProps {
@@ -68,8 +70,12 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
   // rather than saying no pipeline ran.
   const nodeLatencies = latestResult?.nodeLatencies ?? {};
   const measuredNodes = Object.keys(nodeLatencies).length > 0;
+  // "route" / "route_cached" are timed inside the retrieve node, so adding
+  // them to the total would count that time twice.
   const totalLatency = measuredNodes
-    ? Object.values(nodeLatencies).reduce((sum, ms) => sum + ms, 0)
+    ? Object.entries(nodeLatencies)
+        .filter(([name]) => !SUB_STEP_TIMINGS.has(name))
+        .reduce((sum, [, ms]) => sum + ms, 0)
     : null;
 
   const topRerankScore = latestResult?.retrieval?.length

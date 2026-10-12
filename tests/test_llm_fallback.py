@@ -44,7 +44,7 @@ def test_fallback_applied_when_provider_is_openrouter_with_a_distinct_fallback(m
     _reset(llm_provider="openrouter", openrouter_model="a/a", openrouter_fallback_model="b/b")
     wrapped = _with_fallback(_DUMMY)
     assert isinstance(wrapped, RunnableWithFallbacks)
-    assert wrapped.runnable is _DUMMY
+    assert wrapped.invoke("x") == "x"  # the primary, behind the withdrawal watch
     assert len(wrapped.fallbacks) == 1
 
 
@@ -75,3 +75,46 @@ def test_no_fallback_when_the_daily_budget_fallback_has_diverted_away_from_openr
 
     assert llm_budget.effective_provider() == "gemini"
     assert _with_fallback(_DUMMY) is _DUMMY
+
+
+class _Gone(Exception):
+    status_code = 404
+
+
+def test_a_withdrawn_primary_is_marked_and_then_skipped(monkeypatch):
+    from graph import nodes
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
+    monkeypatch.setattr(nodes, "_GONE_MODELS", {})
+    alerts = []
+    monkeypatch.setattr(nodes, "_mark_model_gone", lambda model, exc: (alerts.append(model), nodes._GONE_MODELS.__setitem__(model, nodes.time.time())))
+    _reset(llm_provider="openrouter", openrouter_model="a/a", openrouter_fallback_model="b/b")
+
+    def dead(_):
+        raise _Gone("The requested model is currently unavailable.")
+
+    wrapped = _with_fallback(RunnableLambda(dead))
+    wrapped.fallbacks = [RunnableLambda(lambda x: "from fallback")]
+    assert wrapped.invoke("q") == "from fallback"
+    assert alerts == ["a/a"]
+
+    # Next call: no attempt on the withdrawn model at all.
+    direct = _with_fallback(RunnableLambda(dead))
+    assert not isinstance(direct, RunnableWithFallbacks)
+
+
+def test_a_marked_model_is_tried_again_after_the_ttl(monkeypatch):
+    from graph import nodes
+
+    monkeypatch.setattr(nodes, "_GONE_MODELS", {"a/a": nodes.time.time() - nodes._MODEL_GONE_TTL_S - 1})
+    assert not nodes._model_is_gone("a/a")
+
+
+def test_rate_limits_do_not_count_as_withdrawn():
+    from graph import nodes
+
+    class _Busy(Exception):
+        status_code = 429
+
+    assert not nodes._is_model_gone_error(_Busy("Rate limit exceeded: free-models-per-min"))
+    assert nodes._is_model_gone_error(Exception("No endpoints found for apodex/apodex-1.1-mini:free"))

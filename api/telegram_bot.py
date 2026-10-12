@@ -205,6 +205,7 @@ _LABEL_TO_CATEGORY = {label: category for category, label in _MENU_LABELS.items(
 _ADMIN_BOT_COMMANDS = [
     {"command": "menu", "description": "Show the button menu"},
     {"command": "pending", "description": "Pending submissions & answers"},
+    {"command": "review", "description": "Review pending answers one by one, most-asked first"},
     {"command": "gaps", "description": "Content gaps (unanswered questions)"},
     {"command": "sources", "description": "Pending source changes"},
     {"command": "stats", "description": "Corpus stats"},
@@ -432,6 +433,9 @@ def _dispatch_action(data: str, chat_id: str) -> str:
         _start_edit(chat_id, "submission" if action == "se" else "answer", record_id)
         return "Reply with the corrected text."
 
+    if action in ("ra", "rr", "rs"):
+        return _review_decision(chat_id, action, record_id)
+
     session = SessionLocal()
     try:
         if action == "src":
@@ -497,6 +501,106 @@ def _dispatch_action(data: str, chat_id: str) -> str:
         session.close()
 
 
+# --- /review: the answer queue one at a time ------------------------------
+#
+# /pending shows the ten newest answers at once. Working through a queue of
+# forty that way meant scrolling and re-sending the command; /review shows
+# one answer, most-asked first (what most students will be served once it is
+# approved), with its sources, and sends the next one as soon as a button is
+# pressed. Skipped ids are remembered per chat until the next /review.
+
+_review_skips: dict[str, set[int]] = {}
+_review_skips_guard = threading.Lock()
+
+
+def _review_queue(session) -> list:
+    """Pending answers, flagged ones first, then by how often the question
+    was asked, then newest."""
+    from collections import Counter
+
+    from db.models import AnswerStatus, CachedAnswer, QueryLog
+    from db.semantic_cache import _normalize
+
+    rows = session.query(CachedAnswer).filter(CachedAnswer.status == AnswerStatus.PENDING).all()
+    asked = Counter(_normalize(q) for (q,) in session.query(QueryLog.question).all())
+    rows.sort(key=lambda r: (not r.is_flagged, -asked.get(r.question_normalized, 0), -(r.id or 0)))
+    return [(row, asked.get(row.question_normalized, 0)) for row in rows]
+
+
+def _source_names(sources_json: str | None) -> str:
+    import json as _json
+
+    names = []
+    for source in _json.loads(sources_json or "[]"):
+        name = source.get("source_id") if isinstance(source, dict) else source
+        if name and name not in names:
+            names.append(name)
+    return ", ".join(names) or "none"
+
+
+def _send_next_review(chat_id: str) -> None:
+    from db.models import SessionLocal
+
+    with _review_skips_guard:
+        skipped = set(_review_skips.get(chat_id, set()))
+    session = SessionLocal()
+    try:
+        queue = _review_queue(session)
+        remaining = [(row, asked) for row, asked in queue if row.id not in skipped]
+        if not remaining:
+            note = f" ({len(queue)} skipped - /review starts over)" if queue else ""
+            send_message(f"Review queue done{note}.", _MAIN_MENU_KEYBOARD, chat_id=chat_id)
+            return
+        row, asked = remaining[0]
+        header = f"{len(remaining)} pending" + (f", {len(skipped)} skipped" if skipped else "")
+        flag = "Rated unhelpful by a student.\n" if row.is_flagged else ""
+        text = (
+            f"{header} | asked {asked}x | #{row.id}\n{flag}Sources: {_source_names(row.sources_json)}\n\n"
+            f"Q: {_truncate(row.question, 200)}\n\nA: {_truncate(row.answer, 3000)}"
+        )
+        answer_id = row.id
+    finally:
+        session.close()
+    markup = {
+        "inline_keyboard": [
+            [_button("Approve", f"ra:{answer_id}"), _button("Reject", f"rr:{answer_id}")],
+            [_button("Edit", f"ae:{answer_id}"), _button("Skip", f"rs:{answer_id}")],
+        ]
+    }
+    send_message(text, markup, chat_id=chat_id)
+
+
+def _start_review(chat_id: str) -> None:
+    with _review_skips_guard:
+        _review_skips[chat_id] = set()
+    _send_next_review(chat_id)
+
+
+def _review_decision(chat_id: str, action: str, answer_id: int) -> str:
+    from db.models import AnswerStatus, CachedAnswer, SessionLocal
+
+    if action == "rs":
+        with _review_skips_guard:
+            _review_skips.setdefault(chat_id, set()).add(answer_id)
+        result = "Skipped."
+    else:
+        session = SessionLocal()
+        try:
+            answer = session.get(CachedAnswer, answer_id)
+            if answer is None or answer.status != AnswerStatus.PENDING:
+                result = "Already reviewed."
+            else:
+                answer.status = AnswerStatus.APPROVED if action == "ra" else AnswerStatus.REJECTED
+                answer.admin_note = "Reviewed via Telegram"
+                answer.reviewed_at = datetime.now(timezone.utc)
+                session.commit()
+                result = "Approved." if action == "ra" else "Rejected."
+        finally:
+            session.close()
+    _send_next_review(chat_id)
+    return result
+
+
 def _send_pending_summary(chat_id: str) -> None:
     """Handles /pending: pulls the current review queues on request rather
     than pushing one message per answer (see module docstring)."""
@@ -528,7 +632,8 @@ def _send_pending_summary(chat_id: str) -> None:
         return
 
     send_message(
-        f"{len(submission_data)} submission(s), {len(answer_data)} answer(s) pending (up to 10 shown each):",
+        f"{len(submission_data)} submission(s), {len(answer_data)} answer(s) pending (up to 10 shown each). "
+        "/review goes through the answers one by one, most-asked first.",
         _MAIN_MENU_KEYBOARD,
         chat_id=chat_id,
     )
@@ -885,6 +990,7 @@ def _handle_update(update: dict) -> None:
 
 _CATEGORY_HANDLERS = {
     "pending": _send_pending_summary,
+    "review": _start_review,
     "gaps": _send_content_gaps_summary,
     "sources": _send_source_changes_summary,
     "stats": _send_stats_summary,
