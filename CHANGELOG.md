@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.33] - 2026-10-13
+### Fixed
+- A streamed answer now stops generating when the reader leaves: pressing
+  Stop in the ECTS Tracker widget, closing the tab or losing the connection
+  closes /chat/stream, and the LLM stops at its next token instead of
+  finishing the whole answer in the graph thread for nobody (measured in
+  tests/test_chat_stream_cancel.py: all 399 chunks were still generated
+  before, a handful now). The stop is a BaseException on purpose, so neither
+  the retry loop nor the fallback model treats it as a failure and starts
+  another call.
+
 ## [1.10.32] - 2026-10-12
 ### Fixed
 - Fixed a hint-collision routing bug found live right after 1.10.31

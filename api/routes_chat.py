@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -443,100 +444,106 @@ def chat_stream(
         # What the student actually waits for: the first word on screen.
         first_token_ms = None
 
-        for event_type, data in stream_chat(
-            thread_id=thread_id,
-            question=payload.message,
-            source_id_filter=payload.source_id_filter,
-        ):
-            if event_type == "stage":
-                yield f"event: stage\ndata: {json.dumps(data)}\n\n"
-                continue
-            if event_type == "token":
-                if first_token_ms is None:
-                    first_token_ms = round((time.monotonic() - started) * 1000, 1)
-                answer_parts.append(data["text"])
-                yield f"event: token\ndata: {json.dumps(data)}\n\n"
-                continue
-
-            if event_type == "contribution":
-                # Arrives after 'done': detection runs once the answer is
-                # already on screen, so it no longer holds back the sources.
-                detected = data.get("detected_contribution")
-                if detected and check_and_record(_client_key(request, user)):
-                    submission = PendingSubmission(
-                        submitted_by_id=user.id,
-                        submission_type=SubmissionType(detected["type"]),
-                        source_id=payload.source_id_filter or "general",
-                        content=detected["content"],
-                    )
-                    session.add(submission)
-                    session.commit()
-                    notify_new_submission(
-                        submission.id, submission.submission_type.value, submission.source_id, submission.content
-                    )
-                    yield f"event: contribution\ndata: {json.dumps({'auto_flagged_contribution': detected['type']})}\n\n"
-                continue
-
-            # event_type == "done". data["final_answer"] is authoritative (may
-            # have cleaned-up content the raw streamed tokens didn't) - fall
-            # back to the raw concatenation only if it's missing for some reason
-            full_answer = data.get("final_answer") or "".join(answer_parts)
-            _record_turn(
-                session, thread_id=thread_id, user=user, question=payload.message, answer=full_answer
-            )
-            session.commit()
-
-            # The streamed 'done' event carries the same fields run_chat
-            # returns, so the shared store helper can be reused as-is - this
-            # is the write side that keeps the cache filling regardless of
-            # which endpoint the UI happens to use.
-            _maybe_store_cache(
-                session,
-                payload,
-                cacheable,
-                embedding,
-                {
-                    "answer": full_answer,
-                    "sources": data["sources"],
-                    "retrieval": data.get("retrieval", []),
-                    "answered": data.get("answered", True),
-                    "time_sensitive": data.get("time_sensitive", False),
-                },
-                origin=origin,
-            )
-
-            log_id = _log_query(
-                session,
-                question=payload.message,
+        # closing(): when the client disconnects (Stop, closed tab) Starlette
+        # closes this generator, and closing stream_chat in turn is what stops
+        # the LLM instead of leaving it to finish in the graph thread.
+        with closing(
+            stream_chat(
                 thread_id=thread_id,
-                user=user,
-                answered=bool(data.get("answered", True)),
-                sources=data["sources"],
-                latency_ms=int((time.monotonic() - started) * 1000),
-                served_from_cache=False,
-                origin=origin,
-                node_latencies={
-                    **(data.get("node_latencies") or {}),
-                    **({"first_token": first_token_ms} if first_token_ms is not None else {}),
-                },
-                retrieval=data.get("retrieval", []),
+                question=payload.message,
+                source_id_filter=payload.source_id_filter,
             )
+        ) as events:
+            for event_type, data in events:
+                if event_type == "stage":
+                    yield f"event: stage\ndata: {json.dumps(data)}\n\n"
+                    continue
+                if event_type == "token":
+                    if first_token_ms is None:
+                        first_token_ms = round((time.monotonic() - started) * 1000, 1)
+                    answer_parts.append(data["text"])
+                    yield f"event: token\ndata: {json.dumps(data)}\n\n"
+                    continue
 
-            done_payload = {
-                "thread_id": thread_id,
-                "sources": data["sources"],
-                # Filled in by a later 'contribution' event when detection
-                # flags this message; null here for the same payload shape as
-                # a cached answer.
-                "auto_flagged_contribution": None,
-                "final_answer": full_answer,
-                "retrieval": data.get("retrieval", []),
-                "node_latencies": data.get("node_latencies", {}),
-                "query_log_id": log_id,
-                "cached": False,
-                "has_expired_deadline": bool(data.get("has_expired_deadline")),
-            }
-            yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
+                if event_type == "contribution":
+                    # Arrives after 'done': detection runs once the answer is
+                    # already on screen, so it no longer holds back the sources.
+                    detected = data.get("detected_contribution")
+                    if detected and check_and_record(_client_key(request, user)):
+                        submission = PendingSubmission(
+                            submitted_by_id=user.id,
+                            submission_type=SubmissionType(detected["type"]),
+                            source_id=payload.source_id_filter or "general",
+                            content=detected["content"],
+                        )
+                        session.add(submission)
+                        session.commit()
+                        notify_new_submission(
+                            submission.id, submission.submission_type.value, submission.source_id, submission.content
+                        )
+                        yield f"event: contribution\ndata: {json.dumps({'auto_flagged_contribution': detected['type']})}\n\n"
+                    continue
+
+                # event_type == "done". data["final_answer"] is authoritative (may
+                # have cleaned-up content the raw streamed tokens didn't) - fall
+                # back to the raw concatenation only if it's missing for some reason
+                full_answer = data.get("final_answer") or "".join(answer_parts)
+                _record_turn(
+                    session, thread_id=thread_id, user=user, question=payload.message, answer=full_answer
+                )
+                session.commit()
+
+                # The streamed 'done' event carries the same fields run_chat
+                # returns, so the shared store helper can be reused as-is - this
+                # is the write side that keeps the cache filling regardless of
+                # which endpoint the UI happens to use.
+                _maybe_store_cache(
+                    session,
+                    payload,
+                    cacheable,
+                    embedding,
+                    {
+                        "answer": full_answer,
+                        "sources": data["sources"],
+                        "retrieval": data.get("retrieval", []),
+                        "answered": data.get("answered", True),
+                        "time_sensitive": data.get("time_sensitive", False),
+                    },
+                    origin=origin,
+                )
+
+                log_id = _log_query(
+                    session,
+                    question=payload.message,
+                    thread_id=thread_id,
+                    user=user,
+                    answered=bool(data.get("answered", True)),
+                    sources=data["sources"],
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    served_from_cache=False,
+                    origin=origin,
+                    node_latencies={
+                        **(data.get("node_latencies") or {}),
+                        **({"first_token": first_token_ms} if first_token_ms is not None else {}),
+                    },
+                    retrieval=data.get("retrieval", []),
+                )
+
+                done_payload = {
+                    "thread_id": thread_id,
+                    "sources": data["sources"],
+                    # Filled in by a later 'contribution' event when detection
+                    # flags this message; null here for the same payload shape as
+                    # a cached answer.
+                    "auto_flagged_contribution": None,
+                    "final_answer": full_answer,
+                    "retrieval": data.get("retrieval", []),
+                    "node_latencies": data.get("node_latencies", {}),
+                    "query_log_id": log_id,
+                    "cached": False,
+                    "has_expired_deadline": bool(data.get("has_expired_deadline")),
+                }
+                yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

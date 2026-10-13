@@ -4,6 +4,7 @@ import threading
 import time
 from typing import Iterator
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -230,6 +231,32 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
     }
 
 
+class StreamCancelled(BaseException):
+    """Raised inside the LLM's token callback once the reader has gone.
+
+    A BaseException on purpose: _with_resilience's retry loop and
+    with_fallbacks() both catch Exception, so an ordinary error here would
+    start a retry or a call to the fallback model - spending quota on an
+    answer nobody is reading, which is exactly what stopping is meant to
+    avoid."""
+
+
+class _StopWhenCancelled(BaseCallbackHandler):
+    """Ends generation at the next token once `cancelled` is set.
+
+    raise_error makes LangChain re-raise instead of logging and carrying on
+    (a BaseException is never caught by its handler loop anyway)."""
+
+    raise_error = True
+
+    def __init__(self, cancelled: threading.Event):
+        self.cancelled = cancelled
+
+    def on_llm_new_token(self, token, **kwargs) -> None:
+        if self.cancelled.is_set():
+            raise StreamCancelled()
+
+
 def stream_chat(
     thread_id: str, question: str, source_id_filter: str | None = None
 ) -> Iterator[tuple[str, dict]]:
@@ -246,16 +273,22 @@ def stream_chat(
     and actions appeared one classifier call (about 2s, more when its LLM is
     busy) after the text had finished - for a check whose result the reader
     never needs before reading the answer. Only tokens from the 'generate'
-    node are streamed; the classifier nodes' raw JSON is never shown."""
+    node are streamed; the classifier nodes' raw JSON is never shown.
+
+    Closing this generator early (the reader pressed Stop or left the page,
+    see api/routes_chat.py) stops the LLM at its next token instead of
+    letting the graph thread finish an answer nobody will see."""
     from langchain_core.messages import HumanMessage
 
     graph = get_compiled_graph()
     events: queue.Queue = queue.Queue()
+    cancelled = threading.Event()
     config = {
         "configurable": {
             "thread_id": thread_id,
             "report_stage": lambda stage: events.put(("stage", {"stage": stage})),
-        }
+        },
+        "callbacks": [_StopWhenCancelled(cancelled)],
     }
 
     # The graph runs in its own thread so a stage reported from inside a
@@ -282,6 +315,8 @@ def stream_chat(
                     for node, update in (payload or {}).items():
                         events.put(("_update", (node, update or {})))
             events.put((_DONE, None))
+        except StreamCancelled:
+            logger.info("chat stream cancelled by the client, thread=%s", thread_id)
         except BaseException as exc:  # re-raised on the consuming side
             events.put((_DONE, exc))
 
@@ -313,23 +348,29 @@ def stream_chat(
             "has_expired_deadline": _has_passed_deadline(final_answer),
         }
 
-    while True:
-        kind, data = events.get()
-        if kind is _DONE:
-            if data is not None:
-                raise data
-            break
-        if kind == "_update":
-            node, update = data
-            turn.update(update)
-            if node == "generate" and not done_sent:
-                done_sent = True
-                yield ("done", done_payload())
-            elif node == "detect_contribution":
-                detected = update.get("detected_contribution")
-            continue
-        yield (kind, data)
+    try:
+        while True:
+            kind, data = events.get()
+            if kind is _DONE:
+                if data is not None:
+                    raise data
+                break
+            if kind == "_update":
+                node, update = data
+                turn.update(update)
+                if node == "generate" and not done_sent:
+                    done_sent = True
+                    yield ("done", done_payload())
+                elif node == "detect_contribution":
+                    detected = update.get("detected_contribution")
+                continue
+            yield (kind, data)
 
-    if not done_sent:
-        yield ("done", done_payload())
-    yield ("contribution", {"detected_contribution": detected})
+        if not done_sent:
+            yield ("done", done_payload())
+        yield ("contribution", {"detected_contribution": detected})
+    finally:
+        # Normal end: the graph has finished and this changes nothing. Early
+        # close (GeneratorExit at a yield): the graph thread stops at the
+        # LLM's next token.
+        cancelled.set()
