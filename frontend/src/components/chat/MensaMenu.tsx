@@ -214,7 +214,7 @@ const OneMenu: React.FC<{ menu: Menu; filtered: boolean; allergyFilter: boolean 
 
 export const MensaMenuCards: React.FC<{ data: MensaPayload }> = ({ data }) => {
   const { t } = useI18n();
-  const allergyFilter = data.wishes.some((w) => /^without /i.test(w));
+  const allergyFilter = Boolean(data.allergen_filter);
   return (
     <div className="px-4 sm:px-5 pb-4 space-y-5">
       {data.wishes.length > 0 && (

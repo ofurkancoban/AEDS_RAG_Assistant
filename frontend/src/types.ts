@@ -60,6 +60,8 @@ export interface MensaMenu {
 export interface MensaPayload {
   menus: MensaMenu[];
   wishes: string[];
+  /** The meals were filtered by allergen codes: show the traces caution. */
+  allergen_filter: boolean;
 }
 
 export interface ChatQueryResult {

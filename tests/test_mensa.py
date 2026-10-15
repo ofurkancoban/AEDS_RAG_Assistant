@@ -104,6 +104,14 @@ def test_answer_material_lists_only_matching_dishes_with_a_caution(offline):
     assert card["date"] == "2026-10-15" and card["meals"]
     assert all("We" not in m["codes"] for m in card["meals"])
     assert {"code": "Mi", "label": "Milk (incl. Lactose)", "kind": "allergen"} in card["legend"]["codes"]
+    assert payload["wishes"] == ["without gluten"] and payload["allergen_filter"] is True
+
+
+def test_filter_labels_are_clean_and_in_the_question_language():
+    assert menu_q.parse_request("Is there something vegetarian in the Mensa?", THURSDAY, "en").wishes == ["vegetarian"]
+    assert menu_q.parse_request("Vegetarisches, laktosefreies Essen heute?", THURSDAY, "de").wishes == ["vegetarisch", "ohne Laktose"]
+    halal = menu_q.parse_request("halal food in the mensa", THURSDAY, "en")
+    assert halal.wishes == ["no pork", "no alcohol"]
 
 
 def test_a_closed_day_moves_to_the_next_menu(offline):

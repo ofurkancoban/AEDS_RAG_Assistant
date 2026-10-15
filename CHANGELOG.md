@@ -7,6 +7,14 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.1] - 2026-10-15
+### Fixed
+- Canteen filter labels read "vegetari" (the matched word stem); they are
+  now proper labels in the question's language ("vegetarian",
+  "vegetarisch", "ohne Laktose"). A halal question shows "no pork" and "no
+  alcohol" and makes no halal claim. Whether the allergen caution appears
+  is now sent by the backend instead of guessed from the label text.
+
 ## [1.11.0] - 2026-10-15
 ### Added
 - Canteen menus. Questions about what the Mensa serves ("What's in the

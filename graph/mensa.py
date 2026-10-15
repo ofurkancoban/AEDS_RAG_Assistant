@@ -44,6 +44,14 @@ _WEEKDAYS = {
 }
 
 # Diet wishes: (pattern, pictograms a meal must have one of, pictograms it must not have, codes it must not have)
+# What a filter is called in the answer and on the cards, by language.
+_INCLUDE_LABELS = [
+    {"en": "vegan", "de": "vegan"},
+    {"en": "vegetarian", "de": "vegetarisch"},
+    {"en": "fish", "de": "Fisch"},
+    {"en": "poultry", "de": "Geflügel"},
+    {"en": "beef", "de": "Rind"},
+]
 _INCLUDE = [
     (re.compile(r"\bvegan", re.I), {"V+"}, set(), set()),
     (re.compile(r"\bvegetari|\bvegetarisch|without meat|no meat|ohne fleisch|fleischlos|meat[- ]free", re.I), {"V", "V+"}, set(), set()),
@@ -57,6 +65,13 @@ _GLUTEN = {"Di", "Ge", "Ha", "Hy", "Ka", "Ro", "We"}
 # Codes as the menu's legend lists them (checked 2026-10-15).
 _NUTS = {"Cn", "Hn", "Ma", "Mn", "Pa", "Pi", "Pn", "Wa"}
 # Allergen wishes: pattern -> codes a meal must not carry.
+_EXCLUDE_LABELS = [
+    {"en": "gluten", "de": "Gluten"}, {"en": "lactose", "de": "Laktose"}, {"en": "nuts", "de": "Nüsse"},
+    {"en": "peanuts", "de": "Erdnüsse"}, {"en": "eggs", "de": "Eier"}, {"en": "soy", "de": "Soja"},
+    {"en": "sesame", "de": "Sesam"}, {"en": "shellfish", "de": "Krebs- und Weichtiere"},
+    {"en": "celery", "de": "Sellerie"}, {"en": "mustard", "de": "Senf"}, {"en": "alcohol", "de": "Alkohol"},
+    {"en": "garlic", "de": "Knoblauch"},
+]
 _EXCLUDE = [
     (re.compile(r"gluten|glutenfrei|coeliac|celiac|zöliakie", re.I), _GLUTEN),
     (re.compile(r"lactose|laktose|dairy|milk[- ]free|without milk|no milk|ohne milch|milchfrei", re.I), {"Mi"}),
@@ -68,7 +83,7 @@ _EXCLUDE = [
     (re.compile(r"shellfish|crustacean|seafood|krebstier|meeresfrücht|weichtier|mollus", re.I), {"Kr", "Wt"}),
     (re.compile(r"celery|sellerie", re.I), {"Sl"}),
     (re.compile(r"mustard|senf", re.I), {"Sf"}),
-    (re.compile(r"alcohol|alkohol|halal", re.I), {"A"}),
+    (re.compile(r"alcohol|alkohol", re.I), {"A"}),
     (re.compile(r"garlic|knoblauch", re.I), {"Kn"}),
 ]
 _ABOUT_SIDES = re.compile(r"soup|side|salad|dessert|suppe|beilage|salat|nachtisch|nachspeise", re.I)
@@ -125,22 +140,23 @@ def parse_request(question: str, today: date, lang: str) -> MenuRequest:
     for pattern, must, _no_pict, _no_codes in _INCLUDE:
         if pattern.search(question):
             request.must_have.append(must)
-            request.wishes.append(pattern.search(question).group(0))
+            request.wishes.append(_INCLUDE_LABELS[_INCLUDE.index((pattern, must, _no_pict, _no_codes))][lang])
     if _PORK.search(question):
         request.no_pictograms |= {"S"}
         request.no_codes |= {"SG"}
-        request.wishes.append("no pork")
+        request.wishes.append("kein Schweinefleisch" if lang == "de" else "no pork")
     if _HALAL.search(question):
         # The menu does not mark halal; the most it can say is no pork, no
         # pork gelatine and no alcohol.
         request.halal = True
         request.no_codes |= {"A"}
+        request.wishes.append("kein Alkohol" if lang == "de" else "no alcohol")
     if _ALLERGEN_CONTEXT.search(question):
-        for pattern, codes in _EXCLUDE:
-            match = pattern.search(question)
-            if match:
+        for i, (pattern, codes) in enumerate(_EXCLUDE):
+            if pattern.search(question):
                 request.no_codes |= codes
-                request.wishes.append(f"without {match.group(0)}")
+                label = _EXCLUDE_LABELS[i][lang]
+                request.wishes.append(f"ohne {label}" if lang == "de" else f"without {label}")
     return request
 
 
@@ -275,5 +291,14 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
             "model_note": note,
         },
     )
-    payload = {"menus": payloads, "wishes": list(dict.fromkeys(request.wishes))} if payloads else None
+    payload = (
+        {
+            "menus": payloads,
+            "wishes": list(dict.fromkeys(request.wishes)),
+            # Whether the cards should carry the "allergen codes only" caution.
+            "allergen_filter": bool(request.no_codes - {"A", "Kn", "SG"}),
+        }
+        if payloads
+        else None
+    )
     return [doc], payload
