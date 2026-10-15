@@ -65,3 +65,32 @@ def test_log_mode_does_not_call_the_model_again(monkeypatch):
 def test_a_supported_answer_costs_one_call(monkeypatch):
     answer, calls = _generate(monkeypatch, ["Sie dürfen 280 Halbtage arbeiten [1]."])
     assert len(calls) == 1
+
+
+_SEMINAR_CONTEXT = (
+    "[1] The seminar paper should be between 30,000 and 45,000 characters. "
+    "Modules are worth 6 or 20 ECTS. Fee EUR 457.90."
+)
+
+
+def test_a_figure_with_a_unit_the_context_never_gives_it_is_flagged():
+    found = nodes.unsupported_numbers("Eine Hausarbeit sollte etwa 15–20 Seiten lang sein [1].", _SEMINAR_CONTEXT)
+    assert "15" in found
+    assert any(f.startswith("20 (pages") for f in found)
+
+
+def test_units_match_across_english_and_german():
+    assert nodes.unsupported_numbers("Die Hausarbeit umfasst 30.000 bis 45.000 Zeichen.", _SEMINAR_CONTEXT) == []
+    assert nodes.unsupported_numbers("Sie zahlen 457,90 € pro Semester.", _SEMINAR_CONTEXT) == []
+    assert nodes.unsupported_numbers("The module gives 20 credit points.", _SEMINAR_CONTEXT) == []
+
+
+def test_a_figure_the_context_also_gives_without_a_unit_is_accepted():
+    # A table cell has no unit; that is ambiguous, not a contradiction.
+    assert nodes.unsupported_numbers("It takes 20 weeks.", "| Module | 20 | 6 |") == []
+
+
+def test_the_system_prompt_is_not_evidence():
+    # "15" occurs in the system prompt's own examples; only the context counts.
+    assert "15" in str(nodes.SYSTEM_PROMPT)
+    assert nodes.unsupported_numbers("About 15 pages.", "[1] No length is given.") == ["15"]

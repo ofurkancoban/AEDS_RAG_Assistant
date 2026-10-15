@@ -7,6 +7,31 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.35] - 2026-10-15
+### Added
+- Background answer check: after an answer is sent, a second model call
+  reads it next to its context and records any statement the context does
+  not support (a wrong total, a misnamed body, a superseded value given as
+  current, "the documents do not say" when they do). The findings appear
+  under the answer in Telegram's /review and in the weekly summary; the
+  student never waits for it. On 57 stored answers it flagged 22 of the 27
+  the golden set failed, and 6 of 30 it passed, at least 4 of which were
+  real errors the golden assertions missed. One extra request per
+  generated answer; off in evaluation runs and tests.
+### Changed
+- The number guard checks a figure together with its unit: "20 pages" is
+  flagged when the context only has "20 ECTS". Units are matched across
+  English and German (Seiten/pages, Zeichen/characters, credit
+  points/ECTS, EUR/€); a figure the context also gives without a unit (a
+  table cell) is accepted. It no longer counts the system prompt's own
+  example figures as support: "15" was always "found" there. Over 302
+  stored answers it found one more real error (invented grade
+  percentiles) and no new false alarm.
+- Measured, not changed: requiring a citation on every sentence. 43% of
+  statements carry none, almost all of them list items or table rows under
+  a cited heading; dropping them would gut the answers. The answer check
+  above covers uncited statements instead.
+
 ## [1.10.34] - 2026-10-15
 ### Changed
 - dots-3-note is now the answer model as well as the router. OpenRouter

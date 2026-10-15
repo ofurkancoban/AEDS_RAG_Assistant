@@ -554,9 +554,19 @@ def _send_next_review(chat_id: str) -> None:
         row, asked = remaining[0]
         header = f"{len(remaining)} pending" + (f", {len(skipped)} skipped" if skipped else "")
         flag = "Rated unhelpful by a student.\n" if row.is_flagged else ""
+        from graph.answer_check import latest_findings
+
+        findings = latest_findings(row.question)
+        check = ""
+        if findings:
+            check = "\n\nAutomatic check found unsupported statements:\n" + "\n".join(
+                f"- {_truncate(f, 200)}" for f in findings[:4]
+            )
+        elif findings == []:
+            check = "\n\nAutomatic check: every statement supported by the context."
         text = (
             f"{header} | asked {asked}x | #{row.id}\n{flag}Sources: {_source_names(row.sources_json)}\n\n"
-            f"Q: {_truncate(row.question, 200)}\n\nA: {_truncate(row.answer, 3000)}"
+            f"Q: {_truncate(row.question, 200)}\n\nA: {_truncate(row.answer, 2600)}{check}"
         )
         answer_id = row.id
     finally:

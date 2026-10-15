@@ -55,6 +55,8 @@ os.environ["CLOUDFLARE_ACCOUNT_ID"] = ""
 # days without anyone noticing (2026-10-10 to 2026-10-15). A test that needs
 # a client sets its own fake key.
 os.environ["OPENROUTER_API_KEY"] = ""
+# No background answer check spawning model calls from unit tests.
+os.environ["ANSWER_CHECK"] = "off"
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["CLOUDFLARE_API_TOKEN"] = ""
 

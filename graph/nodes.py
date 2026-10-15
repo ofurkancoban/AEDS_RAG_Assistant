@@ -2952,7 +2952,9 @@ def generate_node(state: RagState) -> dict:
     response.content = _clean_generated(response.content, len(retrieved_docs))
 
     if settings.number_guard != "off":
-        allowed_text = "\n".join(str(m.content) for m in messages)
+        # Everything the model was given except the system prompt: its own
+        # example figures ("15", "120") are not evidence for an answer.
+        allowed_text = "\n".join(str(m.content) for m in messages[1:])
         unsupported = unsupported_numbers(response.content, allowed_text)
         if unsupported:
             logger.warning("number guard: answer states %s, not in the context", unsupported)
@@ -2980,6 +2982,10 @@ def generate_node(state: RagState) -> dict:
                 logger.warning("number guard: regenerated, still unsupported: %s", still or "none")
                 if len(still) < len(unsupported):
                     response = retry
+
+    from graph.answer_check import check_in_background
+
+    check_in_background(str(state["messages"][-1].content), str(context_message.content), str(response.content))
     return {"messages": [response]}
 
 
@@ -3012,35 +3018,107 @@ def _figure_key(raw: str) -> str:
     return re.sub(r"[.,\u202f ]", "", raw).lstrip("0") or "0"
 
 
+# Unit families a figure can carry, English and German. A figure whose unit
+# in the answer is never its unit in the context is as wrong as a figure
+# that is not there at all: the documents say a seminar paper is 30,000
+# characters, and an answer said "15-20 Seiten" (2026-10-15).
+_UNIT_FAMILIES = {
+    "ects": r"ects|cp|credit points?|credits?|leistungspunkte?|kp",
+    "eur": r"€|eur|euros?",
+    "pages": r"pages?|seiten?",
+    "characters": r"characters?|zeichen",
+    "words": r"words?|wörtern?|worte",
+    "weeks": r"weeks?|wochen?",
+    "months": r"months?|monaten?|monate",
+    "days": r"(?:(?:half|working|calendar|full)[ -])?days?|(?:halbe |arbeits)?tagen?|tage",
+    "hours": r"hours?|stunden?|h",
+    "minutes": r"minutes?|minuten?|min",
+    "semesters": r"semesters?|fachsemestern?",
+    "years": r"years?|jahren?|jahre",
+    "percent": r"%|percent|prozent",
+}
+_UNIT_RE = re.compile(
+    # An optional range tail ("15-20", "15 to 20", "15 bis 20"), then the unit.
+    r"^\s*(?:(?:-|\u2013|to|bis|und|and|or|oder)\s*\d+(?:[.,]\d+)?\s*)?(?:"
+    + "|".join(f"(?P<{name}>{pattern})" for name, pattern in _UNIT_FAMILIES.items())
+    + r")(?![A-Za-zÄÖÜäöüß])",
+    re.IGNORECASE,
+)
+# The first number of a range takes the unit written after the second.
+_RANGE_TAIL_RE = re.compile(r"^\s*(?:-|\u2013|to|bis)\s*(\d+(?:[.,]\d+)?)", re.IGNORECASE)
+_CURRENCY_BEFORE_RE = re.compile(r"(?:€|eur)\s*$", re.IGNORECASE)
+
+
+def _unit_after(text: str, end: int) -> str | None:
+    match = _UNIT_RE.match(text[end : end + 40])
+    return match.lastgroup if match else None
+
+
+def _figures_with_units(text: str) -> list[tuple[str, str, str | None]]:
+    """(raw figure, key, unit family or None) for every figure in `text`."""
+    out = []
+    for m in _FIGURE_RE.finditer(text):
+        unit = _unit_after(text, m.end())
+        if unit is None and _CURRENCY_BEFORE_RE.search(text[max(0, m.start() - 6) : m.start()]):
+            unit = "eur"  # "€ 457.90": the currency comes first
+        out.append((m.group(0), _figure_key(m.group(0)), unit))
+    return out
+
+
 def unsupported_numbers(answer: str, allowed_text: str) -> list[str]:
-    """Figures of 10 or more in `answer` that appear nowhere in
-    `allowed_text` (the context, question and conversation the model was
-    given), compared without separators so "11.904" matches "11,904".
+    """Figures of 10 or more in `answer` that the context does not support:
+    either they appear nowhere in `allowed_text` (the context, question and
+    conversation the model was given - not the system prompt, whose own
+    example figures would otherwise count as support), or the context only
+    ever gives them with a different unit ("20 ECTS" in the context, "20
+    pages" in the answer). Compared without separators so "11.904" matches
+    "11,904". A figure the context also gives with no unit at all (a table
+    cell) is accepted: that is ambiguous, not a contradiction.
 
     Exists because a model translating an answer changed "280 half days"
     into "200" - the most harmful kind of error, as the answer reads as
     right. Single digits are skipped: list numbering and ordinals are too
     common to check without false alarms."""
-    allowed = {_figure_key(m.group(0)) for m in _FIGURE_RE.finditer(allowed_text)}
+    allowed_figures = _figures_with_units(allowed_text)
+    allowed = {key for _, key, _ in allowed_figures}
     # A figure split across a separator in the context ("11, 904") still
     # contributes its parts; also accept each part on its own.
     for m in _FIGURE_RE.finditer(allowed_text):
         allowed.update(_figure_key(part) for part in re.split(r"[.,\u202f ]", m.group(0)) if part)
-    figures = [m.group(0) for m in _FIGURE_RE.finditer(_PASSAGE_MARKER_RE.sub(" ", answer))]
+    units_in_context: dict[str, set[str | None]] = {}
+    for _, key, unit in allowed_figures:
+        units_in_context.setdefault(key, set()).add(unit)
+
+    answer_text = _PASSAGE_MARKER_RE.sub(" ", answer)
+    answer_figures = _figures_with_units(answer_text)
+    # The first number of a range ("15-20 Seiten") carries the unit written
+    # after the second one.
+    for i, m in enumerate(_FIGURE_RE.finditer(answer_text)):
+        tail = _RANGE_TAIL_RE.match(answer_text[m.end() : m.end() + 20])
+        if tail and answer_figures[i][2] is None and i + 1 < len(answer_figures):
+            raw, key, _ = answer_figures[i]
+            answer_figures[i] = (raw, key, answer_figures[i + 1][2])
+    figures = [raw for raw, _, _ in answer_figures]
     # Arithmetic the answer shows ("120 ECTS, 30 for the thesis, so 90 for
     # modules"): a figure that is the sum or difference of two supported
     # figures in the same answer is supported too.
     supported = {int(k) for k in (_figure_key(f) for f in figures) if k.isdigit() and k in allowed}
     derived = {a + b for a in supported for b in supported} | {abs(a - b) for a in supported for b in supported}
     found = []
-    for figure in figures:
-        key = _figure_key(figure)
+    for raw, key, unit in answer_figures:
         if key.isdigit() and int(key) < 10:
             continue
-        if key in allowed or (key.isdigit() and int(key) in derived):
+        if key in allowed:
+            context_units = units_in_context.get(key, {None})
+            if unit is None or unit in context_units or None in context_units:
+                continue
+            label = f"{raw} ({unit}; the context gives it only as {', '.join(sorted(u for u in context_units if u))})"
+        elif key.isdigit() and int(key) in derived:
             continue
-        if figure not in found:
-            found.append(figure)
+        else:
+            label = raw
+        if label not in found:
+            found.append(label)
     return found
 
 

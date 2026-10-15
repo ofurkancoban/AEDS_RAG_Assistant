@@ -258,6 +258,12 @@ class Settings(BaseSettings):
     # difference it showed its working for (now accepted) and a grade value
     # from general knowledge. None on a correct figure, so regenerate.
     number_guard: str = "regenerate"
+    # A second model call checks each generated answer statement by statement
+    # against its context, after the answer has been sent ("background"),
+    # and records what it found for the reviewers (graph/answer_check.py).
+    # "off" skips it; evaluation runs switch it off so they do not spend the
+    # quota twice.
+    answer_check: str = "background"
     rerank_max_candidates: int = 10
     # Rerank through Cloudflare Workers AI's hosted @cf/baai/bge-reranker-base
     # (the same model) when both are set, falling back to the local model on

@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from db.models import AnswerStatus, CachedAnswer, EvalRun, QueryLog, SessionLocal  # noqa: E402
+from db.models import AnswerCheck, AnswerStatus, CachedAnswer, EvalRun, QueryLog, SessionLocal  # noqa: E402
 
 
 def _percentile(values: list[float], share: float) -> float:
@@ -71,6 +71,7 @@ def build_report(now: datetime | None = None) -> str:
         pending = session.query(CachedAnswer).filter(CachedAnswer.status == AnswerStatus.PENDING).count()
         flagged = sum(1 for a in session.query(CachedAnswer).filter(CachedAnswer.downvotes > 0).all() if a.is_flagged)
         last_eval = session.query(EvalRun).order_by(EvalRun.created_at.desc()).first()
+        checks = session.query(AnswerCheck).filter(AnswerCheck.created_at >= since).all()
     finally:
         session.close()
 
@@ -84,6 +85,11 @@ def build_report(now: datetime | None = None) -> str:
         lines.append(f"  - {question}" + (f" ({count}x)" if count > 1 else ""))
     lines.append(f"Ratings: {up} helpful, {down} unhelpful")
     lines.extend(_latency_lines(rows))
+    if checks:
+        flagged = [c for c in checks if json.loads(c.findings_json)]
+        lines.append(f"Answer check: {len(flagged)} of {len(checks)} answers had unsupported statements")
+        for c in flagged[:3]:
+            lines.append(f"  - {c.question.strip()[:80]}: {json.loads(c.findings_json)[0][:120]}")
     lines.append(f"Review queue: {pending} pending" + (f", {flagged} rated unhelpful since review" if flagged else ""))
     if last_eval:
         failed = json.loads(last_eval.failed_ids_json or "[]")

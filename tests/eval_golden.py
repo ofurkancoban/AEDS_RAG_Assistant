@@ -152,7 +152,11 @@ def check_case(result: dict, case: dict) -> list[str]:
 
 
 def run(cases: list[dict], verbose: bool, report_path: Path | None = None) -> bool:
+    from config import settings
     from graph.build_graph import run_chat
+
+    # The background answer check would add a model call per case.
+    settings.answer_check = "off"
 
     all_passed = True
     results = []

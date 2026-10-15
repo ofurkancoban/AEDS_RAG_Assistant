@@ -409,6 +409,21 @@ class QueryLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class AnswerCheck(Base):
+    """One background statement check of a generated answer (graph/answer_check.py):
+    what the checker found unsupported, empty when nothing. Read by /review
+    and the weekly summary."""
+
+    __tablename__ = "answer_checks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question: Mapped[str] = mapped_column(Text)
+    question_normalized: Mapped[str] = mapped_column(String, index=True)
+    answer: Mapped[str] = mapped_column(Text)
+    findings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
 class RouteDecision(Base):
     """The tool router's decision for a question (graph/nodes.py's route
     cache), kept here so a restart or deploy does not empty it. The key
