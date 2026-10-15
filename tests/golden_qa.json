@@ -1297,7 +1297,7 @@
         "2-mal"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1313,7 +1313,7 @@
     "expected_contains": [
       "30",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1329,7 +1329,7 @@
     "expected_contains": [
       "60",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1348,7 +1348,7 @@
         "6 wochen"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1366,7 +1366,7 @@
     "expected_contains": [
       "B2",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1387,7 +1387,7 @@
         "457.90"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1406,7 +1406,7 @@
         "kein"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1425,7 +1425,7 @@
         "10 uhr"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1445,7 +1445,7 @@
         "11 904"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1462,7 +1462,7 @@
       "140",
       "280",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1478,7 +1478,7 @@
     "expected_contains": [
       "privat",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1494,7 +1494,7 @@
     "expected_contains": [
       "120",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1514,7 +1514,7 @@
         "30 000"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1533,7 +1533,7 @@
         "5 monate"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1550,7 +1550,7 @@
       "Advanced Microeconomics",
       "Econometrics of Policy Evaluation",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1571,7 +1571,7 @@
         "15.06"
       ],
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
@@ -1695,7 +1695,7 @@
     "expected_contains": [
       "IBAN",
       {
-        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind)\\b"
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
     ],
     "expected_absent": [
