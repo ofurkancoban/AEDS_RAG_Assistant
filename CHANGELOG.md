@@ -7,6 +7,19 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.36] - 2026-10-15
+### Fixed
+- "How long should a seminar paper be?" in German was answered with the
+  superseded "15-20 Seiten" 3 times out of 3. The figure came from two
+  places: the regulations-changes document's "(previously approximately
+  15-20 pages)" and the Banking module's (wir842) own description. The
+  changes document no longer states the old figure, and says that a single
+  module's estimate describes that module while the regulations' 30,000 to
+  45,000 characters (about 15-25 pages) apply in general. Now 0 of 3: the
+  answer leads with the general rule and lists Banking as an exception
+  (and is written in German, which 2 of the 3 earlier answers were not).
+  The golden cases now require the 2026 upper bound (45,000).
+
 ## [1.10.35] - 2026-10-15
 ### Added
 - Background answer check: after an answer is sent, a second model call

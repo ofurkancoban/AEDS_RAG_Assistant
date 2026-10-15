@@ -1016,7 +1016,10 @@
         "45,000",
         "45.000",
         "45 000"
-      ]
+      ],
+      {
+        "regex": "15\\s*[-–]\\s*25|30[.,\\s]?000"
+      }
     ],
     "expected_absent": [],
     "notes": "Attribution: the regulations' seminar-paper passage is cut so that it does not say it is about seminar papers. Naming the thesis length as a contrast is fine; the case checks the seminar figures are given.",
@@ -1513,6 +1516,11 @@
         "30,000",
         "30 000"
       ],
+      [
+        "45.000",
+        "45,000",
+        "45 000"
+      ],
       {
         "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
       }
@@ -1522,7 +1530,7 @@
         "regex": "enthalten keine informationen|kann ich nicht beantworten|do not contain information"
       }
     ],
-    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts."
+    "notes": "German counterpart of an English golden case (2026-10-12): the answer must be in German, with the same facts. 2026-10-15: requires the 2026 upper bound (45,000): dots answered with the superseded '15-20 Seiten' (from the changes document's 'previously' note and the Banking module description) 3 of 3 times."
   },
   {
     "id": "de-thesis-writing",
