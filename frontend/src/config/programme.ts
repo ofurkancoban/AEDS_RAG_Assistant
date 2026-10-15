@@ -308,8 +308,8 @@ export const PROGRAMME: ProgrammeConfig = {
     },
   ],
   sourceDomains: [
-    { pattern: /enrolment_affairs|international_student|sports_centre|semester_contribution|semester_ticket|library|residence_permit|health_insurance|working_while_studying/i, domain: 'university' },
-    { pattern: /accommodation|_stw_/i, domain: 'city' },
+    { pattern: /enrolment_affairs|international_student|sports_centre|semester_contribution|semester_ticket|library|residence_permit|health_insurance|working_while_studying|german_courses/i, domain: 'university' },
+    { pattern: /accommodation|_stw_|mensa_menu|broadcast_fee/i, domain: 'city' },
   ],
   sources: {
     AEDS_website_programme_overview: { title: L('Programme overview', 'Studiengangsübersicht'), kind: KIND.programmeWebsite },
@@ -368,6 +368,9 @@ export const PROGRAMME: ProgrammeConfig = {
     AEDS_website_stw_accommodation: { title: L('Student accommodation', 'Studentisches Wohnen'), kind: KIND.studierendenwerk },
     AEDS_website_stw_faq: { title: L('Student housing FAQ', 'FAQ zum Wohnen'), kind: KIND.studierendenwerk },
     AEDS_website_stw_changes_2026: { title: L('Changes in 2026', 'Änderungen 2026'), kind: KIND.studierendenwerk },
+    mensa_menu: { title: L('Canteen menu', 'Speiseplan der Mensa'), kind: KIND.studierendenwerk },
+    AEDS_website_broadcast_fee: { title: L('Broadcast fee (Rundfunkbeitrag)', 'Rundfunkbeitrag'), kind: L('Beitragsservice', 'Beitragsservice') },
+    AEDS_website_german_courses: { title: L('German courses', 'Deutschkurse'), kind: KIND.universityWebsite },
   },
 };
 

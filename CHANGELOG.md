@@ -7,6 +7,13 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.2] - 2026-10-15
+### Fixed
+- Canteen-menu answers were labelled "Programme"; they are "City &
+  living" now. The broadcast fee (also "Programme", now "City & living")
+  and German courses ("Programme", now "University") had the same gap,
+  and all three now have titles in the sources panel.
+
 ## [1.11.1] - 2026-10-15
 ### Fixed
 - Canteen filter labels read "vegetari" (the matched word stem); they are
