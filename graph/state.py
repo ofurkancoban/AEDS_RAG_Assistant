@@ -17,3 +17,6 @@ class RagState(TypedDict):
     # "N days left until the deadline" countdown), which makes it correct only
     # on the day it was produced - the answer cache must not replay it later.
     time_sensitive: bool
+    # A canteen-menu answer's meals, for the interface's cards (graph/mensa.py);
+    # None on every other turn.
+    mensa: dict | None

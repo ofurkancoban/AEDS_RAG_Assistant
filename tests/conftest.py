@@ -85,6 +85,7 @@ def app(monkeypatch):
     from api.routes_admin import router as admin_router
     from api.routes_auth import router as auth_router
     from api.routes_chat import router as chat_router
+    from api.routes_mensa import router as mensa_router
     from api.routes_version import router as version_router
 
     instance = FastAPI()
@@ -92,6 +93,7 @@ def app(monkeypatch):
     instance.include_router(chat_router)
     instance.include_router(admin_router)
     instance.include_router(version_router)
+    instance.include_router(mensa_router)
     return instance
 
 

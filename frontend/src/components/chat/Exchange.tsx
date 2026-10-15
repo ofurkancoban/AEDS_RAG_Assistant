@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Check, Clock, Copy, FileWarning, Flag, PenLine, ThumbsDown, ThumbsUp, Zap } from 'lucide-react';
 import { ChatQueryResult, RetrievalDiagnostic } from '../../types';
 import { AnswerBody } from './AnswerBody';
+import { MensaMenuCards } from './MensaMenu';
 import { ProgressSteps } from './ProgressSteps';
 import { InlineSources } from './Sources';
 import { citationCounts } from './citations';
@@ -127,6 +128,8 @@ export const Exchange: React.FC<ExchangeProps> = ({
       ) : (
         isPending && <ProgressSteps stages={stages} startedAt={startedAt} />
       )}
+
+      {result?.mensa && result.mensa.menus.length > 0 && <MensaMenuCards data={result.mensa} />}
 
       {result && showInlineSources && (
         <InlineSources retrieval={retrieval} counts={counts} onOpenPassage={onOpenPassage} />

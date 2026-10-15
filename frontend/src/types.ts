@@ -22,6 +22,46 @@ export interface RetrievalDiagnostic {
   expired_since: string | null;
 }
 
+/* A canteen-menu answer's meals (graph/mensa.py on the backend): the same
+   meals the answer text was written from, shown as cards with photos. */
+export interface MensaCode {
+  code: string;
+  label: string;
+  kind: 'allergen' | 'additive' | 'note';
+}
+
+export interface MensaPictogram {
+  code: string;
+  label: string;
+  icon: string;
+}
+
+export interface MensaMeal {
+  name: string;
+  counter: string;
+  codes: string[];
+  prices: { students?: string; employees?: string; guests?: string };
+  pictograms: string[];
+  image: string | null;
+  side: boolean;
+  labels: MensaCode[];
+  pictogram_labels: MensaPictogram[];
+}
+
+export interface MensaMenu {
+  location: string;
+  date: string;
+  official_url: string;
+  notes: string[];
+  meals: MensaMeal[];
+  legend: { codes: MensaCode[]; pictograms: MensaPictogram[] };
+}
+
+export interface MensaPayload {
+  menus: MensaMenu[];
+  wishes: string[];
+}
+
 export interface ChatQueryResult {
   id: string;
   query: string;
@@ -46,6 +86,8 @@ export interface ChatQueryResult {
   // graph/build_graph.py's _has_passed_deadline), so they have no `sources`
   // for the per-passage "Outdated since ..." badge to attach to.
   hasExpiredDeadline: boolean;
+  /** Canteen menu cards, when the question was about the Mensa. */
+  mensa?: MensaPayload | null;
 }
 
 export interface UserSession {

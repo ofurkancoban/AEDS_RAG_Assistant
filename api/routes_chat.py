@@ -271,6 +271,9 @@ class ChatResponse(BaseModel):
     # passed - a structured (retrieval-free) answer, so it has no `sources`
     # for the UI to badge (see graph/build_graph.py's _has_passed_deadline).
     has_expired_deadline: bool = False
+    # A canteen-menu answer's meals and legend, for the cards with photos
+    # (graph/mensa.py); null for every other answer.
+    mensa: dict | None = None
 
 
 @router.post("", response_model=ChatResponse)
@@ -370,6 +373,7 @@ def chat(
         node_latencies=result.get("node_latencies", {}),
         query_log_id=log_id,
         has_expired_deadline=bool(result.get("has_expired_deadline")),
+        mensa=result.get("mensa"),
     )
 
 
@@ -542,6 +546,7 @@ def chat_stream(
                     "query_log_id": log_id,
                     "cached": False,
                     "has_expired_deadline": bool(data.get("has_expired_deadline")),
+                    "mensa": data.get("mensa"),
                 }
                 yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
 

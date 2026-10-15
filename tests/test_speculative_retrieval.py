@@ -68,7 +68,8 @@ def test_tool_answer_reports_no_search_stages_and_skips_the_rerank(monkeypatch, 
     tool_answer = {"retrieved_docs": [], "direct_answer": "15 July", "awaiting_semester_number": False}
     monkeypatch.setattr(nodes, "_route_with_tools", lambda question: tool_answer)
 
-    assert nodes.retrieve_node(_state("When is the deadline?")) is tool_answer
+    # retrieve_node adds "mensa": None to every non-menu turn.
+    assert nodes.retrieve_node(_state("When is the deadline?")) == {"mensa": None, **tool_answer}
     time.sleep(0.5)  # let the background search finish
 
     assert stages == [progress.UNDERSTANDING]

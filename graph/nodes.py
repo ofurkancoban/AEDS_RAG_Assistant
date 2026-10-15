@@ -2681,6 +2681,32 @@ def warm_up_retrieval() -> None:
 
 
 def retrieve_node(state: RagState) -> dict:
+    # Every turn sets "mensa", so a menu's cards never carry over into the
+    # next answer through the checkpointed state.
+    return {"mensa": None, **_retrieve(state)}
+
+
+def _menu_answer(question: str) -> dict:
+    """A canteen-menu question: the menu passage for the answer model and
+    the cards for the interface (graph/mensa.py). No router call, no
+    document search: the menu is the only source."""
+    from zoneinfo import ZoneInfo
+
+    from graph.mensa import answer_material
+
+    today = datetime.now(ZoneInfo("Europe/Berlin")).date()
+    docs, payload = answer_material(question, today, "de" if _looks_german(question) else "en")
+    return {
+        "retrieved_docs": docs,
+        "direct_answer": None,
+        "awaiting_semester_number": False,
+        # Correct only for the day it was asked: never cached or replayed.
+        "time_sensitive": True,
+        "mensa": payload,
+    }
+
+
+def _retrieve(state: RagState) -> dict:
     query = _build_retrieval_query(state["messages"])
     filter_ = {"source_id": state["source_id_filter"]} if state.get("source_id_filter") else None
     last_question = state["messages"][-1].content
@@ -2709,6 +2735,11 @@ def retrieve_node(state: RagState) -> dict:
             ),
             "awaiting_semester_number": True,
         }
+
+    from graph.mensa import is_menu_question
+
+    if is_menu_question(last_question):
+        return _menu_answer(last_question)
 
     if _looks_like_ects_progress_request(last_question):
         progress_answer = _build_ects_progress_answer(last_question)
@@ -2878,8 +2909,13 @@ def generate_node(state: RagState) -> dict:
         parent = doc.metadata.get("parent_content")
         if parent and parent not in seen_parents:
             seen_parents.add(parent)
-            return parent
-        return doc.page_content
+            text = parent
+        else:
+            text = doc.page_content
+        # How to use a structured passage (the canteen menu): for the model
+        # only, never shown as the source's text in the evidence panel.
+        note = doc.metadata.get("model_note")
+        return f"{note}\n{text}" if note else text
 
     context = "\n\n".join(
         f"[{number}] [source: {doc.metadata.get('source_id', 'unknown')}"

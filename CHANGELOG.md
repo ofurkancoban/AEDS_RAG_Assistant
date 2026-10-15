@@ -7,6 +7,31 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.0] - 2026-10-15
+### Added
+- Canteen menus. Questions about what the Mensa serves ("What's in the
+  Mensa today?", "Was gibt es morgen in Wechloy?", "Is there something
+  vegan on Friday?", "gluten-free lunch?") are answered from the
+  Studierendenwerk's own menu system for Mensa Uhlhornsweg and Mensa
+  Wechloy, and the answer comes with the meals as cards: photo, counter,
+  student / employee / guest price, diet pictograms, allergens and
+  additives, a compact list of soups, sides, salads and desserts, the
+  menu's footnotes and a legend of the codes used.
+- Which day, which canteen and which diet or allergen to avoid are read by
+  code, not by a model (today/heute, tomorrow/morgen, weekdays, next week;
+  vegan, vegetarian, no pork, halal as "no pork, pork gelatine or alcohol",
+  gluten, lactose, nuts, eggs, soy and more); the meals are filtered on the
+  menu's own codes, and the answer model only puts the chosen meals into
+  words. A filtered answer says that only the menu's allergen codes were
+  used. A closed day moves to the next day with a menu. No router call is
+  made for these questions, and menu answers are never cached or replayed.
+- Photos and pictograms are served through this server (/mensa/image,
+  cached on disk), so a student's browser never contacts the menu host;
+  only that host's photo and icon paths are accepted.
+- The legend is read from the menu page itself in English or German, so a
+  code the Studierendenwerk adds is picked up without a change here; codes
+  it does not explain get no made-up label.
+
 ## [1.10.37] - 2026-10-15
 ### Fixed
 - German campus words no longer get questions refused. "Was kostet eine

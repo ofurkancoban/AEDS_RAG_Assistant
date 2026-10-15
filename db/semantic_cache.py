@@ -68,6 +68,10 @@ def is_reusable_question(question: str) -> bool:
 
     if "ects tracker progress" in question.casefold():
         return False
+    from graph.mensa import is_menu_question
+
+    if is_menu_question(question):
+        return False  # today's menu is not tomorrow's
     return _conversational_reply(question) is None
 
 

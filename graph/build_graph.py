@@ -228,6 +228,7 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
         "answered": not _looks_unanswered(answer),
         "time_sensitive": bool(result.get("time_sensitive")),
         "has_expired_deadline": _has_passed_deadline(answer),
+        "mensa": result.get("mensa"),
     }
 
 
@@ -346,6 +347,7 @@ def stream_chat(
             "answered": not _looks_unanswered(final_answer),
             "time_sensitive": bool(turn.get("time_sensitive")),
             "has_expired_deadline": _has_passed_deadline(final_answer),
+            "mensa": turn.get("mensa"),
         }
 
     try:

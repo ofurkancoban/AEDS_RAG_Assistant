@@ -288,6 +288,7 @@ export const RagChatView: React.FC<RagChatViewProps> = ({ onQueryResult, isNavOp
             cached: Boolean(data.cached),
             elapsedMs: Date.now() - askedAt,
             hasExpiredDeadline: Boolean(data.has_expired_deadline),
+            mensa: data.mensa ?? null,
           };
 
           // final_answer is authoritative - the generate node strips

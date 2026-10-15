@@ -26,6 +26,9 @@ import {
 // every user other than the one running the server got a failed fetch.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
+/** A canteen photo or pictogram, served through this backend (api/routes_mensa.py). */
+export const mensaImageUrl = (src: string) => `${API_BASE_URL}/mensa/image?src=${encodeURIComponent(src)}`;
+
 function getToken(): string | null {
   return localStorage.getItem('access_token');
 }
