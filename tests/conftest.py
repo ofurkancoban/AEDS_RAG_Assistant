@@ -50,6 +50,12 @@ os.environ["TELEGRAM_CHAT_ID"] = ""
 # Same for the hosted reranker: with keys in .env every rerank in the suite
 # went to Cloudflare (found when test_reranker_limits saw no local call).
 os.environ["CLOUDFLARE_ACCOUNT_ID"] = ""
+# Provider keys too, so a local run matches CI, which has none: tests that
+# built a real client passed locally (key in .env) and failed in CI for five
+# days without anyone noticing (2026-10-10 to 2026-10-15). A test that needs
+# a client sets its own fake key.
+os.environ["OPENROUTER_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 os.environ["CLOUDFLARE_API_TOKEN"] = ""
 
 from config import settings  # noqa: E402

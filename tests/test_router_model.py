@@ -13,6 +13,7 @@ def _fallback_model(wrapped):
 
 def test_router_uses_main_model_when_unset(monkeypatch):
     monkeypatch.setattr(llm_budget, "effective_provider", lambda: "openrouter")
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "openrouter_router_model", "")
     llm, model = nodes.get_router_llm()
     assert model is None

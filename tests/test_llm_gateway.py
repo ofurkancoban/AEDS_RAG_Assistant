@@ -32,6 +32,7 @@ def test_another_gateway_never_receives_the_openrouter_key(monkeypatch):
 
 
 def test_hourly_cap_paces_calls(monkeypatch):
+    monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "openrouter_requests_per_hour", 180)
     llm = nodes._get_openrouter_llm_cached("some/model:free")
     assert llm.rate_limiter is not None
