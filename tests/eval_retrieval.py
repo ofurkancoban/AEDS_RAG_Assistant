@@ -36,7 +36,7 @@ from tests.eval_golden import _matches, _normalize_for_matching, load_cases
 def evaluate(cases: list[dict]) -> list[dict]:
     from db.chroma_client import hybrid_search
     from db.reranker import rerank
-    from graph.nodes import _TOOL_NAME_TO_FUNC, _conversational_reply, _looks_german
+    from graph.nodes import _TOOL_NAME_TO_FUNC, _conversational_reply, _looks_german, _with_campus_terms
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
@@ -63,7 +63,9 @@ def evaluate(cases: list[dict]) -> list[dict]:
                 }
             )
             continue
-        docs = rerank(case["question"], hybrid_search(case["question"], k=config.retrieval_top_k), config.rerank_top_k)
+        # The same query production searches with (campus terms appended).
+        query = _with_campus_terms(case["question"])
+        docs = rerank(query, hybrid_search(query, k=config.retrieval_top_k), config.rerank_top_k)
         context = _normalize_for_matching(
             "\n".join(doc.metadata.get("parent_content") or doc.page_content for doc in docs)
         )

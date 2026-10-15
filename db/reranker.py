@@ -1,5 +1,6 @@
 
 import threading
+from functools import lru_cache
 
 from langchain_core.documents import Document
 from sentence_transformers import CrossEncoder
@@ -44,7 +45,12 @@ def get_reranker() -> CrossEncoder:
 _CLOUDFLARE_RERANK_URL = "https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/baai/bge-reranker-base"
 # After a failed API call the local model is used for this long, so an
 # outage costs one timeout rather than one per question.
-_API_BACKOFF_S = 300
+# One slow call (the API's median is about 0.5s, but single calls over 3s
+# happen) used to move every question to the local model for five minutes:
+# about 3s slower on the VPS, and ranked differently. A timeout is now
+# retried once, and the pause after a real failure is one minute.
+_API_BACKOFF_S = 60
+_API_ATTEMPTS = 2
 _api_down_until = 0.0
 
 
@@ -62,27 +68,64 @@ def _api_scores(query: str, passages: list[str]) -> list[float] | None:
 
     if not _api_configured() or time.monotonic() < _api_down_until:
         return None
-    try:
-        response = httpx.post(
-            _CLOUDFLARE_RERANK_URL.format(account=settings.cloudflare_account_id),
-            headers={"Authorization": f"Bearer {settings.cloudflare_api_token}"},
-            json={"query": query, "contexts": [{"text": p} for p in passages], "top_k": len(passages)},
-            timeout=settings.reranker_api_timeout_s,
-        )
-        response.raise_for_status()
-        scores = [0.0] * len(passages)
-        ranked = response.json()["result"]["response"]
-        for item in ranked:
-            scores[item["id"]] = float(item["score"])
-        if len(ranked) != len(passages):
-            raise ValueError(f"{len(ranked)} scores for {len(passages)} passages")
-        return scores
-    except Exception as exc:  # noqa: BLE001 - any failure means: use the local model
-        import logging
+    for attempt in range(1, _API_ATTEMPTS + 1):
+        try:
+            response = httpx.post(
+                _CLOUDFLARE_RERANK_URL.format(account=settings.cloudflare_account_id),
+                headers={"Authorization": f"Bearer {settings.cloudflare_api_token}"},
+                json={"query": query, "contexts": [{"text": p} for p in passages], "top_k": len(passages)},
+                timeout=settings.reranker_api_timeout_s,
+            )
+            response.raise_for_status()
+            scores = [0.0] * len(passages)
+            ranked = response.json()["result"]["response"]
+            for item in ranked:
+                scores[item["id"]] = float(item["score"])
+            if len(ranked) != len(passages):
+                raise ValueError(f"{len(ranked)} scores for {len(passages)} passages")
+            return scores
+        except httpx.TimeoutException as exc:
+            if attempt < _API_ATTEMPTS:
+                continue
+            failure = exc
+        except Exception as exc:  # noqa: BLE001 - any failure means: use the local model
+            failure = exc
+        break
+    import logging
 
-        logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", exc)
-        _api_down_until = time.monotonic() + _API_BACKOFF_S
-        return None
+    logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", failure)
+    _api_down_until = time.monotonic() + _API_BACKOFF_S
+    return None
+
+
+@lru_cache(maxsize=256)
+def _markdown_title(source_file: str) -> str:
+    """A Markdown document's own top heading ("# Broadcast fee
+    (Rundfunkbeitrag) for students in Germany"), or "" when there is none."""
+    path = settings.documents_dir / source_file
+    if path.suffix.lower() != ".md" or not path.exists():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def _rerank_text(doc: Document) -> str:
+    """What the reranker reads for a passage: Markdown sections are stored
+    without their document's title, so "## How much - 18.36 euros per month"
+    could not be matched to a question about the Rundfunkbeitrag and fell
+    out of the top passages (2026-10-15). The title is added for scoring
+    only; the stored passage and what the model sees are unchanged.
+    PDF chunks already start with their own "[title | section]" header."""
+    title = _markdown_title(doc.metadata.get("source_file") or "")
+    if title and not doc.page_content.lstrip().startswith(("# " + title, title)):
+        # After the passage, not before: measured on four questions, a title
+        # in front pushed a section with the answer down ("Levels, length
+        # and credits" from 3rd to 4th-5th), while at the end it lifted the
+        # Rundfunkbeitrag answer from 5th to 1st and moved nothing down.
+        return f"{doc.page_content}\n({title})"
+    return doc.page_content
 
 
 def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
@@ -100,9 +143,10 @@ def rerank(query: str, docs: list[Document], top_k: int) -> list[Document]:
         # keeps its strongest candidates; see config.rerank_max_candidates.
         docs = docs[: settings.rerank_max_candidates]
 
-    scores = _api_scores(query, [doc.page_content for doc in docs])
+    texts = [_rerank_text(doc) for doc in docs]
+    scores = _api_scores(query, texts)
     if scores is None:
-        pairs = [(query, doc.page_content) for doc in docs]
+        pairs = [(query, text) for text in texts]
         with MODEL_LOCK:
             scores = get_reranker().predict(pairs)
 

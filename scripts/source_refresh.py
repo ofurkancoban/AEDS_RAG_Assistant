@@ -292,7 +292,9 @@ def _draft_curated_replacement(old_markdown: str, live_text: str) -> str | None:
         "Rules: change only what the page's content actually changed. Never "
         "invent, infer, or carry over any fact, number, or date that is not "
         "present in the page text you were given. If something in the old "
-        "document no longer appears on the page, remove it. Output only the "
+        "document no longer appears on the page, remove it. Keep alternative "
+        "names the document adds in parentheses, such as 'Canteen (Mensa)': "
+        "they are the words students search with, not facts. Output only the "
         "replacement document text - no preamble, no explanation, no code "
         "fence."
     )

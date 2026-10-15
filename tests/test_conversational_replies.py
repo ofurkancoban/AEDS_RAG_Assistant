@@ -63,3 +63,10 @@ def test_a_follow_up_searches_with_itself_and_the_previous_question():
     query = nodes._build_retrieval_query(messages)
     assert query.splitlines()[0] == "Where do I apply for it?"
     assert "residence permit" in query and "Bürgerbüro" not in query
+
+
+def test_german_campus_words_get_their_english_terms_appended():
+    assert nodes._with_campus_terms("How much does a pizza cost in the Mensa?") == "How much does a pizza cost in the Mensa? (canteen)"
+    assert "re-registration" in nodes._with_campus_terms("When is the Rückmeldung deadline?")
+    # Already in English: nothing appended.
+    assert nodes._with_campus_terms("How much does a pizza cost in the canteen?") == "How much does a pizza cost in the canteen?"

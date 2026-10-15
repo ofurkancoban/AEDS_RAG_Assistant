@@ -474,7 +474,13 @@
     "notes": "A professor teaching several courses - the person-filter path must return all of them (filter_search has no result cap in practice here), not just the first/most-similar match.",
     "expected_source_ids": [
       "catalog"
-    ]
+    ],
+    "tool_call": {
+      "name": "search_course_catalog",
+      "args": {
+        "professor_name": "Carsten Helm"
+      }
+    }
   },
   {
     "id": "contribution-flagged-correction",
@@ -1837,5 +1843,43 @@
     "expected_source_ids": [
       "AEDS_website_german_courses"
     ]
+  },
+  {
+    "id": "mensa-pizza-price",
+    "question": "How much does a pizza cost in the Mensa?",
+    "expected_contains": [
+      [
+        "5.00",
+        "5,00"
+      ]
+    ],
+    "expected_absent": [
+      {
+        "regex": "do not contain information|cannot answer this from"
+      }
+    ],
+    "expected_source_ids": [
+      "AEDS_website_stw_changes_2026"
+    ],
+    "notes": "2026-10-15: 'Mensa' did not match 'canteen' for the reranker (0.03), so the German question was refused 2 of 2 times."
+  },
+  {
+    "id": "de-mensa-pizza-price",
+    "question": "Was kostet eine Pizza in der Mensa?",
+    "expected_contains": [
+      [
+        "5,00",
+        "5.00"
+      ],
+      {
+        "regex": "\\b(und|der|die|das|sie|nicht|ist|sind|es|gibt|ein|eine|für|mit|zu|wird|werden|kann|können)\\b"
+      }
+    ],
+    "expected_absent": [
+      {
+        "regex": "enthalten keine informationen|do not contain information"
+      }
+    ],
+    "notes": "2026-10-15: 'Mensa' did not match 'canteen' for the reranker (0.03), so the German question was refused 2 of 2 times."
   }
 ]

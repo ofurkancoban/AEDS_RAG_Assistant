@@ -2463,7 +2463,7 @@ class _SpeculativeRetrieval:
         # English-only past this point - the corpus and its embedding model
         # are English (see _translate_to_english); generate_node still answers
         # in whatever language the question was asked in.
-        retrieval_query = _translate_to_english(query)
+        retrieval_query = _with_campus_terms(_translate_to_english(query))
         docs = hybrid_search(retrieval_query, k=runtime.retrieval_top_k, filter=filter_)
         self._searched.set()
         if self._cancelled.is_set():
@@ -2559,6 +2559,52 @@ _GRADUATION_PROGRESS = re.compile(
     r"\bcomplete my (degree|studies)\b|\bleft to (do|complete|finish)\b"
 )
 _GRADUATION_QUERY = "What are the requirements to graduate: total ECTS, ECTS per component and the Master's thesis?"
+
+
+# German campus words students use even when writing English, mapped to the
+# English the documents use. The reranker does not connect them: "pizza in
+# the Mensa" scored 0.03 against the canteen-prices passage, under the
+# relevance gate, so the question was refused although the answer was
+# there (2026-10-15). The English terms are appended to the search query
+# (after translation, so a German question keeps the benefit), never
+# substituted, so the original words still count for BM25.
+_CAMPUS_TERMS = {
+    "mensa": "canteen",
+    "rückmeldung": "re-registration semester contribution",
+    "vorlesungszeit": "lecture period",
+    "vorlesungsfreie zeit": "lecture-free period",
+    "werkstudent": "part-time job working while studying 20 hours per week",
+    "hiwi": "student assistant",
+    "prüfungsamt": "examinations office",
+    "prüfungsausschuss": "examining board",
+    "modulhandbuch": "module handbook",
+    "immatrikulation": "enrolment",
+    "exmatrikulation": "de-registration exmatriculation",
+    "semesterbeitrag": "semester contribution",
+    "semesterticket": "semester ticket",
+    "wohnheim": "student residence accommodation",
+    "studierendenwerk": "student services Studierendenwerk",
+    "bürgerbüro": "citizens' office residence registration",
+    "aufenthaltstitel": "residence permit",
+    "krankenversicherung": "health insurance",
+    "anmeldebestätigung": "registration certificate",
+    "hausarbeit": "term paper seminar paper",
+    "masterarbeit": "Master's thesis",
+    "beurlaubung": "leave of absence",
+    # Not German, but the same gap: the documents say sports centre.
+    "gym": "sports centre fitness",
+    "fitnessstudio": "sports centre fitness",
+}
+_CAMPUS_TERM_RE = re.compile(r"\b(" + "|".join(sorted(map(re.escape, _CAMPUS_TERMS), key=len, reverse=True)) + r")", re.IGNORECASE)
+
+
+def _with_campus_terms(query: str) -> str:
+    extra = []
+    for match in _CAMPUS_TERM_RE.finditer(query):
+        english = _CAMPUS_TERMS[match.group(1).casefold()]
+        if english.casefold() not in query.casefold() and english not in extra:
+            extra.append(english)
+    return f"{query} ({'; '.join(extra)})" if extra else query
 
 
 def _retrieval_query_for(question: str, default: str) -> str:

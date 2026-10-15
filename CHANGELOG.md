@@ -7,6 +7,34 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.37] - 2026-10-15
+### Fixed
+- German campus words no longer get questions refused. "Was kostet eine
+  Pizza in der Mensa?" was answered "no information" 2 of 2 times: the
+  reranker scored "Mensa" against the canteen-prices passage at 0.03, under
+  the relevance gate. Common German campus terms (Mensa, Rückmeldung,
+  Prüfungsamt, Modulhandbuch, Krankenversicherung, Werkstudent...) now add
+  their English equivalents to the search query. Of 16 such questions, 3
+  fell under the gate before and 1 after (lecture-period start dates, which
+  the documents do not contain).
+- "Wie hoch ist der Semesterbeitrag?" gave the semester ticket's share
+  (230.80 EUR) as the whole contribution. The semester contribution
+  document now states the total (457.90 EUR) in its heading and first
+  sentence and says the shares are parts of it.
+### Changed
+- The reranker reads each Markdown passage with its document's title after
+  it ("## How much - 18.36 euros" could not be matched to a Rundfunkbeitrag
+  question and fell out of the top passages). Off-topic questions now score
+  lower ("How do I renew a US passport?" 0.75 to 0.18). Two document titles
+  that said nothing ("Prices / Opening hours", "Studierendenwerk Changes
+  2026") now name their subject; "is there a gym" went from 0.006 to 0.91.
+- A Cloudflare rerank call that times out is retried once, and a real
+  failure pauses the API for one minute instead of five: a single slow call
+  moved every question to the local model (3s slower, ranked differently)
+  for five minutes.
+- Source-refresh drafts keep alternative names a document adds in
+  parentheses, such as "Canteen (Mensa)".
+
 ## [1.10.36] - 2026-10-15
 ### Fixed
 - "How long should a seminar paper be?" in German was answered with the

@@ -74,7 +74,9 @@ def test_a_failure_falls_back_and_backs_off(monkeypatch):
     reranker.rerank("q", _docs(), 2)
 
     assert local.calls == 2
-    assert len(attempts) == 1  # the second question did not wait for the API again
+    # The first question retried the timeout once; the second did not wait
+    # for the API at all.
+    assert len(attempts) == 2
 
 
 def test_unconfigured_means_local_only(monkeypatch):
@@ -87,3 +89,21 @@ def test_unconfigured_means_local_only(monkeypatch):
     monkeypatch.setattr(httpx, "post", no_network)
     reranker.rerank("q", _docs(), 2)
     assert local.calls == 1
+
+
+def test_a_timeout_is_retried_once_before_falling_back(monkeypatch):
+    local = _configure(monkeypatch)
+    attempts = []
+
+    def slow_then_fine(url, headers, json, timeout):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise httpx.ReadTimeout("The read operation timed out")
+        return _Response({"result": {"response": [{"id": 0, "score": 0.9}, {"id": 1, "score": 0.5}, {"id": 2, "score": 0.1}]}})
+
+    monkeypatch.setattr(httpx, "post", slow_then_fine)
+    ranked = reranker.rerank("q", _docs(), 1)
+
+    assert len(attempts) == 2
+    assert local.calls == 0
+    assert ranked[0].metadata["_rerank_score"] == 0.9
