@@ -774,6 +774,8 @@ def _switch_provider(provider: str) -> str:
         return "Cannot switch to gemini: GEMINI_API_KEY is not set."
     if provider == "openrouter" and not settings.openrouter_api_key:
         return "Cannot switch to openrouter: OPENROUTER_API_KEY is not set."
+    if provider == "workers_ai" and not (settings.cloudflare_api_token and settings.cloudflare_account_id):
+        return "Cannot switch to workers_ai: CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are not set."
     update_runtime_config(llm_provider=provider)
     return f"Switched to {provider}."
 

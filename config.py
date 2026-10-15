@@ -33,6 +33,11 @@ def daily_budget_for_provider(provider: str, explicit: int) -> int:
         return 450
     if provider == "openrouter":
         return 900
+    if provider == "workers_ai":
+        # The free plan gives 10,000 neurons a day, shared with the hosted
+        # reranker. A Gemma answer costs about 35 neurons and a routing call
+        # about 20, so 150 calls stay well inside it.
+        return 150
     return 0
 
 
@@ -104,7 +109,11 @@ class Settings(BaseSettings):
     # (as answer model) 79/80, the same case failing on both; apodex is
     # faster and, unlike dots, kept German answers in German and their
     # figures intact. So apodex writes answers and dots routes.
-    openrouter_model: str = "apodex/apodex-1.1-mini:free"
+    # apodex was withdrawn from OpenRouter on 2026-10-14 (production had
+    # already moved to dots through the fallback). dots answered 94 of 96
+    # golden cases as answer model, and it is the only remaining free model
+    # with an endpoint that honours data_collection=deny, so it now does both.
+    openrouter_model: str = "dots-studio/dots-3-note-preview:free"
     # Tried only if openrouter_model's own call fails (see graph/nodes.py's
     # _with_fallback): ":free" models are previews OpenRouter can pull or
     # rate-limit with no notice, as happened to space-bunny-alpha. Empty
@@ -112,7 +121,10 @@ class Settings(BaseSettings):
     # in the same measurement (15/15 on the subset, 45-46/47 on the full
     # golden set) but slower (12s median), which suits a fallback that only
     # runs when the primary is failing.
-    openrouter_fallback_model: str = "dots-studio/dots-3-note-preview:free"
+    # Empty since 2026-10-15: no other free OpenRouter model passed both the
+    # data policy and the golden set. The fallback after it is Workers AI
+    # (workers_ai_model below), tried whenever this one is unset or fails.
+    openrouter_fallback_model: str = ""
     # Ask OpenRouter to use only provider endpoints that do not store or
     # train on prompts (provider.data_collection = "deny"). Checked working
     # with both models above on 2026-10-10.
@@ -141,7 +153,8 @@ class Settings(BaseSettings):
     # router-only pass dots was right on 12 of the 15 questions where the
     # two disagreed (apodex on none), for about 1.4s more per question
     # (median 3.6s vs 2.2s).
-    openrouter_router_model: str = "dots-studio/dots-3-note-preview:free"
+    # Empty since dots also writes the answers (2026-10-15).
+    openrouter_router_model: str = ""
 
     # Ceiling on LLM requests issued per calendar day, enforced in-app (see
     # llm_budget.py). 0 means no ceiling; leave it at -1 to derive one from the
@@ -161,10 +174,23 @@ class Settings(BaseSettings):
     # instead of refusing every new question outright. Empty disables this;
     # set to the same value as llm_provider (or leave it pointing at a
     # provider with no configured key) to get the old refuse-outright
-    # behaviour back. Defaults to gemini: its free tier (450/day here) is
-    # normally barely touched, so it has real headroom to absorb overflow
-    # from a tighter provider like openrouter's free tier.
-    daily_budget_fallback_provider: str = "gemini"
+    # behaviour back.
+    # Workers AI since 2026-10-15, no longer gemini: Gemini's free tier uses
+    # prompts and answers to improve Google's products and lets human
+    # reviewers read them (ai.google.dev/gemini-api/terms, "Unpaid
+    # Services"), which students' questions must not go to. Workers AI does
+    # not use request content for training.
+    daily_budget_fallback_provider: str = "workers_ai"
+
+    # Cloudflare Workers AI model used as the last fallback for answers and
+    # routing (needs cloudflare_account_id / cloudflare_api_token): when the
+    # OpenRouter model fails or is withdrawn, and as the daily-budget
+    # fallback provider. Measured 2026-10-15 on 25 random golden cases
+    # (multi-turn and German included) as both answer model and router:
+    # gemma-4-26b 25/25, qwen3-30b 23/25 (both misses German), mistral-small
+    # 21/25 (invented a student's credits, answered German in English, and
+    # rejects a system message after the conversation history).
+    workers_ai_model: str = "@cf/google/gemma-4-26b-a4b-it"
 
     # Which provider serves embeddings: "local" (sentence-transformers, no
     # API/network call, no rate limit - see local_embedding_model), "gemini"

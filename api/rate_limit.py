@@ -247,6 +247,8 @@ submission_limiter = RateLimiter("submission", [(5, 3600)])
 _CHAT_RULES = {
     "gemini": [(20, 3600), (60, 86400)],
     "openrouter": [(10, 3600), (30, 86400)],
+    # A daily allowance shared with the reranker (config's 150 calls).
+    "workers_ai": [(10, 3600), (30, 86400)],
     "ollama": [(30, 3600), (150, 86400)],
 }
 
@@ -280,6 +282,7 @@ guest_limiter = RateLimiter("guest", [(60, 3600), (300, 86400)])
 _CHAT_IP_RULES = {
     "gemini": [(60, 3600), (200, 86400)],
     "openrouter": [(15, 3600), (40, 86400)],
+    "workers_ai": [(15, 3600), (40, 86400)],
     "ollama": [(300, 3600), (1200, 86400)],
 }
 

@@ -7,6 +7,27 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.10.34] - 2026-10-15
+### Changed
+- dots-3-note is now the answer model as well as the router. OpenRouter
+  withdrew apodex on 2026-10-14; production had already moved to dots
+  through the fallback (and retried apodex every 6 hours). dots answered
+  94 of 96 golden cases, and it is the only free OpenRouter model left with
+  an endpoint that honours data_collection=deny.
+- Cloudflare Workers AI (gemma-4-26b) is the fallback after it, both when
+  the OpenRouter model fails or is withdrawn and as the daily-budget
+  fallback provider. On 25 random golden cases (multi-turn and German
+  included) gemma-4-26b scored 25/25, against qwen3-30b 23/25 and
+  mistral-small 21/25. With the main model made unavailable on purpose,
+  6 of 6 cases passed through the fallback. Workers AI does not use
+  request content for training.
+- The daily-budget fallback is no longer Gemini: its free tier lets Google
+  use prompts and answers to improve its products and lets human reviewers
+  read them, which students' questions must not go to.
+### Fixed
+- The router's own model had no fallback once openrouter_fallback_model was
+  empty; the main model is now its fallback whenever they differ.
+
 ## [1.10.33] - 2026-10-13
 ### Fixed
 - A streamed answer now stops generating when the reader leaves: pressing

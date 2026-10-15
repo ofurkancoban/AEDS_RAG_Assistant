@@ -21,7 +21,7 @@ from db.models import RuntimeConfig, SessionLocal
 # between - both are on the free tier and need no other code changes.
 ALLOWED_GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.6-flash"]
 
-ALLOWED_LLM_PROVIDERS = ["ollama", "gemini", "openrouter"]
+ALLOWED_LLM_PROVIDERS = ["ollama", "gemini", "openrouter", "workers_ai"]
 
 
 def _override(stored, fallback):
@@ -74,6 +74,8 @@ def active_chat_model() -> str:
         return config.gemini_model
     if provider == "openrouter":
         return config.openrouter_model
+    if provider == "workers_ai":
+        return settings.workers_ai_model
     return settings.ollama_llm_model
 
 

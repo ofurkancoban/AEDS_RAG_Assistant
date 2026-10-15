@@ -880,7 +880,10 @@ def get_config(admin: User = Depends(require_admin)):
     keyed_providers = [
         p
         for p in ALLOWED_LLM_PROVIDERS
-        if p == "ollama" or (p == "gemini" and settings.gemini_api_key) or (p == "openrouter" and settings.openrouter_api_key)
+        if p == "ollama"
+        or (p == "gemini" and settings.gemini_api_key)
+        or (p == "openrouter" and settings.openrouter_api_key)
+        or (p == "workers_ai" and settings.cloudflare_api_token and settings.cloudflare_account_id)
     ]
     return ConfigOut(
         # The model actually answering, whichever provider is active. Without
@@ -1060,6 +1063,11 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
                 status_code=400,
                 detail="Cannot switch to 'openrouter': OPENROUTER_API_KEY is not set in .env.",
             )
+        if payload.llm_provider == "workers_ai" and not (settings.cloudflare_api_token and settings.cloudflare_account_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot switch to 'workers_ai': CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are not set in .env.",
+            )
 
     if payload.gemini_model is not None:
         if effective_provider != "gemini":
@@ -1118,6 +1126,14 @@ def put_config(payload: ConfigUpdateRequest, admin: User = Depends(require_admin
             raise HTTPException(
                 status_code=400,
                 detail="Cannot set daily_budget_fallback_provider to 'openrouter': OPENROUTER_API_KEY is not set.",
+            )
+        if payload.daily_budget_fallback_provider == "workers_ai" and not (
+            settings.cloudflare_api_token and settings.cloudflare_account_id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot set daily_budget_fallback_provider to 'workers_ai': "
+                "CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are not set.",
             )
         # Empty string is the documented way to disable this fallback entirely
         # (see llm_budget.effective_provider) - not validated against the

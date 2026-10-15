@@ -301,6 +301,28 @@ def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> 
     )
 
 
+def _workers_ai_configured() -> bool:
+    return bool(settings.workers_ai_model and settings.cloudflare_account_id and settings.cloudflare_api_token)
+
+
+@lru_cache(maxsize=1)
+def _get_workers_ai_llm_cached() -> BaseChatModel:
+    """Cloudflare Workers AI through its OpenAI-compatible endpoint (see
+    config.workers_ai_model). Cloudflare does not use request content for
+    training, so students' questions can go there."""
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=settings.workers_ai_model,
+        api_key=settings.cloudflare_api_token,
+        base_url=f"https://api.cloudflare.com/client/v4/accounts/{settings.cloudflare_account_id}/ai/v1",
+        temperature=0,
+        # Measured 23s median per golden case end to end; one call well under.
+        timeout=60,
+        callbacks=[_BudgetCountingCallback("workers_ai")],
+    )
+
+
 def _with_fallback(
     runnable, *, tools: list | None = None, purpose: str = "classifier", primary_model: str | None = None
 ):
@@ -337,26 +359,32 @@ def _with_fallback(
     from runtime_config import get_runtime_config
 
     config = get_runtime_config()
-    if effective_provider() != "openrouter" or not config.openrouter_fallback_model:
+    if effective_provider() != "openrouter":
         return runnable
     primary = primary_model or config.openrouter_model
-    fallback_model = config.openrouter_fallback_model
-    if fallback_model == primary:
-        # The router may run on the configured fallback model; its own
-        # fallback is then the main model.
-        fallback_model = config.openrouter_model
-    if fallback_model == primary:
-        # Falling back to itself would just repeat the same failure.
-        return runnable
+    # The configured fallback model, or - for the router running on a model
+    # of its own - the main model; never the primary itself, which would only
+    # repeat the same failure.
+    fallback_model = next(
+        (m for m in (config.openrouter_fallback_model, config.openrouter_model) if m and m != primary), ""
+    )
 
-    fallback = _get_openrouter_llm_cached(fallback_model, purpose)
+    # In order: a second OpenRouter model, then Workers AI (another provider
+    # entirely, so it also covers OpenRouter itself being down).
+    fallbacks = []
+    if fallback_model and not _model_is_gone(fallback_model):
+        fallbacks.append(_get_openrouter_llm_cached(fallback_model, purpose))
+    if _workers_ai_configured():
+        fallbacks.append(_get_workers_ai_llm_cached())
     if tools:
-        fallback = fallback.bind_tools(tools)
-    if _model_is_gone(primary) and not _model_is_gone(fallback_model):
-        # Known withdrawn: go straight to the fallback instead of paying for
+        fallbacks = [f.bind_tools(tools) for f in fallbacks]
+    if not fallbacks:
+        return runnable
+    if _model_is_gone(primary):
+        # Known withdrawn: go straight to the fallbacks instead of paying for
         # a failed call on every question.
-        return fallback
-    return _watch_for_withdrawal(runnable, primary).with_fallbacks([fallback])
+        return fallbacks[0].with_fallbacks(fallbacks[1:]) if len(fallbacks) > 1 else fallbacks[0]
+    return _watch_for_withdrawal(runnable, primary).with_fallbacks(fallbacks)
 
 
 # Models OpenRouter answered "unavailable" / "not found" for, with the time
@@ -434,10 +462,14 @@ def _is_daily_quota_error(exc: Exception) -> bool:
     "free-models-per-day"; Gemini: "...PerDay..."), as opposed to a
     per-minute limit that clears by waiting. Retrying the daily kind only
     makes the user wait: it will not clear before the next UTC day."""
+    text = str(exc).lower()
+    # Workers AI's free plan: "used up your daily free allocation of 10,000
+    # neurons" (not always sent as a 429).
+    if "daily free allocation" in text:
+        return True
     status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     if status != 429:
         return False
-    text = str(exc).lower()
     return "per-day" in text or "per day" in text or "perday" in text
 
 
@@ -471,7 +503,7 @@ def _with_resilience(runnable, rebuild=None):
     from llm_budget import effective_provider
 
     provider = effective_provider()
-    if provider not in ("gemini", "openrouter"):
+    if provider not in ("gemini", "openrouter", "workers_ai"):
         return runnable
 
     def call(input, config):
@@ -558,6 +590,9 @@ def get_llm() -> BaseChatModel:
     if provider == "openrouter":
         return _get_openrouter_llm_cached(config.openrouter_model, "generation")
 
+    if provider == "workers_ai":
+        return _get_workers_ai_llm_cached()
+
     return _get_ollama_generation_llm()
 
 
@@ -576,6 +611,9 @@ def get_classifier_llm() -> BaseChatModel:
 
     if provider == "gemini":
         return _get_gemini_llm_cached(config.gemini_model)
+
+    if provider == "workers_ai":
+        return _get_workers_ai_llm_cached()
 
     return _get_ollama_classifier_llm()
 
