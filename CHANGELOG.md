@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.4] - 2026-10-19
+### Added
+- Admin panel: Question Log. Every question with its answer, filterable by
+  period, by where it was asked (site, ECTS Tracker widget, Telegram), by
+  "flagged by the check", "not answered" and "rated unhelpful", and by
+  text; each row shows its place in the conversation, its rating and the
+  background check's findings. The answer review queue only holds answers
+  that could be given to other students, so widget questions (they carry
+  the student's course list), follow-ups, canteen menus and small talk had
+  no screen at all. Widget questions are shown without the course list.
+
 ## [1.11.3] - 2026-10-19
 ### Fixed
 - "who create you ?" asked from the ECTS Tracker widget was answered "I was

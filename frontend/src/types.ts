@@ -325,3 +325,25 @@ export interface AnswerCheck {
   created_at: string;
   seen: boolean;
 }
+
+/** One question from the admin question log (any turn, any origin). */
+export interface QuestionLogItem {
+  id: number;
+  created_at: string;
+  question: string;
+  source: string;
+  turn: number;
+  turns: number;
+  answered: boolean;
+  rating: number | null;
+  cached: boolean;
+  latency_ms: number;
+  source_ids: string[];
+  answer: string;
+  check_findings: string[] | null;
+}
+
+export interface QuestionLogPage {
+  total: number;
+  items: QuestionLogItem[];
+}

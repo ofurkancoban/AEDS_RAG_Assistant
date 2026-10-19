@@ -18,6 +18,7 @@ const VectorAnalyticsView = lazy(() => import('./components/VectorAnalyticsView'
 const AdminApprovalView = lazy(() => import('./components/AdminApprovalView').then((m) => ({ default: m.AdminApprovalView })));
 const UserManagementView = lazy(() => import('./components/UserManagementView').then((m) => ({ default: m.UserManagementView })));
 const AnswerReviewView = lazy(() => import('./components/AnswerReviewView').then((m) => ({ default: m.AnswerReviewView })));
+const QuestionLogView = lazy(() => import('./components/QuestionLogView').then((m) => ({ default: m.QuestionLogView })));
 
 const AdminTabFallback: React.FC = () => (
   <div className="max-w-5xl mx-auto px-4 py-16 text-center text-[var(--text-muted)] text-sm flex items-center justify-center gap-2">
@@ -98,6 +99,7 @@ export default function App() {
             {activeTab === 'analytics' && <VectorAnalyticsView latestResult={latestResult} />}
             {activeTab === 'users' && <UserManagementView />}
             {activeTab === 'answers' && <AnswerReviewView onQueueChange={refreshStats} />}
+            {activeTab === 'log' && <QuestionLogView />}
           </Suspense>
         )}
       </main>

@@ -1639,3 +1639,132 @@ def mark_answer_check_seen(
         raise HTTPException(status_code=404, detail="No such check")
     row.seen_at = datetime.now(timezone.utc)
     session.commit()
+
+
+# --- Question log ---------------------------------------------------------
+#
+# Every question asked, readable with its answer. The review queue only
+# holds answers that could be given to someone else (first questions,
+# answered, no personal progress, not a canteen menu), so a widget question
+# carrying a student's course list, a follow-up, or "hi" never appeared in
+# the admin panel at all, however it was answered (2026-10-19). The
+# student's ECTS progress block is not shown: only the question after it.
+
+
+class QuestionLogItem(BaseModel):
+    id: int
+    created_at: datetime
+    question: str
+    source: str  # "site", "widget", "telegram" or the origin host
+    turn: int
+    turns: int
+    answered: bool
+    rating: int | None
+    cached: bool
+    latency_ms: int
+    source_ids: list[str]
+    answer: str
+    # None when no background check ran (cached answers, small talk...).
+    check_findings: list[str] | None
+
+
+class QuestionLogPage(BaseModel):
+    total: int
+    items: list[QuestionLogItem]
+
+
+def _question_source(origin: str | None, question: str) -> str:
+    origin = (origin or "").lower()
+    if "github.io" in origin or "ects tracker progress" in question[:200].casefold():
+        return "widget"
+    if "telegram" in origin:
+        return "telegram"
+    if not origin or "aeds-rag-assistant" in origin or "localhost" in origin:
+        return "site"
+    return origin.split("//")[-1].split("/")[0]
+
+
+@router.get("/question-log", response_model=QuestionLogPage)
+def question_log(
+    days: int = 7,
+    source: str = "all",
+    show: str = "all",
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    from db.answer_flags import _answer_text
+    from db.models import AnswerCheck
+    from graph.nodes import student_question
+
+    since = datetime.now(timezone.utc) - timedelta(days=min(max(days, 1), 90))
+    rows = session.query(QueryLog).filter(QueryLog.created_at >= since).order_by(QueryLog.id.desc()).all()
+
+    checks: dict[str, list] = {}
+    for check in session.query(AnswerCheck).filter(AnswerCheck.created_at >= since - timedelta(minutes=10)).all():
+        checks.setdefault(check.question, []).append(check)
+
+    def findings_for(row) -> list[str] | None:
+        # The check runs in the background within seconds of the answer;
+        # take the one closest in time to this question.
+        candidates = checks.get(row.question, [])
+        if not candidates:
+            return None
+        nearest = min(candidates, key=lambda c: abs((c.created_at - row.created_at).total_seconds()))
+        if abs((nearest.created_at - row.created_at).total_seconds()) > 600:
+            return None
+        return json.loads(nearest.findings_json or "[]")
+
+    needle = search.strip().casefold()
+    selected = []
+    for row in rows:
+        asked = student_question(row.question)
+        kind = _question_source(row.origin, row.question)
+        if source != "all" and kind != source:
+            continue
+        if needle and needle not in asked.casefold():
+            continue
+        findings = findings_for(row)
+        if show == "flagged" and not findings:
+            continue
+        if show == "unanswered" and row.answered:
+            continue
+        if show == "downvoted" and row.rating != -1:
+            continue
+        selected.append((row, asked, kind, findings))
+
+    page = selected[offset : offset + min(limit, 200)]
+    thread_ids = {row.thread_id for row, *_ in page}
+    turns: dict[str, list[int]] = {}
+    if thread_ids:
+        for query_id, thread_id in (
+            session.query(QueryLog.id, QueryLog.thread_id)
+            .filter(QueryLog.thread_id.in_(thread_ids))
+            .order_by(QueryLog.id)
+            .all()
+        ):
+            turns.setdefault(thread_id, []).append(query_id)
+
+    items = []
+    for row, asked, kind, findings in page:
+        thread = turns.get(row.thread_id, [row.id])
+        items.append(
+            QuestionLogItem(
+                id=row.id,
+                created_at=row.created_at,
+                question=asked,
+                source=kind,
+                turn=thread.index(row.id) + 1 if row.id in thread else 1,
+                turns=len(thread),
+                answered=bool(row.answered),
+                rating=row.rating,
+                cached=bool(row.served_from_cache),
+                latency_ms=row.latency_ms or 0,
+                source_ids=[s for s in (row.source_ids or "").split(",") if s],
+                answer=_answer_text(session, row)[:6000],
+                check_findings=findings,
+            )
+        )
+    return QuestionLogPage(total=len(selected), items=items)

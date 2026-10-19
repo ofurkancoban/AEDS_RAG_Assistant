@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Database, MessageSquare, Settings, BarChart2, ShieldCheck,
-  LogIn, LogOut, Users, MessagesSquare, Menu, GraduationCap,
+  LogIn, LogOut, Users, MessagesSquare, Menu, GraduationCap, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeToggle } from './ThemeToggle';
@@ -10,7 +10,7 @@ import { useI18n } from '../i18n';
 import { BrandMark } from './BrandMark';
 import { PROGRAMME } from '../config/programme';
 
-export type TabId = 'chat' | 'knowledge' | 'settings' | 'analytics' | 'admin' | 'users' | 'answers';
+export type TabId = 'chat' | 'knowledge' | 'settings' | 'analytics' | 'admin' | 'users' | 'answers' | 'log';
 
 interface NavbarProps {
   activeTab: TabId;
@@ -81,6 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       icon: MessagesSquare,
       badges: pendingAnswers > 0 ? <CountBadge value={pendingAnswers} urgent title={`${pendingAnswers} answers awaiting review`} /> : null,
     },
+    { id: 'log', label: 'Question Log', icon: ScrollText },
     { id: 'analytics', label: 'Vector Analytics', icon: BarChart2 },
     { id: 'settings', label: 'RAG Config', icon: Settings },
     { id: 'users', label: 'Users', icon: Users },

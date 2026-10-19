@@ -1,6 +1,7 @@
 import {
   AdminConfig,
   AnswerCheck,
+  QuestionLogPage,
   AdminStats,
   BudgetFallbackEvent,
   ChatSource,
@@ -441,6 +442,25 @@ export function updateUser(id: number, payload: { role?: 'admin' | 'user'; passw
 
 export function deleteUser(id: number) {
   return request(`/admin/users/${id}`, { method: 'DELETE' });
+}
+
+export function getQuestionLog(params: {
+  days: number;
+  source: string;
+  show: string;
+  search: string;
+  offset: number;
+  limit?: number;
+}): Promise<QuestionLogPage> {
+  const q = new URLSearchParams({
+    days: String(params.days),
+    source: params.source,
+    show: params.show,
+    search: params.search,
+    offset: String(params.offset),
+    limit: String(params.limit ?? 50),
+  });
+  return request(`/admin/question-log?${q.toString()}`);
 }
 
 export function listAnswerChecks(): Promise<AnswerCheck[]> {
