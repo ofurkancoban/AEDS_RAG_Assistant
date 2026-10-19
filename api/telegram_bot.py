@@ -255,6 +255,17 @@ _MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 _MD_CODE_RE = re.compile(r"`([^`]+)`")
 
 
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
+
+
+def _plain_link(match: re.Match) -> str:
+    """[label](url) as plain text Telegram still makes clickable: the URL
+    alone when the label is just the URL shortened, else "label (url)"."""
+    label, url = match.group(1), match.group(2)
+    bare = re.sub(r"^https?://(www\.)?", "", url).rstrip("/")
+    return url if label.strip().rstrip("/") in (bare, url) else f"{label} ({url})"
+
+
 def _strip_markdown(text: str) -> str:
     """This app's own answers are GFM (##headers, **bold**, `code`), and a
     plain sendMessage shows that syntax as literal characters instead of
@@ -266,6 +277,7 @@ def _strip_markdown(text: str) -> str:
     exactly right for what's a quick heads-up, when the fully formatted
     answer is already one tap away in the admin panel."""
     text = _MD_HEADER_RE.sub("", text)
+    text = _MD_LINK_RE.sub(_plain_link, text)
     text = _MD_BOLD_RE.sub(r"\1", text)
     text = _MD_CODE_RE.sub(r"\1", text)
     return text

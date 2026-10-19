@@ -2517,17 +2517,24 @@ _IDENTITY = re.compile(
 _IDENTITY_TEXT = {
     "en": (
         "I'm the study assistant for the M.Sc. Applied Economics and Data Science at the University of "
-        "Oldenburg, made for this programme's students. A language model writes my answers, but only from "
-        "the programme's and the university's official documents, which are listed under each answer. "
+        "Oldenburg. I was built by Furkan Çoban ([github.com/ofurkancoban](https://github.com/ofurkancoban)), a student "
+        "in this programme, as an independent project to help fellow students find answers in the "
+        "programme's official documents more quickly. A language model writes my answers, but only from the "
+        "programme's and the university's official documents, which are listed under each answer.\n\n"
         "I'm not an official service of the university, so for anything binding please check with the "
-        "examinations office or the programme team.\n\n"
+        "examinations office or the programme team. Feedback or a mistake to report? Use the thumbs below "
+        "an answer.\n\n"
     ),
     "de": (
         "Ich bin der Studienassistent für den M.Sc. Applied Economics and Data Science an der Universität "
-        "Oldenburg, gemacht für die Studierenden dieses Studiengangs. Ein Sprachmodell formuliert meine "
-        "Antworten, aber nur aus den offiziellen Dokumenten des Studiengangs und der Universität, die unter "
-        "jeder Antwort stehen. Ich bin kein offizieller Dienst der Universität; für Verbindliches wende dich "
-        "bitte an das Prüfungsamt oder das Studiengangsteam.\n\n"
+        "Oldenburg. Entwickelt hat mich Furkan Çoban ([github.com/ofurkancoban](https://github.com/ofurkancoban)), "
+        "Student in diesem Studiengang, als unabhängiges Projekt, damit Kommilitoninnen und Kommilitonen "
+        "Antworten aus den offiziellen Dokumenten des Studiengangs schneller finden. Ein Sprachmodell "
+        "formuliert meine Antworten, aber nur aus den offiziellen Dokumenten des Studiengangs und der "
+        "Universität, die unter jeder Antwort stehen.\n\n"
+        "Ich bin kein offizieller Dienst der Universität; für Verbindliches wende dich bitte an das "
+        "Prüfungsamt oder das Studiengangsteam. Feedback oder einen Fehler gefunden? Nutze die Daumen unter "
+        "einer Antwort.\n\n"
     ),
 }
 
@@ -2552,6 +2559,9 @@ _WELCOME = {
         "Stellen Sie mir eine Frage oder wählen Sie ein Thema aus der Liste."
     ),
 }
+# The identity reply already introduces the assistant, so it only adds the
+# welcome's topic list, not its first sentence.
+_IDENTITY_TOPICS = {"en": "You can ask me, for example, about:\n\n", "de": "Fragen Sie mich zum Beispiel zu:\n\n"}
 _OPENERS = {
     "greeting": {"en": "Hi! ", "de": "Hallo! "},
     "how_are_you": {"en": "Doing well, thanks for asking! ", "de": "Danke der Nachfrage, gut! "},
@@ -2586,7 +2596,7 @@ def _conversational_reply(message: str) -> str | None:
     kind = None
     if _IDENTITY.search(text):
         lang = "de" if _looks_german(message) or re.search(r"\b(wer|bist|welches|dich)\b", text) else "en"
-        return _IDENTITY_TEXT[lang] + _WELCOME[lang]
+        return _IDENTITY_TEXT[lang] + _IDENTITY_TOPICS[lang] + _WELCOME[lang].split("\n\n", 1)[1]
     if _CAPABILITY.search(text):
         kind = "capability"
     elif len(words) <= 5 and _HOW_ARE_YOU.search(text):

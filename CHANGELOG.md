@@ -7,6 +7,17 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.12.1] - 2026-10-20
+### Changed
+- "Who created you?" and similar questions now say the assistant was built
+  by Furkan Çoban (github.com/ofurkancoban), a student in the programme, as
+  an independent project, and still say it is not an official university
+  service. The reply no longer introduces the assistant twice.
+
+### Fixed
+- Telegram showed Markdown links as raw "[label](url)" text; they are now
+  sent as "label (url)", or the bare URL when the label is the URL.
+
 ## [1.12.0] - 2026-10-20
 ### Added
 - Admin panel, Analytics: a "Today" card with the day's questions, average

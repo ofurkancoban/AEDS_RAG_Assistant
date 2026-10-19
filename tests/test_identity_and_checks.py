@@ -69,3 +69,15 @@ def test_admins_see_every_flagged_answer_and_can_mark_it_seen(client, admin_head
 
 def test_answer_checks_are_admin_only(client):
     assert client.get("/admin/answer-checks").status_code in (401, 403)
+
+
+def test_the_identity_answer_names_the_builder_once_and_telegram_keeps_the_link():
+    from api.telegram_bot import _strip_markdown
+    from graph.nodes import _conversational_reply
+
+    for question in ("who created you?", "Wer hat dich entwickelt?"):
+        reply = _conversational_reply(question)
+        assert "Furkan Çoban" in reply and "https://github.com/ofurkancoban" in reply
+        assert reply.count("M.Sc. Applied Economics and Data Science") == 1
+    plain = _strip_markdown(_conversational_reply("who created you?"))
+    assert "Furkan Çoban (https://github.com/ofurkancoban)" in plain and "](" not in plain
