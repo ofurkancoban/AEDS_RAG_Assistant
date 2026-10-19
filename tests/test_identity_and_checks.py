@@ -81,3 +81,13 @@ def test_the_identity_answer_names_the_builder_once_and_telegram_keeps_the_link(
         assert reply.count("M.Sc. Applied Economics and Data Science") == 1
     plain = _strip_markdown(_conversational_reply("who created you?"))
     assert "Furkan Çoban (https://github.com/ofurkancoban)" in plain and "](" not in plain
+
+
+def test_admin_telegram_messages_drop_citation_markers_and_the_progress_block(monkeypatch):
+    from api import telegram_bot
+
+    sent = []
+    monkeypatch.setattr(telegram_bot, "send_message", lambda text, *a, **kw: sent.append(text))
+    widget = "My ECTS Tracker progress (6/120 ECTS completed):\nEconomics (6/36 ECTS)\n\nQuestion: How long is the thesis?"
+    telegram_bot.notify_pending_answer(1, widget, "About **80 pages** [1][3], due in May [2].", chat_id="1")
+    assert sent[0] == "Q: How long is the thesis?\n\nA: About 80 pages, due in May."

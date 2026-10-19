@@ -276,11 +276,23 @@ def _strip_markdown(text: str) -> str:
     (no headers, single *not double* asterisks for bold) - not worth getting
     exactly right for what's a quick heads-up, when the fully formatted
     answer is already one tap away in the admin panel."""
+    from graph.nodes import strip_passage_markers
+
     text = _MD_HEADER_RE.sub("", text)
     text = _MD_LINK_RE.sub(_plain_link, text)
+    # "[2]" points at a passage on the site; Telegram has nothing to point at.
+    text = strip_passage_markers(text)
     text = _MD_BOLD_RE.sub(r"\1", text)
     text = _MD_CODE_RE.sub(r"\1", text)
     return text
+
+
+def _question(text: str) -> str:
+    """A question as the student typed it: an ECTS Tracker widget question
+    without the progress block in front of it."""
+    from graph.nodes import student_question
+
+    return _truncate(student_question(text), 200)
 
 
 def _truncate(text: str, limit: int = _CONTENT_PREVIEW_CHARS) -> str:
@@ -364,7 +376,7 @@ def notify_new_submission(sub_id: int, submission_type: str, source_id: str, con
 
 
 def notify_pending_answer(answer_id: int, question: str, answer: str, chat_id: str | None = None) -> None:
-    text = f"Q: {_truncate(question, 200)}\n\nA: {_truncate(answer)}"
+    text = f"Q: {_question(question)}\n\nA: {_truncate(answer)}"
     markup = {
         "inline_keyboard": [
             [_button("Approve", f"aa:{answer_id}"), _button("Edit", f"ae:{answer_id}"), _button("Reject", f"ar:{answer_id}")]
@@ -380,7 +392,7 @@ def notify_downvoted_answer(question: str, answer: str, answer_id: int | None) -
     """A student rated an answer unhelpful. When the answer is in the review
     queue the usual review buttons come with it; otherwise (a follow-up
     question, which is never cached) the alert is for information only."""
-    text = f"Rated unhelpful by a student.\n\nQ: {_truncate(question, 200)}\n\nA: {_truncate(answer)}"
+    text = f"Rated unhelpful by a student.\n\nQ: {_question(question)}\n\nA: {_truncate(answer)}"
     markup = None
     if answer_id is not None:
         markup = {
@@ -578,7 +590,7 @@ def _send_next_review(chat_id: str) -> None:
             check = "\n\nAutomatic check: every statement supported by the context."
         text = (
             f"{header} | asked {asked}x | #{row.id}\n{flag}Sources: {_source_names(row.sources_json)}\n\n"
-            f"Q: {_truncate(row.question, 200)}\n\nA: {_truncate(row.answer, 2600)}{check}"
+            f"Q: {_question(row.question)}\n\nA: {_truncate(row.answer, 2600)}{check}"
         )
         answer_id = row.id
     finally:

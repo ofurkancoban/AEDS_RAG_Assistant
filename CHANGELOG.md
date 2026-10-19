@@ -7,6 +7,14 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.12.2] - 2026-10-20
+### Fixed
+- Admin Telegram messages (review queue, "rated unhelpful" alerts) showed
+  the answer's [n] citation markers, which only mean something on the site;
+  they are now removed from every Telegram message, as they already were
+  from answers sent to students. ECTS Tracker widget questions in these
+  messages are shown without the progress block.
+
 ## [1.12.1] - 2026-10-20
 ### Changed
 - "Who created you?" and similar questions now say the assistant was built
