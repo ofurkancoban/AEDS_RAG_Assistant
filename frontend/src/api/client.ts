@@ -467,6 +467,17 @@ export function listAnswerChecks(): Promise<AnswerCheck[]> {
   return request('/admin/answer-checks');
 }
 
+export function addEvalCaseFromLog(
+  id: number,
+  body: { expected_contains: string[]; expected_absent: string[]; notes: string },
+): Promise<{ id: string }> {
+  return request(`/admin/question-log/${id}/eval-case`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export function markAnswerCheckSeen(id: number): Promise<void> {
   return request(`/admin/answer-checks/${id}/seen`, { method: 'POST' });
 }

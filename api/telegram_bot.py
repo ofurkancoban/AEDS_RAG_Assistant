@@ -1048,16 +1048,76 @@ def _handle_user_message(chat_id: str, text: str) -> None:
         send_message(start_new_conversation(chat_id), chat_id=chat_id)
         return
 
-    from api.telegram_chat import handle_user_question
+    from api.telegram_chat import answer_question
 
     with _typing_indicator(chat_id):
-        reply, query_log_id = handle_user_question(chat_id, text)
+        reply, query_log_id, menu = answer_question(chat_id, text)
     reply_markup = None
     if query_log_id is not None:
         reply_markup = {
             "inline_keyboard": [[_button("👍", f"fb:{query_log_id}:1"), _button("👎", f"fb:{query_log_id}:-1")]]
         }
     send_message(reply, reply_markup, chat_id=chat_id)
+    if menu:
+        send_menu_photos(chat_id, menu)
+
+
+# Telegram's album limit.
+_ALBUM_MAX = 10
+
+
+def _photo_caption(meal: dict) -> str:
+    price = meal.get("prices", {}).get("students")
+    diet = ", ".join(p["label"] for p in meal.get("pictogram_labels", []))
+    parts = [meal["name"]]
+    detail = " · ".join(x for x in (f"{price} € (students)" if price else "", diet) if x)
+    if detail:
+        parts.append(detail)
+    return "\n".join(parts)[:1000]
+
+
+def send_menu_photos(chat_id: str, menu: dict) -> None:
+    """The dish photos of a canteen answer, as an album per canteen, after
+    the text answer: the site shows them as cards, Telegram had only text.
+    Best effort: a photo that cannot be loaded is left out, and a failed
+    upload never affects the answer already sent."""
+    from api.routes_mensa import ImageUnavailable, cached_image
+
+    if not _enabled():
+        return
+    for card in menu.get("menus", []):
+        photos = []
+        for meal in card.get("meals", []):
+            if meal.get("side") or not meal.get("image"):
+                continue
+            try:
+                photos.append((cached_image(meal["image"]), _photo_caption(meal)))
+            except ImageUnavailable:
+                continue
+            if len(photos) == _ALBUM_MAX:
+                break
+        if not photos:
+            continue
+        try:
+            files = {f"p{i}": path.read_bytes() for i, (path, _) in enumerate(photos)}
+            if len(photos) == 1:
+                response = requests.post(
+                    _api_url("sendPhoto"),
+                    data={"chat_id": chat_id, "caption": photos[0][1]},
+                    files={"photo": files["p0"]},
+                    timeout=60,
+                )
+            else:
+                media = [{"type": "photo", "media": f"attach://p{i}", "caption": caption} for i, (_, caption) in enumerate(photos)]
+                response = requests.post(
+                    _api_url("sendMediaGroup"),
+                    data={"chat_id": chat_id, "media": json.dumps(media)},
+                    files=files,
+                    timeout=60,
+                )
+            response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Telegram menu photos failed: %s", exc)
 
 
 def _handle_feedback_callback(chat_id: str, data: str) -> str:

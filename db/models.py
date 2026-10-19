@@ -439,6 +439,16 @@ class RouteDecision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class OpsAlertSent(Base):
+    """The last day each once-a-day operational alert (ops_alerts.py) was
+    sent, so a restart or a second process does not send it again."""
+
+    __tablename__ = "ops_alerts_sent"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    day: Mapped[str] = mapped_column(String)
+
+
 class EvalRun(Base):
     """One golden-set evaluation run (scripts/eval_and_notify.py, weekly):
     the score and which cases failed, so the admin panel can show the trend

@@ -66,6 +66,29 @@ def record_call(provider: str) -> None:
         logger.warning("Failed to record an LLM call against %s's daily budget", provider, exc_info=True)
     finally:
         session.close()
+    _warn_when_running_low(provider)
+
+
+# Share of a provider's daily budget after which the admins get one warning,
+# early enough to switch models or providers before answers stop.
+LOW_BUDGET_SHARE = 0.8
+
+
+def _warn_when_running_low(provider: str) -> None:
+    try:
+        budget = daily_budget(provider)
+        used = usage_today(provider)
+    except Exception:  # noqa: BLE001 - bookkeeping must never fail an answer
+        return
+    if budget <= 0 or used < budget * LOW_BUDGET_SHARE:
+        return
+    import ops_alerts
+
+    ops_alerts.alert_once_per_day(
+        f"budget_low:{provider}",
+        f"{provider} has used {used} of its {budget} daily LLM calls ({used * 100 // budget}%). "
+        "It resets at 00:00 UTC; after that answers move to the fallback provider.",
+    )
 
 
 def _live_provider() -> str:

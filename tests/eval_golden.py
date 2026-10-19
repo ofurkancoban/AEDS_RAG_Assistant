@@ -58,14 +58,23 @@ def load_cases(include_review: bool = True):
     failing on assertions nobody has vouched for.
     """
     cases = json.loads(GOLDEN_SET_PATH.read_text(encoding="utf-8"))
-    if not include_review or not REVIEW_SET_PATH.exists():
+    if not include_review:
         return cases
 
+    # Also the cases an admin wrote from the Question Log on the server
+    # (db/eval_cases.py): they live in the drafts file until
+    # scripts/pull_eval_cases.py commits them, and should count at once.
+    from db.eval_cases import drafts_path
+
     seen = {case["id"] for case in cases}
-    for case in json.loads(REVIEW_SET_PATH.read_text(encoding="utf-8")):
-        if case.get("needs_review") or case["id"] in seen:
+    for path in (REVIEW_SET_PATH, drafts_path()):
+        if not path.exists():
             continue
-        cases.append(case)
+        for case in json.loads(path.read_text(encoding="utf-8")):
+            if case.get("needs_review") or case["id"] in seen:
+                continue
+            seen.add(case["id"])
+            cases.append(case)
     return cases
 
 

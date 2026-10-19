@@ -42,6 +42,10 @@ async def lifespan(app: FastAPI):
 
     warm_up_retrieval()
     start_background_polling()
+    if settings.mensa_prefetch:
+        from ingestion.mensa import start_prefetch
+
+        start_prefetch()
     yield
 
 

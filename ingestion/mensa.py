@@ -21,7 +21,7 @@ import re
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -168,11 +168,11 @@ def parse_legend(page: str) -> Legend:
     return legend
 
 
-def _cached(key: tuple, load):
+def _cached(key: tuple, load, force: bool = False):
     now = time.monotonic()
     with _cache_lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < _CACHE_TTL_S:
+        if hit and now - hit[0] < _CACHE_TTL_S and not force:
             return hit[1]
     value = load()
     with _cache_lock:
@@ -180,7 +180,7 @@ def _cached(key: tuple, load):
     return value
 
 
-def get_legend(lang: str = "en") -> Legend:
+def get_legend(lang: str = "en", force: bool = False) -> Legend:
     import httpx
 
     def load():
@@ -192,17 +192,73 @@ def get_legend(lang: str = "en") -> Legend:
         page.raise_for_status()
         return parse_legend(page.text)
 
-    return _cached(("legend", lang), load)
+    return _cached(("legend", lang), load, force)
 
 
-def get_menu(location: int, day: date, lang: str = "en") -> tuple[list[Meal], list[str]]:
+def get_menu(location: int, day: date, lang: str = "en", force: bool = False) -> tuple[list[Meal], list[str]]:
     """A day's meals at one canteen, and the footnotes under them."""
 
     def load():
         fragment = _post_menu(location, day, lang)
         return parse_menu(fragment), parse_notes(fragment)
 
-    return _cached(("menu", location, day.isoformat(), lang), load)
+    return _cached(("menu", location, day.isoformat(), lang), load, force)
+
+
+# Lunch-time window (Berlin) in which today's menus are kept loaded, so a
+# student's menu question does not wait for the menu server (one to three
+# seconds per canteen, more when it is slow). Refreshed more often than the
+# cache expires, so the cache is never cold inside the window.
+PREFETCH_HOURS = (6, 15)
+PREFETCH_EVERY_S = 20 * 60
+
+
+def prefetch(day: date) -> int:
+    """Loads `day`'s menus (both canteens, English and German), the legends
+    and every dish photo and diet icon into the caches. Returns the number
+    of meals seen."""
+    from api.routes_mensa import ImageUnavailable, cached_image
+
+    meals_seen = 0
+    for lang in ("en", "de"):
+        try:
+            get_legend(lang, force=True)
+        except Exception:  # noqa: BLE001 - a prefetch failure only means a slower first question
+            logger.warning("Menu prefetch: legend (%s) failed", lang, exc_info=True)
+        for location in LOCATIONS:
+            try:
+                meals, _ = get_menu(location, day, lang, force=True)
+            except Exception:  # noqa: BLE001
+                logger.warning("Menu prefetch: location %s (%s) failed", location, lang, exc_info=True)
+                continue
+            meals_seen += len(meals)
+            if lang != "en":
+                continue  # same photos in both languages
+            for meal in meals:
+                for src in ([meal.image] if meal.image else []) + [f"assets/icons/{p}.png" for p in meal.pictograms]:
+                    try:
+                        cached_image(src)
+                    except ImageUnavailable:
+                        pass
+    return meals_seen
+
+
+def start_prefetch() -> None:
+    """Background thread for the API process (the menu cache lives in its
+    memory, so a cron job could not warm it)."""
+    from zoneinfo import ZoneInfo
+
+    def loop():
+        while True:
+            now = datetime.now(ZoneInfo("Europe/Berlin"))
+            if now.weekday() < 5 and PREFETCH_HOURS[0] <= now.hour < PREFETCH_HOURS[1]:
+                try:
+                    prefetch(now.date())
+                except Exception:  # noqa: BLE001
+                    logger.warning("Menu prefetch failed", exc_info=True)
+            time.sleep(PREFETCH_EVERY_S)
+
+    threading.Thread(target=loop, name="mensa-prefetch", daemon=True).start()
 
 
 def menu_payload(location: int, day: date, meals: list[Meal], legend: Legend, lang: str, notes: list[str] = ()) -> dict:

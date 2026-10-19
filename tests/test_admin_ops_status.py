@@ -15,7 +15,7 @@ def test_reports_usage_for_every_tracked_provider_even_with_no_data(client, admi
     assert response.status_code == 200
     body = response.json()
     providers = {row["provider"] for row in body["provider_usage"]}
-    assert providers == {"gemini", "openrouter", "ollama"}
+    assert providers == {"gemini", "openrouter", "workers_ai", "ollama"}
     assert body["system_health"] == []
 
 

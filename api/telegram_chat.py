@@ -142,6 +142,11 @@ def record_feedback(chat_id: str, query_log_id: int, rating: int) -> str:
 
 
 def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
+    reply, query_log_id, _ = answer_question(chat_id, question)
+    return reply, query_log_id
+
+
+def answer_question(chat_id: str, question: str) -> tuple[str, int | None, dict | None]:
     """Answers one question from a non-admin Telegram chat. Always returns a
     (reply text, query_log_id) pair - the reply is a friendly message on
     rate limit, budget exhaustion, or error, never an exception, since this
@@ -165,7 +170,7 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
         # Checked before the cache lookup, matching /chat: a throttled chat
         # shouldn't spend the embedding call either.
         if not get_chat_limiter().check_and_record(client_key):
-            return "Too many questions in a short period - please wait a little and try again.", None
+            return "Too many questions in a short period - please wait a little and try again.", None, None
 
         started = time.monotonic()
 
@@ -193,10 +198,10 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
             )
             session.add(log_entry)
             session.commit()
-            return _format_reply(hit.answer, sources), log_entry.id
+            return _format_reply(hit.answer, sources), log_entry.id, None
 
         if not llm_budget.has_headroom():
-            return "The assistant has reached its daily question limit and will reset tomorrow.", None
+            return "The assistant has reached its daily question limit and will reset tomorrow.", None, None
 
         result = run_chat(thread_id=thread_id, question=question, source_id_filter=None)
 
@@ -247,9 +252,9 @@ def handle_user_question(chat_id: str, question: str) -> tuple[str, int | None]:
         session.add(log_entry)
         session.commit()
 
-        return _format_reply(result["answer"], result["sources"]), log_entry.id
+        return _format_reply(result["answer"], result["sources"]), log_entry.id, result.get("mensa")
     except Exception:
         logger.exception("Telegram question handling failed for chat_id=%s", chat_id)
-        return "Something went wrong answering that - please try again.", None
+        return "Something went wrong answering that - please try again.", None, None
     finally:
         session.close()

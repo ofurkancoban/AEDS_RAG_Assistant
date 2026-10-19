@@ -1410,12 +1410,35 @@ class SystemHealthCheckStatus(BaseModel):
     last_alerted_at: datetime | None
 
 
+class RerankerStatus(BaseModel):
+    # "hosted": Cloudflare; "paused": the local model until `until`
+    # ("allocation": the free daily allocation is used up, "error": a
+    # failed call); "local_only": no Cloudflare key configured.
+    state: str
+    until: datetime | None = None
+    reason: str | None = None
+
+
+class TodayStatus(BaseModel):
+    """Since 00:00 UTC."""
+
+    questions: int
+    unanswered: int
+    avg_latency_ms: int | None
+    flagged_checks: int
+    downvotes: int
+
+
 class OpsStatusOut(BaseModel):
     provider_usage: list[ProviderUsageStatus]
     system_health: list[SystemHealthCheckStatus]
+    reranker: RerankerStatus | None = None
+    today: TodayStatus | None = None
 
 
-_TRACKED_PROVIDERS = ["gemini", "openrouter", "ollama"]
+# workers_ai is the answer fallback (Gemma on Cloudflare): its count is how
+# often answers did not come from the main model today.
+_TRACKED_PROVIDERS = ["gemini", "openrouter", "workers_ai", "ollama"]
 
 
 @router.get("/ops-status", response_model=OpsStatusOut)
@@ -1449,7 +1472,39 @@ def get_ops_status(
         for row in checks
     ]
 
-    return OpsStatusOut(provider_usage=provider_usage, system_health=system_health)
+    from sqlalchemy import func
+
+    from db import reranker as reranker_mod
+    from db.models import AnswerCheck
+
+    rr = reranker_mod.hosted_status()
+    reranker = RerankerStatus(
+        state=rr["state"],
+        until=datetime.fromtimestamp(rr["until"], timezone.utc) if rr["until"] else None,
+        reason=rr["reason"],
+    )
+
+    midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    questions, unanswered, avg_latency, downvotes = session.query(
+        func.count(QueryLog.id),
+        func.sum(case((QueryLog.answered.is_(False), 1), else_=0)),
+        func.avg(case((QueryLog.served_from_cache.is_(False), QueryLog.latency_ms))),
+        func.sum(case((QueryLog.rating == -1, 1), else_=0)),
+    ).filter(QueryLog.created_at >= midnight).one()
+    flagged = (
+        session.query(func.count(AnswerCheck.id))
+        .filter(AnswerCheck.created_at >= midnight, AnswerCheck.findings_json != "[]")
+        .scalar()
+    )
+    today = TodayStatus(
+        questions=questions or 0,
+        unanswered=unanswered or 0,
+        avg_latency_ms=int(avg_latency) if avg_latency else None,
+        flagged_checks=flagged or 0,
+        downvotes=downvotes or 0,
+    )
+
+    return OpsStatusOut(provider_usage=provider_usage, system_health=system_health, reranker=reranker, today=today)
 
 
 class RateLimitRejectionCount(BaseModel):
@@ -1666,6 +1721,8 @@ class QuestionLogItem(BaseModel):
     answer: str
     # None when no background check ran (cached answers, small talk...).
     check_findings: list[str] | None
+    # True when an admin has already turned this question into an eval case.
+    eval_case: bool = False
 
 
 class QuestionLogPage(BaseModel):
@@ -1747,6 +1804,9 @@ def question_log(
         ):
             turns.setdefault(thread_id, []).append(query_id)
 
+    from db import eval_cases
+
+    with_cases = eval_cases.existing_ids()
     items = []
     for row, asked, kind, findings in page:
         thread = turns.get(row.thread_id, [row.id])
@@ -1765,6 +1825,66 @@ def question_log(
                 source_ids=[s for s in (row.source_ids or "").split(",") if s],
                 answer=_answer_text(session, row)[:6000],
                 check_findings=findings,
+                eval_case=eval_cases.case_id(row.id) in with_cases,
             )
         )
     return QuestionLogPage(total=len(selected), items=items)
+
+
+def _terms(values: list[str]) -> list[str]:
+    seen: list[str] = []
+    for value in values:
+        value = value.strip()
+        if value and value not in seen:
+            seen.append(value[:200])
+    return seen[:20]
+
+
+class EvalCaseIn(BaseModel):
+    expected_contains: list[str] = []
+    expected_absent: list[str] = []
+    notes: str = ""
+
+
+class EvalCaseOut(BaseModel):
+    id: str
+    question: str
+    expected_contains: list[str]
+    expected_absent: list[str]
+    notes: str
+
+
+@router.post("/question-log/{query_log_id}/eval-case", response_model=EvalCaseOut)
+def add_eval_case_from_log(
+    query_log_id: int,
+    body: EvalCaseIn,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    """Turns a logged question into a golden-eval case (db/eval_cases.py).
+    Only the first question of a conversation: a follow-up depends on
+    earlier turns the eval cannot replay."""
+    from db import eval_cases
+
+    row = session.get(QueryLog, query_log_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    first = (
+        session.query(QueryLog.id).filter(QueryLog.thread_id == row.thread_id).order_by(QueryLog.id).first()
+    )
+    if first is not None and first[0] != row.id:
+        raise HTTPException(status_code=400, detail="Only the first question of a conversation can become a test case")
+    contains, absent = _terms(body.expected_contains), _terms(body.expected_absent)
+    if not contains and not absent:
+        raise HTTPException(status_code=400, detail="Add at least one fact the answer must or must not contain")
+
+    case = {
+        "id": eval_cases.case_id(row.id),
+        "question": row.question,
+        "expected_contains": contains,
+        "expected_absent": absent,
+        "notes": (body.notes.strip() or "Added from the Question Log.")
+        + f" Question #{row.id} of {row.created_at:%Y-%m-%d}.",
+    }
+    eval_cases.save_case(case)
+    return EvalCaseOut(**case)

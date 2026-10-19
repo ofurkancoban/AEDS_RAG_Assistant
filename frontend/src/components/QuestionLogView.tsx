@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ScrollText, Search, ShieldAlert, ShieldCheck, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { ChevronDown, FlaskConical, ScrollText, Search, ShieldAlert, ShieldCheck, ThumbsDown, ThumbsUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ANSWER_MARKDOWN_COMPONENTS } from './markdown';
 import { QuestionLogItem } from '../types';
-import { getQuestionLog } from '../api/client';
+import { addEvalCaseFromLog, getQuestionLog } from '../api/client';
 
 /* Every question asked, with its answer. The answer review queue only
    holds answers that could be given to other students, so follow-ups,
@@ -25,7 +25,95 @@ const SOURCE_STYLE: Record<string, string> = {
   telegram: 'bg-teal-500/10 border-teal-500/30 text-teal-700 dark:text-teal-300',
 };
 
-const Row: React.FC<{ item: QuestionLogItem }> = ({ item }) => {
+const lines = (text: string) =>
+  text
+    .split(/\n|,/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+const field =
+  'w-full rounded-lg border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-xs text-[var(--text)] focus:outline-none focus:border-accent-500';
+
+/* Turns a wrong answer into a golden-eval case: the weekly eval on the
+   server runs it from then on, so the same mistake is caught if it comes
+   back. Only first questions: a follow-up needs turns the eval cannot replay. */
+const EvalCaseForm: React.FC<{ item: QuestionLogItem; onSaved: () => void }> = ({ item, onSaved }) => {
+  const [open, setOpen] = useState(false);
+  const [contains, setContains] = useState('');
+  const [absent, setAbsent] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  if (item.turn > 1) {
+    return <p className="text-[11px] text-[var(--text-faint)]">Follow-up questions cannot become test cases.</p>;
+  }
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-inset)] cursor-pointer"
+      >
+        <FlaskConical className="w-3.5 h-3.5" />
+        {item.eval_case ? 'Edit the test case' : 'Add to the test set'}
+      </button>
+    );
+  }
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await addEvalCaseFromLog(item.id, { expected_contains: lines(contains), expected_absent: lines(absent), notes });
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the test case.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="rounded-xl border border-[var(--border)] p-3 space-y-2">
+      <p className="text-[11px] text-[var(--text-muted)]">
+        The question is replayed exactly as it was sent. One fact per line; matching ignores case and formatting.
+      </p>
+      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+        The answer must contain
+        <textarea rows={2} value={contains} onChange={(e) => setContains(e.target.value)} className={field} placeholder="30 ECTS" />
+      </label>
+      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+        The answer must not contain
+        <textarea rows={2} value={absent} onChange={(e) => setAbsent(e.target.value)} className={field} placeholder="Anthropic" />
+      </label>
+      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+        Note (why this case exists)
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
+      </label>
+      {error && <p className="text-[11px] text-rose-600">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={saving || (!lines(contains).length && !lines(absent).length)}
+          onClick={save}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--text)] text-[var(--bg)] disabled:opacity-40 cursor-pointer"
+        >
+          {saving ? 'Saving...' : 'Save test case'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="px-3 py-1.5 rounded-lg text-xs text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const Row: React.FC<{ item: QuestionLogItem }> = ({ item: initial }) => {
+  const [item, setItem] = useState(initial);
   const [open, setOpen] = useState(false);
   const flagged = item.check_findings && item.check_findings.length > 0;
   const when = new Date(item.created_at + (item.created_at.endsWith('Z') ? '' : 'Z')).toLocaleString('en-GB', {
@@ -59,6 +147,11 @@ const Row: React.FC<{ item: QuestionLogItem }> = ({ item }) => {
               <ShieldAlert className="w-3 h-3" /> check: {item.check_findings!.length}
             </span>
           )}
+          {item.eval_case && (
+            <span className={`${chip} bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300`}>
+              <FlaskConical className="w-3 h-3" /> test case
+            </span>
+          )}
           {item.check_findings && item.check_findings.length === 0 && (
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" aria-label="Automatic check found nothing unsupported" />
           )}
@@ -88,6 +181,7 @@ const Row: React.FC<{ item: QuestionLogItem }> = ({ item }) => {
             {item.latency_ms ? `${(item.latency_ms / 1000).toFixed(1)}s` : ''}
             {item.source_ids.length > 0 && ` · ${item.source_ids.join(', ')}`}
           </p>
+          <EvalCaseForm item={item} onSaved={() => setItem({ ...item, eval_case: true })} />
         </div>
       )}
     </li>

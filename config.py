@@ -264,6 +264,9 @@ class Settings(BaseSettings):
     # "off" skips it; evaluation runs switch it off so they do not spend the
     # quota twice.
     answer_check: str = "background"
+    # Keep today's canteen menus and photos loaded during lunch hours
+    # (ingestion/mensa.py's start_prefetch).
+    mensa_prefetch: bool = True
     rerank_max_candidates: int = 10
     # Rerank through Cloudflare Workers AI's hosted @cf/baai/bge-reranker-base
     # (the same model) when both are set, falling back to the local model on

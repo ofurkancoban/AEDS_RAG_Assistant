@@ -52,6 +52,8 @@ _CLOUDFLARE_RERANK_URL = "https://api.cloudflare.com/client/v4/accounts/{account
 _API_BACKOFF_S = 60
 _API_ATTEMPTS = 2
 _api_down_until = 0.0
+# The same pause in wall-clock time, with why, for the admin status card.
+_api_down_state: dict = {"until": 0.0, "reason": None}
 
 
 def _seconds_to_utc_midnight() -> float:
@@ -72,6 +74,18 @@ def _allocation_used_up(exc: Exception) -> bool:
         return False
     body = exc.response.text
     return "4006" in body or "daily free allocation" in body
+
+
+def hosted_status() -> dict:
+    """For the admin panel: whether the hosted reranker is in use, or until
+    when (Unix time) the local model stands in, and why."""
+    import time
+
+    if not _api_configured():
+        return {"state": "local_only", "until": None, "reason": None}
+    if time.monotonic() < _api_down_until and _api_down_state["until"] > time.time():
+        return {"state": "paused", "until": _api_down_state["until"], "reason": _api_down_state["reason"]}
+    return {"state": "hosted", "until": None, "reason": None}
 
 
 def _api_configured() -> bool:
@@ -113,15 +127,25 @@ def _api_scores(query: str, passages: list[str]) -> list[float] | None:
         break
     import logging
 
-    if _allocation_used_up(failure):
+    used_up = _allocation_used_up(failure)
+    if used_up:
         pause = _seconds_to_utc_midnight()
         logging.getLogger(__name__).warning(
             "Hosted reranker: daily free allocation used up, using the local model for %.0f minutes", pause / 60
+        )
+        import ops_alerts
+
+        ops_alerts.alert_once_per_day(
+            "cloudflare_allocation",
+            "Cloudflare Workers AI: the free daily allocation (10,000 neurons) is used up. "
+            f"The reranker uses the local model (about 3s slower) for {pause / 3600:.1f} hours, "
+            "until 00:00 UTC, and the Workers AI answer fallback is unavailable until then.",
         )
     else:
         pause = _API_BACKOFF_S
         logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", failure)
     _api_down_until = time.monotonic() + pause
+    _api_down_state.update(until=time.time() + pause, reason="allocation" if used_up else "error")
     return None
 
 

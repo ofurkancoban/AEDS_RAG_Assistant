@@ -182,9 +182,25 @@ export interface SystemHealthCheckStatus {
   last_alerted_at: string | null;
 }
 
+export interface RerankerStatus {
+  state: 'hosted' | 'paused' | 'local_only';
+  until: string | null;
+  reason: 'allocation' | 'error' | null;
+}
+
+export interface TodayStatus {
+  questions: number;
+  unanswered: number;
+  avg_latency_ms: number | null;
+  flagged_checks: number;
+  downvotes: number;
+}
+
 export interface OpsStatus {
   provider_usage: ProviderUsageStatus[];
   system_health: SystemHealthCheckStatus[];
+  reranker?: RerankerStatus | null;
+  today?: TodayStatus | null;
 }
 
 export interface RateLimitRejectionCount {
@@ -341,6 +357,7 @@ export interface QuestionLogItem {
   source_ids: string[];
   answer: string;
   check_findings: string[] | null;
+  eval_case: boolean;
 }
 
 export interface QuestionLogPage {

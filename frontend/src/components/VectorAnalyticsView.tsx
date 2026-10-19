@@ -13,6 +13,78 @@ interface VectorAnalyticsViewProps {
   latestResult: ChatQueryResult | null;
 }
 
+/* Today's state at a glance: how many questions, how many fell back to a
+   weaker path (Gemma answers, local reranking), and what the background
+   check flagged. The same events are also sent to the admin Telegram chat. */
+const TodayCard: React.FC<{ ops: OpsStatus }> = ({ ops }) => {
+  const today = ops.today!;
+  const fallback = ops.provider_usage.find((p) => p.provider === 'workers_ai');
+  const main = ops.provider_usage.find((p) => p.provider === 'openrouter');
+  const rr = ops.reranker;
+  const until = rr?.until
+    ? new Date(rr.until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const rerankerText =
+    rr?.state === 'hosted'
+      ? 'Cloudflare'
+      : rr?.state === 'paused'
+        ? `Local model until ${until}${rr.reason === 'allocation' ? ' (free allocation used up)' : ' (Cloudflare failed)'}`
+        : 'Local model (no Cloudflare key)';
+  const tiles: { label: string; value: string; warn?: boolean; hint?: string }[] = [
+    { label: 'Questions', value: String(today.questions) },
+    {
+      label: 'Avg answer time',
+      value: today.avg_latency_ms != null ? `${(today.avg_latency_ms / 1000).toFixed(1)}s` : '-',
+      hint: 'Answers not served from the approved-answer cache',
+    },
+    {
+      label: 'Main model calls',
+      value: main ? `${main.usage_today}${main.daily_budget > 0 ? ` / ${main.daily_budget}` : ''}` : '-',
+      warn: !!main && main.daily_budget > 0 && main.usage_today >= main.daily_budget * 0.8,
+    },
+    {
+      label: 'Fallback model calls',
+      value: String(fallback?.usage_today ?? 0),
+      warn: (fallback?.usage_today ?? 0) > 0,
+      hint: 'Calls answered by Gemma on Cloudflare because the main model failed or ran out',
+    },
+    { label: 'Not answered', value: String(today.unanswered), warn: today.unanswered > 0 },
+    { label: 'Flagged by the check', value: String(today.flagged_checks), warn: today.flagged_checks > 0 },
+    { label: 'Rated unhelpful', value: String(today.downvotes), warn: today.downvotes > 0 },
+  ];
+  return (
+    <div className="glass rounded-2xl p-6 space-y-4 shadow-[var(--shadow-sm)]">
+      <h2 className="text-[15px] font-semibold text-[var(--text)] flex items-center space-x-2 border-b border-accent-500/10 pb-3.5">
+        <Activity className="w-4 h-4 text-accent-500 dark:text-accent-400" />
+        <span>Today (since 00:00 UTC)</span>
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        {tiles.map((t) => (
+          <div
+            key={t.label}
+            title={t.hint}
+            className={`rounded-xl border px-3 py-2 ${t.warn ? 'border-amber-500/40 bg-amber-500/10' : 'border-[var(--border)]'}`}
+          >
+            <p className="text-[10px] text-[var(--text-muted)]">{t.label}</p>
+            <p className="font-mono text-lg font-semibold text-[var(--text)] tabular-nums">{t.value}</p>
+          </div>
+        ))}
+      </div>
+      {rr && (
+        <p
+          className={`text-[12px] rounded-xl px-3 py-2 border ${
+            rr.state === 'hosted'
+              ? 'border-emerald-500/20 bg-emerald-500/5 text-[var(--text-secondary)]'
+              : 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <span className="font-semibold">Reranker:</span> {rerankerText}
+        </p>
+      )}
+    </div>
+  );
+};
+
 export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latestResult }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
@@ -378,6 +450,8 @@ export const VectorAnalyticsView: React.FC<VectorAnalyticsViewProps> = ({ latest
           )}
         </div>
       )}
+
+      {opsStatus?.today && <TodayCard ops={opsStatus} />}
 
       {opsStatus && (opsStatus.provider_usage.length > 0 || opsStatus.system_health.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

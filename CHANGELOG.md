@@ -7,6 +7,26 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.12.0] - 2026-10-20
+### Added
+- Admin panel, Analytics: a "Today" card with the day's questions, average
+  answer time, main-model calls against the daily limit, fallback-model
+  (Gemma) calls, unanswered, flagged and downvoted answers, and whether the
+  reranker runs on Cloudflare or locally (until when, and why). The LLM
+  budget list now includes the Workers AI fallback.
+- Telegram alerts, at most once a day each: the main model has used 80% of
+  its daily calls, and Cloudflare's free daily allocation is used up. Both
+  used to degrade answers without anyone being told.
+- Question Log: "Add to the test set" turns a first question into a golden
+  eval case (the question exactly as sent, with facts the answer must or
+  must not contain). The weekly eval on the server runs it from then on;
+  scripts/pull_eval_cases.py copies these cases into the committed set.
+- Canteen answers on Telegram now come with the dish photos, as an album
+  per canteen with name, student price and diet labels.
+- Today's canteen menus, legends and photos are kept loaded on weekdays
+  from 06:00 to 15:00 (Berlin), so a menu question no longer waits for the
+  menu server.
+
 ## [1.11.5] - 2026-10-19
 ### Fixed
 - When Cloudflare's free daily Workers AI allocation (10,000 neurons) is
