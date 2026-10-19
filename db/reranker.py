@@ -54,6 +54,26 @@ _API_ATTEMPTS = 2
 _api_down_until = 0.0
 
 
+def _seconds_to_utc_midnight() -> float:
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (midnight - now).total_seconds()
+
+
+def _allocation_used_up(exc: Exception) -> bool:
+    """The account's free daily allocation (10,000 neurons) is spent. Every
+    call fails until it resets at 00:00 UTC, so retrying each minute only
+    adds a wasted request to every question."""
+    import httpx
+
+    if not isinstance(exc, httpx.HTTPStatusError) or exc.response.status_code != 429:
+        return False
+    body = exc.response.text
+    return "4006" in body or "daily free allocation" in body
+
+
 def _api_configured() -> bool:
     return bool(settings.cloudflare_account_id and settings.cloudflare_api_token)
 
@@ -93,8 +113,15 @@ def _api_scores(query: str, passages: list[str]) -> list[float] | None:
         break
     import logging
 
-    logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", failure)
-    _api_down_until = time.monotonic() + _API_BACKOFF_S
+    if _allocation_used_up(failure):
+        pause = _seconds_to_utc_midnight()
+        logging.getLogger(__name__).warning(
+            "Hosted reranker: daily free allocation used up, using the local model for %.0f minutes", pause / 60
+        )
+    else:
+        pause = _API_BACKOFF_S
+        logging.getLogger(__name__).warning("Hosted reranker failed, using the local model: %s", failure)
+    _api_down_until = time.monotonic() + pause
     return None
 
 

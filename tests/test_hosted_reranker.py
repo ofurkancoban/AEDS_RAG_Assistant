@@ -107,3 +107,37 @@ def test_a_timeout_is_retried_once_before_falling_back(monkeypatch):
     assert len(attempts) == 2
     assert local.calls == 0
     assert ranked[0].metadata["_rerank_score"] == 0.9
+
+
+def test_a_used_up_daily_allocation_pauses_until_midnight_utc(monkeypatch):
+    local = _configure(monkeypatch)
+    attempts = []
+    request = httpx.Request("POST", "https://api.cloudflare.com/x")
+    body = '{"errors":[{"code":4006,"message":"you have used up your daily free allocation of 10,000 neurons"}]}'
+
+    def used_up(*a, **kw):
+        attempts.append(1)
+        response = httpx.Response(429, text=body, request=request)
+        raise httpx.HTTPStatusError("429", request=request, response=response)
+
+    monkeypatch.setattr(httpx, "post", used_up)
+    monkeypatch.setattr(reranker, "_seconds_to_utc_midnight", lambda: 5 * 3600.0)
+    import time
+
+    reranker.rerank("q", _docs(), 2)
+    assert len(attempts) == 1 and local.calls == 1
+    assert reranker._api_down_until - time.monotonic() > 4 * 3600
+
+
+def test_other_rate_limits_keep_the_short_pause(monkeypatch):
+    _configure(monkeypatch)
+    request = httpx.Request("POST", "https://api.cloudflare.com/x")
+
+    def busy(*a, **kw):
+        raise httpx.HTTPStatusError("429", request=request, response=httpx.Response(429, text="slow down", request=request))
+
+    monkeypatch.setattr(httpx, "post", busy)
+    import time
+
+    reranker.rerank("q", _docs(), 2)
+    assert reranker._api_down_until - time.monotonic() <= reranker._API_BACKOFF_S

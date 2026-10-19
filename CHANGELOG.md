@@ -7,6 +7,14 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.5] - 2026-10-19
+### Fixed
+- When Cloudflare's free daily Workers AI allocation (10,000 neurons) is
+  used up, the reranker now uses the local model until the allocation
+  resets at 00:00 UTC instead of trying Cloudflare again every minute;
+  each of those attempts was a request that could only fail. Other
+  failures keep the one-minute pause.
+
 ## [1.11.4] - 2026-10-19
 ### Added
 - Admin panel: Question Log. Every question with its answer, filterable by
