@@ -315,3 +315,13 @@ export interface BudgetFallbackEvent {
   usage_at_switch: number;
   created_at: string;
 }
+
+/** An answer the background statement check flagged (any turn, any origin). */
+export interface AnswerCheck {
+  id: number;
+  question: string;
+  answer: string;
+  findings: string[];
+  created_at: string;
+  seen: boolean;
+}

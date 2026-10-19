@@ -7,6 +7,26 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.11.3] - 2026-10-19
+### Fixed
+- "who create you ?" asked from the ECTS Tracker widget was answered "I was
+  created by Anthropic [source: system message]". Three causes, all fixed:
+  questions about who or what the assistant is ("who created you", "which
+  model are you", "are you ChatGPT", "wer bist du", "kimsin") went to the
+  documents, which do not say, so the model filled in from its own
+  training; they now get a fixed answer. The widget sends its progress
+  block before the question, and small talk, who-are-you and canteen
+  questions were judged on the whole 1,500-character message; they are now
+  judged on the question after "Question:". And the model copied the
+  context's "[source: ...]" label into its prose; such labels are removed,
+  and the system prompt says never to name a company or model.
+### Added
+- Admin panel, Answers: an "Auto-check" tab lists every answer the
+  background check flagged, follow-up answers and widget answers included,
+  with the findings, and a "Mark as seen" button. The review queue only
+  holds first answers, so the flagged "Anthropic" answer (a third question)
+  had been caught within seconds and shown to no one.
+
 ## [1.11.2] - 2026-10-15
 ### Fixed
 - Canteen-menu answers were labelled "Programme"; they are "City &

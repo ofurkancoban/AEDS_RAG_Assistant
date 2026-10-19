@@ -1,5 +1,6 @@
 import {
   AdminConfig,
+  AnswerCheck,
   AdminStats,
   BudgetFallbackEvent,
   ChatSource,
@@ -440,6 +441,14 @@ export function updateUser(id: number, payload: { role?: 'admin' | 'user'; passw
 
 export function deleteUser(id: number) {
   return request(`/admin/users/${id}`, { method: 'DELETE' });
+}
+
+export function listAnswerChecks(): Promise<AnswerCheck[]> {
+  return request('/admin/answer-checks');
+}
+
+export function markAnswerCheckSeen(id: number): Promise<void> {
+  return request(`/admin/answer-checks/${id}/seen`, { method: 'POST' });
 }
 
 export function listAnswers(status: AnswerStatus | 'flagged' | 'all' = 'pending'): Promise<ReviewedAnswer[]> {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  MessagesSquare, CheckCircle2, XCircle, Clock, Filter, Pencil,
+  MessagesSquare, CheckCircle2, XCircle, Clock, Filter, Pencil, ShieldAlert,
   RefreshCw, Trash2, Info, X, Save, Repeat, ThumbsDown,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -10,8 +10,9 @@ import { CITE_PREFIX, linkifyCitations } from './chat/citations';
 import { InjectionWarning } from './InjectionWarning';
 import { AnswerStatus, ReviewedAnswer } from '../types';
 import { approveAnswer, deleteAnswer, listAnswers, rejectAnswer } from '../api/client';
+import { AnswerChecksList } from './AnswerChecksList';
 
-type FilterStatus = AnswerStatus | 'flagged' | 'all';
+type FilterStatus = AnswerStatus | 'flagged' | 'all' | 'autocheck';
 
 const FILTER_LABEL: Record<FilterStatus, string> = {
   pending: 'Pending',
@@ -19,6 +20,7 @@ const FILTER_LABEL: Record<FilterStatus, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   all: 'All',
+  autocheck: 'Auto-check',
 };
 
 const STATUS_STYLE: Record<AnswerStatus, string> = {
@@ -79,6 +81,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
   const [draft, setDraft] = useState('');
 
   const load = async (status: FilterStatus = filter) => {
+    if (status === 'autocheck') return; // its own list loads itself
     setIsLoading(true);
     try {
       setItems(await listAnswers(status));
@@ -180,7 +183,7 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
 
       <div className="flex items-center glass p-2 rounded-2xl shadow-[var(--shadow-sm)]">
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          {(['pending', 'flagged', 'approved', 'rejected', 'all'] as FilterStatus[]).map((s) => (
+          {(['pending', 'flagged', 'autocheck', 'approved', 'rejected', 'all'] as FilterStatus[]).map((s) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
@@ -190,14 +193,16 @@ export const AnswerReviewView: React.FC<AnswerReviewViewProps> = ({ onQueueChang
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-inset)]'
               }`}
             >
-              {s === 'all' ? <Filter className="w-3.5 h-3.5" /> : s === 'flagged' ? <ThumbsDown className="w-3.5 h-3.5" /> : STATUS_ICON[s]}
+              {s === 'all' ? <Filter className="w-3.5 h-3.5" /> : s === 'flagged' ? <ThumbsDown className="w-3.5 h-3.5" /> : s === 'autocheck' ? <ShieldAlert className="w-3.5 h-3.5" /> : STATUS_ICON[s]}
               <span>{FILTER_LABEL[s]}{s === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {filter === 'autocheck' ? (
+        <AnswerChecksList />
+      ) : items.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center text-[var(--text-muted)] space-y-3">
           <MessagesSquare className="w-10 h-10 text-[var(--text-faint)] mx-auto" />
           <p className="text-sm font-medium">

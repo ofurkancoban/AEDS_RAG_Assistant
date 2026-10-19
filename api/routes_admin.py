@@ -1574,3 +1574,68 @@ def get_node_latency_stats(
         for node_name, values in sorted(by_node.items(), key=lambda item: sum(item[1]), reverse=True)
     ]
     return NodeLatencyStatsOut(days=days, total_turns=len(rows), by_node=stats)
+
+
+# --- Answers the background check flagged (graph/answer_check.py) -------
+#
+# The answer review queue only holds the first answer of each conversation,
+# so a wrong follow-up answer had nowhere to show up: "who create you ?",
+# asked third in a conversation from the ECTS Tracker widget, was answered
+# "I was created by Anthropic", flagged by the check within seconds, and
+# seen by no admin (2026-10-19). Every flagged answer is listed here.
+
+
+class AnswerCheckOut(BaseModel):
+    id: int
+    question: str
+    answer: str
+    findings: list[str]
+    created_at: datetime
+    seen: bool
+
+
+@router.get("/answer-checks", response_model=list[AnswerCheckOut])
+def list_answer_checks(
+    days: int = 30,
+    include_seen: bool = False,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    from db.models import AnswerCheck
+    from graph.nodes import student_question
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    query = session.query(AnswerCheck).filter(AnswerCheck.created_at >= since)
+    if not include_seen:
+        query = query.filter(AnswerCheck.seen_at.is_(None))
+    out = []
+    for row in query.order_by(AnswerCheck.id.desc()).limit(200).all():
+        findings = json.loads(row.findings_json or "[]")
+        if not findings:
+            continue
+        out.append(
+            AnswerCheckOut(
+                id=row.id,
+                question=student_question(row.question),
+                answer=row.answer,
+                findings=findings,
+                created_at=row.created_at,
+                seen=row.seen_at is not None,
+            )
+        )
+    return out
+
+
+@router.post("/answer-checks/{check_id}/seen", status_code=204)
+def mark_answer_check_seen(
+    check_id: int,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+):
+    from db.models import AnswerCheck
+
+    row = session.get(AnswerCheck, check_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such check")
+    row.seen_at = datetime.now(timezone.utc)
+    session.commit()

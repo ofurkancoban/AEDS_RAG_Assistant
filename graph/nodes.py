@@ -36,6 +36,10 @@ from ingestion.exams_office import get_examining_board_chair
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
+    "You are the study assistant for this programme. Never say which company or model made you "
+    "or that you are a general AI chatbot; if asked who you are, say you are the programme's study "
+    "assistant answering from its official documents. Cite only the numbered passages as [n], never "
+    "anything else.\n\n"
     "You are an assistant for a study programme, answering questions strictly based "
     "on the provided context from the programme's official documents (curriculum, "
     "admission requirements, course descriptions, etc). If the context does not "
@@ -2497,6 +2501,36 @@ _CAPABILITY = re.compile(
     r"was kannst du|wobei kannst du|was kann ich (dich )?fragen|was weißt du|hangi sorular"
 )
 
+# "Who created you?" went to the documents, which do not say, and the
+# answer model filled the gap from its own training: "I was created by
+# Anthropic [source: system message]" (reported 2026-10-19). Who and what
+# this assistant is gets a fixed answer instead.
+_IDENTITY = re.compile(
+    r"\bwho (are|r) (you|u)\b|\bwho (created|create|made|make|built|build|developed|develop|trained|programmed|owns) (you|u)\b|"
+    r"^what are (you|u)$|\b(which|what) (ai |language )?(model|llm|ai) (are|r) (you|u)\b|"
+    r"\b(which|what) (ai |language )?(model|llm) (do you use|are you using|is (this|behind (you|this))|powers (you|this))\b|"
+    r"\bare (you|u) (an? )?(chatgpt|gpt|claude|gemini|openai|anthropic|llama|ai|bot|robot|human|real person)\b|"
+    r"\bwer bist du\b|\bwer hat dich\b|\bwelches (modell|ki|sprachmodell)\b|\bbist du (ein |eine )?(chatgpt|bot|ki|mensch)\b|"
+    r"\bkimsin\b|\bseni kim\b"
+)
+
+_IDENTITY_TEXT = {
+    "en": (
+        "I'm the study assistant for the M.Sc. Applied Economics and Data Science at the University of "
+        "Oldenburg, made for this programme's students. A language model writes my answers, but only from "
+        "the programme's and the university's official documents, which are listed under each answer. "
+        "I'm not an official service of the university, so for anything binding please check with the "
+        "examinations office or the programme team.\n\n"
+    ),
+    "de": (
+        "Ich bin der Studienassistent für den M.Sc. Applied Economics and Data Science an der Universität "
+        "Oldenburg, gemacht für die Studierenden dieses Studiengangs. Ein Sprachmodell formuliert meine "
+        "Antworten, aber nur aus den offiziellen Dokumenten des Studiengangs und der Universität, die unter "
+        "jeder Antwort stehen. Ich bin kein offizieller Dienst der Universität; für Verbindliches wende dich "
+        "bitte an das Prüfungsamt oder das Studiengangsteam.\n\n"
+    ),
+}
+
 _WELCOME = {
     "en": (
         "I'm the student assistant for the M.Sc. Applied Economics and Data Science at the "
@@ -2526,6 +2560,20 @@ _OPENERS = {
 }
 
 
+def student_question(message: str) -> str:
+    """The student's own question. The ECTS Tracker widget sends its
+    progress block first and the question after a "Question:" line; deciding
+    what kind of message it is (small talk, who are you, the canteen menu)
+    on the whole text treated a 1,500-character message as a long question,
+    so "who create you ?" from the widget went to the documents and the
+    model answered "I was created by Anthropic" (2026-10-19). The answer
+    model still receives the whole message."""
+    if "ects tracker progress" not in message[:200].casefold():
+        return message
+    match = re.search(r"\n\s*Question:\s*(.+)\Z", message, re.S)
+    return match.group(1).strip() if match else message
+
+
 def _conversational_reply(message: str) -> str | None:
     """A welcome for a greeting, thanks or "what can you do" message; None
     for anything that is (also) a real question. Greetings and thanks only
@@ -2536,6 +2584,9 @@ def _conversational_reply(message: str) -> str | None:
     if not words or len(words) > 12:
         return None
     kind = None
+    if _IDENTITY.search(text):
+        lang = "de" if _looks_german(message) or re.search(r"\b(wer|bist|welches|dich)\b", text) else "en"
+        return _IDENTITY_TEXT[lang] + _WELCOME[lang]
     if _CAPABILITY.search(text):
         kind = "capability"
     elif len(words) <= 5 and _HOW_ARE_YOU.search(text):
@@ -2738,8 +2789,9 @@ def _retrieve(state: RagState) -> dict:
 
     from graph.mensa import is_menu_question
 
-    if is_menu_question(last_question):
-        return _menu_answer(last_question)
+    asked = student_question(last_question)
+    if is_menu_question(asked):
+        return _menu_answer(asked)
 
     if _looks_like_ects_progress_request(last_question):
         progress_answer = _build_ects_progress_answer(last_question)
@@ -2796,7 +2848,7 @@ def _retrieve(state: RagState) -> dict:
     # the model deciding, via native tool-calling, whether one of these
     # structured lookups answers the question - see _route_with_tools.
     progress.report_stage(progress.UNDERSTANDING)
-    conversational = _conversational_reply(last_question)
+    conversational = _conversational_reply(student_question(last_question))
     if conversational:
         return {"retrieved_docs": [], "direct_answer": conversational, "awaiting_semester_number": False}
 
@@ -3285,7 +3337,11 @@ def _strip_fabricated_citations(text: str) -> str:
     The removal alone is not enough - it leaves empty parentheses and dangling
     prepositions where the citation used to sit, which reads as a bug to the
     user - so the debris patterns are cleaned up afterwards."""
-    cleaned = _CITATION_RE.sub("", text)
+    # The context labels passages "[source: <id>]"; answers cite "[n]". A
+    # model that copies the label format ("[source: system message]") is
+    # citing something no student can open.
+    cleaned = re.sub(r"\s*\[source:[^\]]*\]", "", text, flags=re.I)
+    cleaned = _CITATION_RE.sub("", cleaned)
     for pattern, replacement in _CITATION_DEBRIS_RES:
         cleaned = pattern.sub(replacement, cleaned)
     return cleaned
@@ -3319,7 +3375,7 @@ def detect_contribution_node(state: RagState) -> dict:
         return {"detected_contribution": None}
     # "hi" or "thanks" cannot be a contribution, and running the gate on
     # them loaded its classifier for nothing (see db/contribution_gate.py).
-    if _conversational_reply(last_user_message.content):
+    if _conversational_reply(student_question(last_user_message.content)):
         return {"detected_contribution": None}
 
     # Laya's multilingual checkpoint (db/contribution_gate.py) measured

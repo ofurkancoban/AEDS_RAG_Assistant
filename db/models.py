@@ -422,6 +422,8 @@ class AnswerCheck(Base):
     answer: Mapped[str] = mapped_column(Text)
     findings_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    # Set when an admin has looked at a flagged check in the admin panel.
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class RouteDecision(Base):
