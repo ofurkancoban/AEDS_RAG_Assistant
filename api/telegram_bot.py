@@ -40,6 +40,27 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+
+class _RedactToken(logging.Filter):
+    """Bot API URLs carry the token, and a failed request's exception text
+    repeats the URL, so every log line from this module is scrubbed of it."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        token = settings.telegram_bot_token
+        if not token:
+            return True
+        message = record.getMessage()
+        if token in message:
+            record.msg, record.args = message.replace(token, "<token>"), None
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text and token in record.exc_text:
+            record.exc_text = record.exc_text.replace(token, "<token>")
+        return True
+
+
+logger.addFilter(_RedactToken())
+
 _API_BASE = "https://api.telegram.org/bot{token}"
 # Telegram's own long-poll timeout is capped well under a minute; this leaves
 # margin for the request itself on top of the server-side wait.
@@ -1181,6 +1202,10 @@ def _handle_message(message: dict) -> None:
     handler = _CATEGORY_HANDLERS.get(category)
     if handler is not None:
         handler(chat_id)
+    elif text == "/new" or (text and not text.startswith("/")):
+        # Anything that is not an admin command is a question, so the admin
+        # can use the assistant from the same chat as a student would.
+        _handle_user_message(chat_id, text)
 
 
 def _handle_callback_query(callback_query: dict) -> None:
@@ -1188,10 +1213,10 @@ def _handle_callback_query(callback_query: dict) -> None:
     chat_id = str(message.get("chat", {}).get("id", ""))
     data = callback_query.get("data", "")
 
-    if chat_id in _admin_chat_ids():
-        result_text = _dispatch_action(data, chat_id)
-    elif data.startswith("fb:"):
+    if data.startswith("fb:"):
         result_text = _handle_feedback_callback(chat_id, data)
+    elif chat_id in _admin_chat_ids():
+        result_text = _dispatch_action(data, chat_id)
     else:
         result_text = "Not authorized."
 

@@ -7,6 +7,15 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.13.1] - 2026-10-20
+### Fixed
+- Telegram: a question typed in an admin chat was silently ignored, since
+  only admin commands were handled there. Text that is not a command, and
+  /new, now go to the assistant as in a student chat, and the rating
+  buttons under those answers work for admins too.
+- Telegram: log lines no longer contain the bot token. A failed Bot API
+  request logged its full URL, token included.
+
 ## [1.13.0] - 2026-10-20
 ### Changed
 - Canteen answers are written from the menu data with fixed English and

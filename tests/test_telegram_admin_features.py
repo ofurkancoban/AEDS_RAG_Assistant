@@ -156,3 +156,50 @@ def test_dispatch_action_unrecognized_string_id_does_not_crash():
     from api.telegram_bot import _dispatch_action
 
     assert _dispatch_action("sa:not-a-number", "chat_id") == "Unrecognized action."
+
+
+def test_admin_free_text_is_answered_as_a_question(monkeypatch):
+    from api import telegram_bot
+
+    monkeypatch.setattr(settings, "telegram_chat_id", "111")
+    monkeypatch.setattr(settings, "telegram_extra_admin_chat_ids", "")
+    asked, stats = [], []
+    monkeypatch.setattr(telegram_bot, "_handle_user_message", lambda chat_id, text: asked.append((chat_id, text)))
+    monkeypatch.setitem(telegram_bot._CATEGORY_HANDLERS, "stats", lambda chat_id: stats.append(chat_id))
+
+    for text in ("Who teaches Econometrics?", "/new", "/stats", "/unknown", ""):
+        telegram_bot._handle_message({"chat": {"id": 111}, "text": text})
+
+    assert asked == [("111", "Who teaches Econometrics?"), ("111", "/new")]
+    assert stats == ["111"]
+
+
+def test_admin_feedback_button_records_the_rating(monkeypatch):
+    from api import telegram_bot
+
+    monkeypatch.setattr(settings, "telegram_chat_id", "111")
+    monkeypatch.setattr(settings, "telegram_extra_admin_chat_ids", "")
+    monkeypatch.setattr(telegram_bot, "_handle_feedback_callback", lambda chat_id, data: f"fb {data}")
+    monkeypatch.setattr(telegram_bot, "_dispatch_action", lambda data, chat_id: "admin action")
+    answers = []
+    monkeypatch.setattr(telegram_bot, "_answer_callback", lambda cid, text: answers.append(text))
+    monkeypatch.setattr(telegram_bot, "_edit_message", lambda *args: None)
+
+    telegram_bot._handle_callback_query({"id": "1", "data": "fb:5:1", "message": {"chat": {"id": 111}}})
+    assert answers == ["fb fb:5:1"]
+
+
+def test_log_lines_never_carry_the_bot_token(monkeypatch, caplog):
+    from api import telegram_bot
+
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:SECRET")
+    with caplog.at_level("WARNING", logger="api.telegram_bot"):
+        telegram_bot.logger.warning("getUpdates failed: %s", "https://api.telegram.org/bot123:SECRET/getUpdates")
+        try:
+            raise RuntimeError("url bot123:SECRET")
+        except RuntimeError:
+            telegram_bot.logger.exception("handling failed")
+
+    text = "\n".join(caplog.messages) + "".join(r.exc_text or "" for r in caplog.records)
+    assert "SECRET" not in text
+    assert "<token>" in text
