@@ -32,6 +32,7 @@ _MENU_CUE = re.compile(
     re.I,
 )
 _FOOD_WORDS = re.compile(r"\b(eat|food|meal|meals|dish|dishes|vegan|vegetarian|vegetarisch|essen|gericht)\b", re.I)
+_TODAY_TOMORROW = re.compile(r"\b(today|tomorrow|heute|morgen|übermorgen)\b", re.I)
 _NOT_MENU = re.compile(
     r"open(ing)?\b|hours|öffnungszeit|geöffnet|price (increase|rise|change)|prices? (go|went|will) up|"
     r"teurer|preiserhöhung|2026 (price|rent)|job|arbeit(en)? in der mensa|work (in|at) the (mensa|canteen)",
@@ -108,7 +109,7 @@ def is_menu_question(question: str) -> bool:
     if _MENU_CUE.search(question):
         return True
     # "Is there something vegan today?" names no canteen but means its menu.
-    return bool(_FOOD_WORDS.search(question) and re.search(r"\b(today|tomorrow|heute|morgen)\b", question, re.I))
+    return bool(_FOOD_WORDS.search(question) and _TODAY_TOMORROW.search(question))
 
 
 def _requested_day(question: str, today: date) -> date:
@@ -204,7 +205,106 @@ def _describe(meal: mensa.Meal, legend: mensa.Legend) -> str:
     return "; ".join(parts)
 
 
+# The menu answer is written from the menu data with these templates, not
+# by the answer model: in testing the model translated dish names wrongly
+# ("Kohlrabi in cream" as cabbage), added remarks of its own ("the selection
+# varies by counter") and listed every side dish despite being asked not to.
+# Dish names, prices and diet labels are copied from the menu as published.
+_TEXT = {
+    "en": {
+        "menu": "**{name}**, {day}", "closed": "{name} has no menu for {day} (closed that day). The next one:",
+        "none_after": "{name} has no menu for {day} or the following days.",
+        "unreachable": "The menu of {name} could not be loaded right now.",
+        "filter": "Dishes that fit ({wishes}):", "no_match": "No dish fits ({wishes}); the menu has {n} dishes.",
+        "sides": "Also: {names}.", "sides_head": "Soups, side dishes, salads and desserts:",
+        "students": "students",
+        "allergen": "Chosen by the menu's allergen codes only. The menu does not cover traces or cross-contact "
+        "in the kitchen, so with a severe allergy please ask the canteen staff.",
+        "halal": "The menu does not mark dishes as halal; the dishes listed carry no pork, pork gelatine or "
+        "alcohol according to its codes.",
+        "official": "Official menu: {url}",
+    },
+    "de": {
+        "menu": "**{name}**, {day}", "closed": "{name} hat am {day} keinen Speiseplan (geschlossen). Der nächste:",
+        "none_after": "{name} hat für {day} und die folgenden Tage keinen Speiseplan.",
+        "unreachable": "Der Speiseplan von {name} konnte gerade nicht geladen werden.",
+        "filter": "Passende Gerichte ({wishes}):", "no_match": "Kein Gericht passt ({wishes}); der Plan hat {n} Gerichte.",
+        "sides": "Außerdem: {names}.", "sides_head": "Suppen, Beilagen, Salate und Desserts:",
+        "students": "Studierende",
+        "allergen": "Nur nach den Allergenkennzeichnungen des Speiseplans ausgewählt. Spuren und Kreuzkontakt "
+        "in der Küche sind darin nicht erfasst; bei einer schweren Allergie fragen Sie bitte das Mensapersonal.",
+        "halal": "Der Speiseplan kennzeichnet keine Gerichte als halal; die genannten enthalten laut "
+        "Kennzeichnung kein Schweinefleisch, keine Schweinegelatine und keinen Alkohol.",
+        "official": "Offizieller Speiseplan: {url}",
+    },
+}
+_DAY_NAMES_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+_MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+
+
+def _day(day: date, lang: str) -> str:
+    if lang == "de":
+        return f"{_DAY_NAMES_DE[day.weekday()]}, {day.day}. {_MONTHS_DE[day.month - 1]} {day.year}"
+    return day.strftime("%A, %d %B %Y").replace(" 0", " ")
+
+
+def _dish_line(meal: mensa.Meal, legend: mensa.Legend, lang: str) -> str:
+    parts = [f"- **{meal.name}**"]
+    if meal.prices.get("students"):
+        parts.append(f"{meal.prices['students']} € ({_TEXT[lang]['students']})")
+    diet = ", ".join(legend.pictograms.get(p, {}).get("label", p) for p in meal.pictograms)
+    if diet:
+        parts.append(diet)
+    return " · ".join(parts)
+
+
+def menu_reply(question: str, today: date, lang: str) -> tuple[list[Document], dict | None, str]:
+    """answer_material plus the answer text, written from the same meals
+    the cards show."""
+    t = _TEXT[lang]
+    wishes = list(dict.fromkeys(parse_request(question, today, lang).wishes))
+    out: list[str] = []
+    docs, payload, sections = _material(question, today, lang)
+    for sec in sections:
+        name = sec["name"]
+        if sec["kind"] == "unreachable":
+            out += [t["unreachable"].format(name=name), t["official"].format(url=sec["official"])]
+            continue
+        if sec["kind"] == "none_after":
+            out += [t["none_after"].format(name=name, day=_day(sec["asked_day"], lang)), t["official"].format(url=sec["official"])]
+            continue
+        if sec["asked_day"] != sec["day"]:
+            out.append(t["closed"].format(name=name, day=_day(sec["asked_day"], lang)))
+        out.append(t["menu"].format(name=name, day=_day(sec["day"], lang)))
+        if wishes and not sec["chosen"]:
+            out.append(t["no_match"].format(wishes=", ".join(wishes), n=sec["total"]))
+        elif wishes:
+            out.append(t["filter"].format(wishes=", ".join(wishes)))
+        out += [_dish_line(m, sec["legend"], lang) for m in sec["mains"]]
+        if sec["sides"] and sec["about_sides"]:
+            out.append(t["sides_head"])
+            out += [_dish_line(m, sec["legend"], lang) for m in sec["sides"]]
+        elif sec["sides"]:
+            out.append(t["sides"].format(names=", ".join(dict.fromkeys(m.name for m in sec["sides"]))))
+        out += sec["notes"]
+        if sec["allergen_filter"]:
+            out.append(t["allergen"])
+        if sec["halal"]:
+            out.append(t["halal"])
+        out.append(t["official"].format(url=sec["official"]))
+        out.append("")
+    text = "\n".join(out).strip()
+    # Paragraph breaks between blocks, list lines kept together.
+    text = re.sub(r"\n(?!- )", "\n\n", text).replace("\n\n\n\n", "\n\n")
+    return docs, payload, text
+
+
 def answer_material(question: str, today: date, lang: str) -> tuple[list[Document], dict | None]:
+    docs, payload, _ = _material(question, today, lang)
+    return docs, payload
+
+
+def _material(question: str, today: date, lang: str) -> tuple[list[Document], dict | None, list[dict]]:
     """The menu passage for the answer model, and the payload for the
     interface's cards. On any failure to load the menu, a passage saying so
     and pointing to the official page, and no cards."""
@@ -215,7 +315,7 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
         logger.warning("Could not load the canteen legend", exc_info=True)
         legend = None
 
-    lines, payloads = [], []
+    lines, payloads, sections = [], [], []
     for location in request.locations:
         name = mensa.LOCATIONS[location]["name"]
         official = mensa.OFFICIAL_PAGE.format(location=location, lang=lang)
@@ -226,6 +326,7 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
         except Exception:  # noqa: BLE001
             logger.warning("Could not load the menu of %s for %s", name, request.day, exc_info=True)
             lines.append(f"The menu of {name} could not be loaded right now. The official menu: {official}")
+            sections.append({"kind": "unreachable", "name": name, "official": official})
             continue
 
         day = request.day
@@ -234,6 +335,7 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
             nxt = _next_day_with_menu(location, day, lang)
             if nxt is None:
                 lines.append(f"{name} has no menu for {day.strftime('%A, %d %B %Y')} or the following days. Official menu: {official}")
+                sections.append({"kind": "none_after", "name": name, "official": official, "asked_day": day})
                 continue
             lines.append(f"{name} has no menu for {day.strftime('%A, %d %B %Y')} (closed that day).")
             day, meals, notes = nxt
@@ -272,15 +374,24 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
             )
         lines.append(f"Official menu page: {official}")
         payloads.append(mensa.menu_payload(location, day, chosen, legend, lang, notes))
+        sections.append({
+            "kind": "menu", "name": name, "official": official, "asked_day": request.day, "day": day,
+            "chosen": chosen, "mains": mains, "sides": sides, "about_sides": bool(_ABOUT_SIDES.search(question)),
+            "total": len(meals), "notes": list(notes), "legend": legend,
+            "allergen_filter": bool(request.no_codes - {"A", "Kn", "SG"}), "halal": request.halal,
+        })
 
     text = "\n".join(lines)
     note = (
         "How to answer: the student also sees every dish below as a card with its photo, all prices, "
         "allergens and additives. So answer briefly: say which canteen and day, and name the main dishes "
         "that fit what was asked with their student price. Mention soups, sides, salads and desserts in at "
-        "most one sentence. Name allergens or additives only if the question is about them; if the passage "
-        "says the selection follows the allergen codes only, say so. Never add a dish, price or ingredient "
-        "that is not listed."
+        "most one sentence. Name allergens or additives only if the question is about them. Say that the "
+        "selection follows the allergen codes only when the passage contains \"Chosen by the menu's allergen "
+        "codes only\". State only what the passage says: never add a dish, price or ingredient that is not "
+        "listed, and no remarks of your own about availability, counters, changes during the day or how "
+        "the dishes were chosen. Write dish names exactly as the passage does, untranslated, even when "
+        "answering in another language: a translated name can be wrong and no longer matches the cards."
     )
     doc = Document(
         page_content=text,
@@ -301,4 +412,4 @@ def answer_material(question: str, today: date, lang: str) -> tuple[list[Documen
         if payloads
         else None
     )
-    return [doc], payload
+    return [doc], payload, sections

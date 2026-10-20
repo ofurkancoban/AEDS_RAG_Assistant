@@ -135,7 +135,7 @@ def test_the_graph_answers_menus_from_the_menu_and_resets_the_cards(offline, mon
     monkeypatch.setattr(nodes, "_route_with_tools", lambda q: (_ for _ in ()).throw(AssertionError("router called")))
     out = nodes.retrieve_node({"messages": [HumanMessage(content="What's in the Mensa today?")], "source_id_filter": None})
     assert out["mensa"]["menus"] and out["time_sensitive"] is True
-    assert out["retrieved_docs"][0].metadata["source_id"] == "mensa_menu"
+    assert out["retrieved_docs"][0].metadata["source_id"] == "mensa_menu" and out["direct_answer"]
 
     monkeypatch.setattr(nodes, "_route_with_tools", lambda q: None)
     monkeypatch.setattr(nodes, "_SpeculativeRetrieval", lambda q, f: type("R", (), {"result": lambda self: [], "cancel": lambda self: None})())
@@ -171,3 +171,33 @@ def test_the_photo_proxy_fetches_once_then_serves_from_disk(client, monkeypatch,
         response = client.get("/mensa/image", params={"src": "assets/fotos/mensa-uhlhornsweg/Pasta/a_b.jpg"})
         assert response.status_code == 200 and response.content == b"\xff\xd8jpeg"
     assert fetched == [f"{routes_mensa.BASE_URL}/assets/fotos/mensa-uhlhornsweg/Pasta/a_b.jpg"]
+
+
+def test_the_menu_answer_is_written_from_the_menu_not_by_the_model(offline):
+    docs, payload, text = menu_q.menu_reply("Gluten-free lunch in the Mensa today?", THURSDAY, "en")
+    assert text.startswith("**Mensa Uhlhornsweg**, Thursday, 15 October 2026")
+    # Every dish line is a dish from the cards, with its name as published.
+    names = {m["name"] for m in payload["menus"][0]["meals"]}
+    dish_lines = [line for line in text.splitlines() if line.startswith("- **")]
+    assert dish_lines and all(line[4:].split("**")[0] in names for line in dish_lines)
+    assert "Pasta and mushroom bake" not in text and "allergen codes only" in text
+    assert "Official menu:" in text
+
+    _, _, german = menu_q.menu_reply("Was gibt es heute in der Mensa?", THURSDAY, "de")
+    assert german.startswith("**Mensa Uhlhornsweg**, Donnerstag, 15. Oktober 2026")
+
+
+def test_the_graph_gives_the_menu_answer_without_the_model(offline):
+    from langchain_core.messages import HumanMessage
+
+    from graph import nodes
+
+    out = nodes.retrieve_node({"messages": [HumanMessage(content="What's in the Mensa today?")], "source_id_filter": None})
+    assert out["direct_answer"].startswith("**Mensa Uhlhornsweg**")
+
+
+def test_a_menu_answer_counts_as_answered():
+    from graph.build_graph import _answered
+
+    assert _answered("No dish here does not contain milk.", {"mensa": {"menus": [{"meals": []}]}})
+    assert not _answered("The documents do not contain information on that.", {"mensa": None})

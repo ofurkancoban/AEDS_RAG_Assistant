@@ -54,5 +54,13 @@
       "Module_handbook_Applied_Economics_and_Data_Science_Master_Studiengang_SoSe2026_en_GB(3)",
       "catalog"
     ]
+  },
+  {
+    "id": "review-rejected-53",
+    "question": "Actually the library now closes at 22:00 on weekdays, not midnight.",
+    "expected_contains": [],
+    "expected_absent": [],
+    "dismissed": true,
+    "notes": "Dismissed 2026-10-20: a student's correction, rejected to keep it out of the answer cache. The answer (cannot confirm, the documents say 24:00) was right, so there is nothing to test."
   }
 ]

@@ -134,6 +134,14 @@ def _diff_facts(corrected: str, original: str) -> tuple[list[str], list[str]]:
 def build_case(row: CachedAnswer) -> dict | None:
     """Build one eval case from a reviewed answer, or None if the row carries
     no usable evidence."""
+    from db.semantic_cache import is_reusable_question
+
+    # A widget question (the student's own course list), small talk or a
+    # menu question is rejected to keep it out of the shared cache, not
+    # because the answer was wrong: 12 of 13 drafts on 2026-10-20 were these,
+    # with "120 ECTS" and correct course names as candidate wrong facts.
+    if row.status == AnswerStatus.REJECTED and not is_reusable_question(row.question):
+        return None
     sources = json.loads(row.sources_json or "[]")
     # sources_json holds either bare source ids or {"source_id": ...} objects
     # depending on which code path wrote it.

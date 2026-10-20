@@ -53,10 +53,26 @@ def parse_findings(reply: str) -> list[str] | None:
     return [str(f) for f in findings if str(f).strip()]
 
 
+def _with_student_progress(question: str, context: str) -> tuple[str, str]:
+    """An ECTS Tracker widget question starts with the student's own course
+    list, which the answer is allowed to use. Left inside the question, the
+    checker flagged the student's own courses and totals as "not in the
+    context" (2026-10-19), so the list is moved into the context."""
+    from graph.nodes import student_question
+
+    asked = student_question(question)
+    if asked == question:
+        return question, context
+    progress = question[: question.rfind(asked)].strip()
+    progress = re.sub(r"\s*Question:\s*$", "", progress)
+    return asked, f"The student's own course progress (from their ECTS Tracker):\n{progress}\n\n{context}"
+
+
 def check_answer(question: str, context: str, answer: str) -> list[str] | None:
     from graph.nodes import _with_fallback, get_classifier_llm
 
     llm = _with_fallback(get_classifier_llm())
+    question, context = _with_student_progress(question, context)
     reply = llm.invoke(
         [
             SystemMessage(content=CHECK_PROMPT),

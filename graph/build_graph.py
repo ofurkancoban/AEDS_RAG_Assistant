@@ -191,6 +191,15 @@ def _looks_unanswered(answer: str) -> bool:
     return any(marker in lowered for marker in _UNANSWERED_MARKERS)
 
 
+def _answered(answer: str, turn: dict) -> bool:
+    """A canteen answer came with the day's menu, so it is answered even
+    when it says a dish "does not contain" something (found live: "lactose-
+    free ... does not contain milk" was logged as unanswered)."""
+    if (turn.get("mensa") or {}).get("menus"):
+        return True
+    return not _looks_unanswered(answer)
+
+
 def is_cacheable_turn(thread_id: str) -> bool:
     """True only for the first question in a thread.
 
@@ -225,7 +234,7 @@ def run_chat(thread_id: str, question: str, source_id_filter: str | None = None)
         "detected_contribution": result.get("detected_contribution"),
         "retrieval": _build_retrieval_diagnostics(result.get("retrieved_docs", [])),
         "node_latencies": result.get("node_latencies", {}),
-        "answered": not _looks_unanswered(answer),
+        "answered": _answered(answer, result),
         "time_sensitive": bool(result.get("time_sensitive")),
         "has_expired_deadline": _has_passed_deadline(answer),
         "mensa": result.get("mensa"),
@@ -344,7 +353,7 @@ def stream_chat(
             "final_answer": final_answer,
             "retrieval": _build_retrieval_diagnostics(docs),
             "node_latencies": turn.get("node_latencies", {}),
-            "answered": not _looks_unanswered(final_answer),
+            "answered": _answered(final_answer, turn),
             "time_sensitive": bool(turn.get("time_sensitive")),
             "has_expired_deadline": _has_passed_deadline(final_answer),
             "mensa": turn.get("mensa"),

@@ -1120,6 +1120,32 @@ def _could_need_a_tool(question: str) -> bool:
     return bool(words & surnames)
 
 
+_TEACH_RE = re.compile(r"\b(teach\w*|taught|lectur\w*|unterricht\w*|lehrt|liest|hält|gives?)\b", re.I)
+_WHO_RE = re.compile(r"\b(who|wer|which (professor|lecturer)|welche[rs]? (professor|dozent)\w*)\b", re.I)
+
+
+def _obvious_route(question: str) -> list[dict] | None:
+    """The router's two most common calls, made without the model: "who
+    teaches <course>" and "which courses does <professor> teach". The router
+    model took 3 to 12 seconds per call in production (2026-10), most of an
+    answer's waiting time, for decisions these two patterns make reliably.
+    None for everything else, which still goes to the model."""
+    if not _TEACH_RE.search(question):
+        return None
+    courses = get_catalog_courses()
+    words = set(re.findall(r"\w+", question.casefold()))
+    professors = {
+        c["professor"] for c in courses
+        if c.get("professor") and c["professor"].split()[-1].casefold() in words
+    }
+    matched = _match_courses_by_name_or_abbreviation(courses, question)
+    if _WHO_RE.search(question) and len(matched) == 1 and not professors:
+        return [{"name": "search_course_catalog", "args": {"course_name_or_abbreviation": matched[0]["name"]}}]
+    if len(professors) == 1 and not matched:
+        return [{"name": "search_course_catalog", "args": {"professor_name": professors.pop()}}]
+    return None
+
+
 def _route_with_tools(question: str) -> dict | None:
     """LLM-driven routing: replaces what used to be a chain of regex hint-word
     checks (one per fact type - course/professor lookup, person lookup,
@@ -1137,8 +1163,10 @@ def _route_with_tools(question: str) -> dict | None:
         return None
 
     route_started = time.monotonic()
-    tool_calls = _cached_route(question)
+    tool_calls = _obvious_route(question)
     if tool_calls is not None:
+        progress.record_timing("route_rule", (time.monotonic() - route_started) * 1000)
+    elif (tool_calls := _cached_route(question)) is not None:
         progress.record_timing("route_cached", (time.monotonic() - route_started) * 1000)
     else:
         llm_with_tools = _with_resilience(build_router(), rebuild=build_router)
@@ -1570,7 +1598,9 @@ _PROGRESS_CATEGORY_LINE_RE = re.compile(
     re.MULTILINE,
 )
 _PROGRESS_STATUS_SEGMENT_RE = re.compile(r"(in progress|planned):\s*([^|]+)")
-_PROGRESS_COURSE_CODE_RE = re.compile(r"\b([a-z]+\d+)\s*-", re.IGNORECASE)
+# "mam" is the thesis module's code, the only one without digits: it was
+# skipped, so a planned thesis counted as 0 ECTS planned.
+_PROGRESS_COURSE_CODE_RE = re.compile(r"\b([a-z]+\d+|mam)\s*-", re.IGNORECASE)
 
 
 def _extract_course_codes(segment: str) -> list[str]:
@@ -1634,21 +1664,10 @@ _OFFICIAL_CATEGORY_TARGETS = {
 }
 
 
-def _build_ects_progress_answer(text: str) -> str | None:
-    """Builds a deterministic per-category ECTS-remaining table from the
-    widget's own progress lines - returns None when none are present (no
-    course-context toggle on), letting the caller fall back to the regular
-    LLM/RAG answer, which already handles the fixed, student-independent
-    120/36/18/18/18/30 breakdown correctly on its own.
-
-    "Still needed" subtracts completed, in-progress AND planned ECTS from
-    each category's target - the same three statuses AEDS_ECTS_Tracker's
-    own UI subtracts for its own "remaining" figure (index.html's
-    `Math.max(0, required - completed - inProgress - planned)`), so this
-    answer agrees with what the student already sees in their own tracker.
-    In-progress/planned courses aren't given a ready-made ECTS subtotal in
-    the context (only completed is), so their codes are looked up against
-    the catalog here."""
+def _progress_figures(text: str) -> list[dict] | None:
+    """Per category, from the widget's progress block: completed, in
+    progress and planned ECTS (the last two looked up in the catalog) and
+    the required total, in the official order. None without a block."""
     lines = _parse_progress_lines(text)
     if not lines:
         return None
@@ -1671,6 +1690,48 @@ def _build_ects_progress_answer(text: str) -> str | None:
     for line in lines:
         line["in_progress"] = sum(ects_by_code.get(code, 0) for code in line["in_progress_codes"])
         line["planned"] = sum(ects_by_code.get(code, 0) for code in line["planned_codes"])
+
+    return lines
+
+
+def _progress_facts(text: str) -> str | None:
+    """The same figures as sentences that cannot be misread: "still needed"
+    alone was taken both as "not yet completed" and as "not yet covered by
+    any course", and the answer model and the answer check disagreed."""
+    lines = _progress_figures(text)
+    if not lines:
+        return None
+    facts = []
+    for line in lines:
+        open_ects = max(0, line["required"] - line["completed"])
+        uncovered = max(0, open_ects - line["in_progress"] - line["planned"])
+        state = "complete" if open_ects == 0 else ("covered once the courses in progress and planned are passed" if uncovered == 0 else f"{uncovered} ECTS not yet covered by any course")
+        facts.append(
+            f"- {line['name']}: {line['completed']} of {line['required']} ECTS completed, "
+            f"{line['in_progress']} ECTS in progress, {line['planned']} ECTS planned; "
+            f"{open_ects} ECTS not yet completed ({state})."
+        )
+    return "\n".join(facts)
+
+
+def _build_ects_progress_answer(text: str) -> str | None:
+    """Builds a deterministic per-category ECTS-remaining table from the
+    widget's own progress lines - returns None when none are present (no
+    course-context toggle on), letting the caller fall back to the regular
+    LLM/RAG answer, which already handles the fixed, student-independent
+    120/36/18/18/18/30 breakdown correctly on its own.
+
+    "Still needed" subtracts completed, in-progress AND planned ECTS from
+    each category's target - the same three statuses AEDS_ECTS_Tracker's
+    own UI subtracts for its own "remaining" figure (index.html's
+    `Math.max(0, required - completed - inProgress - planned)`), so this
+    answer agrees with what the student already sees in their own tracker.
+    In-progress/planned courses aren't given a ready-made ECTS subtotal in
+    the context (only completed is), so their codes are looked up against
+    the catalog here."""
+    lines = _progress_figures(text)
+    if not lines:
+        return None
 
     total_completed = sum(line["completed"] for line in lines)
     total_in_progress = sum(line["in_progress"] for line in lines)
@@ -2492,13 +2553,13 @@ class _SpeculativeRetrieval:
 # no LLM call.
 _GREETING = re.compile(
     r"^(hi|hello|hey|hey there|hallo|moin|servus|good (morning|afternoon|evening)|"
-    r"guten (morgen|tag|abend)|merhaba|selam|naber)\b"
+    r"guten (morgen|tag|abend))\b"
 )
-_HOW_ARE_YOU = re.compile(r"\b(how are you|how's it going|wie geht'?s|wie geht es dir|nasılsın)\b")
-_THANKS = re.compile(r"^(thanks|thank you|thx|danke|vielen dank|teşekkürler|teşekkür ederim)\b")
+_HOW_ARE_YOU = re.compile(r"\b(how are you|how's it going|wie geht'?s|wie geht es dir)\b")
+_THANKS = re.compile(r"^(thanks|thank you|thx|danke|vielen dank)\b")
 _CAPABILITY = re.compile(
     r"what (else )?can (i|you) (ask|do|answer|help)|what (else )?can you help|what do you know|"
-    r"was kannst du|wobei kannst du|was kann ich (dich )?fragen|was weißt du|hangi sorular"
+    r"was kannst du|wobei kannst du|was kann ich (dich )?fragen|was weißt du"
 )
 
 # "Who created you?" went to the documents, which do not say, and the
@@ -2510,8 +2571,7 @@ _IDENTITY = re.compile(
     r"^what are (you|u)$|\b(which|what) (ai |language )?(model|llm|ai) (are|r) (you|u)\b|"
     r"\b(which|what) (ai |language )?(model|llm) (do you use|are you using|is (this|behind (you|this))|powers (you|this))\b|"
     r"\bare (you|u) (an? )?(chatgpt|gpt|claude|gemini|openai|anthropic|llama|ai|bot|robot|human|real person)\b|"
-    r"\bwer bist du\b|\bwer hat dich\b|\bwelches (modell|ki|sprachmodell)\b|\bbist du (ein |eine )?(chatgpt|bot|ki|mensch)\b|"
-    r"\bkimsin\b|\bseni kim\b"
+    r"\bwer bist du\b|\bwer hat dich\b|\bwelches (modell|ki|sprachmodell)\b|\bbist du (ein |eine )?(chatgpt|bot|ki|mensch)\b"
 )
 
 _IDENTITY_TEXT = {
@@ -2532,8 +2592,8 @@ _IDENTITY_TEXT = {
         "Antworten aus den offiziellen Dokumenten des Studiengangs schneller finden. Ein Sprachmodell "
         "formuliert meine Antworten, aber nur aus den offiziellen Dokumenten des Studiengangs und der "
         "Universität, die unter jeder Antwort stehen.\n\n"
-        "Ich bin kein offizieller Dienst der Universität; für Verbindliches wende dich bitte an das "
-        "Prüfungsamt oder das Studiengangsteam. Feedback oder einen Fehler gefunden? Nutze die Daumen unter "
+        "Ich bin kein offizieller Dienst der Universität; für Verbindliches wenden Sie sich bitte an das "
+        "Prüfungsamt oder das Studiengangsteam. Feedback oder einen Fehler gefunden? Nutzen Sie die Daumen unter "
         "einer Antwort.\n\n"
     ),
 }
@@ -2748,18 +2808,21 @@ def retrieve_node(state: RagState) -> dict:
 
 
 def _menu_answer(question: str) -> dict:
-    """A canteen-menu question: the menu passage for the answer model and
-    the cards for the interface (graph/mensa.py). No router call, no
-    document search: the menu is the only source."""
+    """A canteen-menu question: the answer, the menu passage (shown as the
+    source) and the cards for the interface (graph/mensa.py). No router
+    call, no document search and no answer model: the menu is the only
+    source."""
     from zoneinfo import ZoneInfo
 
-    from graph.mensa import answer_material
+    from graph.mensa import menu_reply
 
     today = datetime.now(ZoneInfo("Europe/Berlin")).date()
-    docs, payload = answer_material(question, today, "de" if _looks_german(question) else "en")
+    docs, payload, text = menu_reply(question, today, "de" if _looks_german(question) else "en")
     return {
         "retrieved_docs": docs,
-        "direct_answer": None,
+        # Written from the menu data by graph/mensa.py's templates, not by
+        # the answer model (which translated and embellished dish names).
+        "direct_answer": text,
         "awaiting_semester_number": False,
         # Correct only for the day it was asked: never cached or replayed.
         "time_sensitive": True,
@@ -2864,7 +2927,9 @@ def _retrieve(state: RagState) -> dict:
 
     query = _retrieval_query_for(last_question, query)
     retrieval = _SpeculativeRetrieval(query, filter_)
-    tool_result = _route_with_tools(last_question)
+    # The widget's progress block names courses, which passed the router's
+    # gate for every widget question; the tools answer the question alone.
+    tool_result = _route_with_tools(student_question(last_question))
     if tool_result is not None:
         if _is_single_course_lookup(tool_result):
             # The catalogue holds a course's code, credits, lecturer and
@@ -3040,6 +3105,19 @@ def generate_node(state: RagState) -> dict:
             "PhD admission, Studienkolleg, Anpassungslehrgang, refugees, or "
             "other degree programmes unless the user's question is actually "
             "about one of those."
+        )
+    # The widget's progress block gives completed ECTS per category but only
+    # names the courses in progress, so the model added up course ECTS
+    # itself and got it wrong ("Completed (6 ECTS)" for a category at 18,
+    # "requirement met" for one at 12/18, 2026-10-19). The figures are
+    # computed here and the model only has to copy them.
+    progress_facts = _progress_facts(str(state["messages"][-1].content))
+    if progress_facts:
+        warning_parts.append(
+            "The student's ECTS by category, computed from their ECTS Tracker progress. When the answer "
+            "states a category total, an in-progress or planned amount or what is still open, use exactly "
+            "these figures; do not add up course ECTS yourself, and call a category complete only when "
+            "it says so.\n" + progress_facts
         )
     if retrieved_expired:
         stale = ", ".join(

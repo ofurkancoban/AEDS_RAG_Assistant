@@ -71,7 +71,10 @@ def load_cases(include_review: bool = True):
         if not path.exists():
             continue
         for case in json.loads(path.read_text(encoding="utf-8")):
-            if case.get("needs_review") or case["id"] in seen:
+            # "dismissed": a review outcome looked at and found not to be a
+            # wrong answer; kept so scripts/export_review_cases.py does not
+            # draft it again.
+            if case.get("needs_review") or case.get("dismissed") or case["id"] in seen:
                 continue
             seen.add(case["id"])
             cases.append(case)

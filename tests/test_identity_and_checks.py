@@ -17,7 +17,7 @@ WIDGET = (
 
 @pytest.mark.parametrize("question", [
     "who create you ?", "who created you?", "who are you?", "which model are you?", "are you ChatGPT?",
-    "what are you?", "Wer bist du?", "wer hat dich gebaut?", "kimsin",
+    "what are you?", "Wer bist du?", "wer hat dich gebaut?",
 ])
 def test_identity_questions_get_the_fixed_answer(question):
     reply = nodes._conversational_reply(question)

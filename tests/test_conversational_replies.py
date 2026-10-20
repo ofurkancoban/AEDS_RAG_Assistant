@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 from graph import nodes
 
 
-@pytest.mark.parametrize("message", ["hi", "Hi!", "How are you?", "Naber", "What else can I ask you?", "Thanks, that's helpful."])
+@pytest.mark.parametrize("message", ["hi", "Hi!", "How are you?", "Wie geht es dir?", "What else can I ask you?", "Thanks, that's helpful."])
 def test_conversational_messages_get_a_welcome(message):
     reply = nodes._conversational_reply(message)
     assert reply and "Applied Economics and Data Science" in reply

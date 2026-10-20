@@ -7,6 +7,38 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.13.0] - 2026-10-20
+### Changed
+- Canteen answers are written from the menu data with fixed English and
+  German templates instead of by the answer model, which translated dish
+  names wrongly ("Kohlrabi in cream" as cabbage) and added remarks of its
+  own ("the selection varies by counter"). Dish names, student prices and
+  diet labels come straight from the menu; duplicate side dishes are listed
+  once.
+- "Who teaches <course>" and "Which courses does <professor> teach" go to
+  the course catalogue without the routing model, which took 3 to 12
+  seconds per call. ECTS Tracker widget questions are routed on the
+  question alone: the course names in the progress block sent every widget
+  question to the routing model.
+- German replies use the formal "Sie" throughout, like the interface.
+- Turkish removed from the project: the assistant supports English and
+  German only.
+
+### Fixed
+- Widget answers got category totals wrong ("Completed (6 ECTS)" for a
+  category at 18, "requirement met" for one at 12 of 18): the per-category
+  figures are now computed on the server and given to the model, which
+  only copies them. The thesis module (code "mam") was not recognised in
+  the progress block, so a planned thesis counted as 0 ECTS, also in the
+  "how many ECTS do I need" answer.
+- The background answer check flagged the student's own courses and totals
+  as unsupported: it now reads the widget's progress block as context.
+- Canteen answers were logged as unanswered when they said a dish "does not
+  contain" something.
+- Rejected review-queue answers to widget questions and small talk were
+  drafted as eval cases with correct facts as "wrong" ones; they are no
+  longer drafted, and a case can be marked dismissed.
+
 ## [1.12.2] - 2026-10-20
 ### Fixed
 - Admin Telegram messages (review queue, "rated unhelpful" alerts) showed
@@ -70,7 +102,7 @@ to keep in sync).
 - "who create you ?" asked from the ECTS Tracker widget was answered "I was
   created by Anthropic [source: system message]". Three causes, all fixed:
   questions about who or what the assistant is ("who created you", "which
-  model are you", "are you ChatGPT", "wer bist du", "kimsin") went to the
+  model are you", "are you ChatGPT", "wer bist du") went to the
   documents, which do not say, so the model filled in from its own
   training; they now get a fixed answer. The widget sends its progress
   block before the question, and small talk, who-are-you and canteen

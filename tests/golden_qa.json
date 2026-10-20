@@ -535,7 +535,7 @@
       "Econometrics of Policy Evaluation"
     ],
     "expected_absent": [],
-    "notes": "Non-English enumeration: the programme is English-taught but its applicants and official university pages are largely German-speaking, so a German question must still route to the catalog tool and return the same English course names. Replaced an equivalent Turkish case once German was confirmed as the only non-English language in scope.",
+    "notes": "Non-English enumeration: the programme is English-taught but its applicants and official university pages are largely German-speaking, so a German question must still route to the catalog tool and return the same English course names.",
     "expected_source_ids": [
       "catalog"
     ]
@@ -1083,7 +1083,7 @@
         "regex": "do not contain information|cannot answer this from|not (stated|covered) in the (programme's )?documents"
       }
     ],
-    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal. Asked in Turkish in production ('Sana başka hangi soruları sorabilirim')."
+    "notes": "From production query_log: real messages that got the 'documents do not contain' refusal."
   },
   {
     "id": "conversation-german-greeting",
