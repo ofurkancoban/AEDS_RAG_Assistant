@@ -7,6 +7,31 @@ currently running - the app's version display and the /version API read this
 file directly, so it is the single source of truth (no separate VERSION file
 to keep in sync).
 
+## [1.14.0] - 2026-11-24
+### Added
+- Every 15 minutes the health check asks OpenRouter whether a provider still
+  serves each configured model, and alerts the admin chat once when none
+  does and once when it is back. On 2026-11-22 dots-3-note lost its only
+  provider while it stayed in the model list, so the daily check saw
+  nothing until the next night and the weekly eval found out first.
+- A last fallback model, ERNIE 5.5 Flash, tried only after dots and Workers
+  AI have both failed, so a day with dots withdrawn and the Cloudflare
+  allocation used up still gets answers. On 30 golden cases with no
+  fallback behind any model: dots 28/30 (median 5.8s), ERNIE 26/30 (10.6s,
+  one invented closing date, frequently rate-limited), Flint 27/30 (44s).
+  Gemma on Workers AI stays the first fallback.
+
+### Fixed
+- Models whose endpoint requires reasoning (ERNIE, Flint) refused every
+  answer request, which turns reasoning off; they now answer with low
+  reasoning effort.
+- "How much does a pizza cost in the Mensa?" got one day's menu instead of
+  the standard price from the 2026 price list. Price questions go to the
+  documents unless they name a day.
+- A routing decision whose cached copy had expired could not be saved
+  again (StaleDataError), so that question was routed by the model each
+  time.
+
 ## [1.13.1] - 2026-10-20
 ### Fixed
 - Telegram: a question typed in an admin chat was silently ignored, since

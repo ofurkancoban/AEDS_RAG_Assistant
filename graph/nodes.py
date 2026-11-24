@@ -242,8 +242,15 @@ _OPENROUTER_REASONING = {
 }
 
 
-def _openrouter_extra_body(purpose: str) -> dict:
-    body: dict = {"reasoning": _OPENROUTER_REASONING[purpose]}
+def _reasoning_required(model_name: str) -> bool:
+    return model_name in {m.strip() for m in settings.openrouter_reasoning_required_models.split(",") if m.strip()}
+
+
+def _openrouter_extra_body(purpose: str, model_name: str = "") -> dict:
+    reasoning = _OPENROUTER_REASONING[purpose]
+    if reasoning.get("enabled") is False and _reasoning_required(model_name):
+        reasoning = {"effort": "low"}
+    body: dict = {"reasoning": reasoning}
     if settings.openrouter_deny_data_collection:
         # Students' questions must not become training data. OpenRouter then
         # routes only to provider endpoints that neither store nor train on
@@ -293,7 +300,7 @@ def _get_openrouter_llm_cached(model_name: str, purpose: str = "generation") -> 
         base_url=settings.openrouter_base_url,
         rate_limiter=_gateway_rate_limiter(),
         temperature=0,
-        extra_body=_openrouter_extra_body(purpose),
+        extra_body=_openrouter_extra_body(purpose, model_name),
         # openai's client otherwise defaults to a 600s timeout - fine for a
         # healthy model, but it means a stealth model that starts hanging
         # instead of erroring (rather than a clean 4xx) would sit for ten
@@ -373,13 +380,18 @@ def _with_fallback(
         (m for m in (config.openrouter_fallback_model, config.openrouter_model) if m and m != primary), ""
     )
 
-    # In order: a second OpenRouter model, then Workers AI (another provider
-    # entirely, so it also covers OpenRouter itself being down).
+    # A second OpenRouter model and Workers AI (another provider entirely,
+    # so it also covers OpenRouter itself being down), in the order
+    # openrouter_fallback_after_workers_ai sets.
     fallbacks = []
     if fallback_model and not _model_is_gone(fallback_model):
         fallbacks.append(_get_openrouter_llm_cached(fallback_model, purpose))
     if _workers_ai_configured():
-        fallbacks.append(_get_workers_ai_llm_cached())
+        workers_ai = _get_workers_ai_llm_cached()
+        if settings.openrouter_fallback_after_workers_ai and fallback_model == config.openrouter_fallback_model:
+            fallbacks.insert(0, workers_ai)
+        else:
+            fallbacks.append(workers_ai)
     if tools:
         fallbacks = [f.bind_tools(tools) for f in fallbacks]
     if not fallbacks:
@@ -1082,10 +1094,12 @@ def _remember_route(question: str, tool_calls: list[dict]) -> None:
         session = SessionLocal()
         try:
             now = datetime.now(timezone.utc)
-            session.merge(RouteDecision(key=key, tool_calls_json=json.dumps(tool_calls), created_at=now))
+            # Expired rows go first: merging onto an expired row of the same
+            # key and then deleting it left an UPDATE with nothing to update.
             session.query(RouteDecision).filter(
                 RouteDecision.created_at < now - timedelta(seconds=_ROUTE_CACHE_TTL_S)
             ).delete()
+            session.merge(RouteDecision(key=key, tool_calls_json=json.dumps(tool_calls), created_at=now))
             session.commit()
         finally:
             session.close()

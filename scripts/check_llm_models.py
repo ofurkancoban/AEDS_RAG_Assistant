@@ -49,6 +49,43 @@ def available_models() -> set[str]:
     return {m["id"] for m in response.json()["data"]}
 
 
+def served(model: str) -> bool | None:
+    """Whether any provider serves `model` right now, from OpenRouter's
+    endpoint list (no completion, so no quota). The model list alone is not
+    enough: on 2026-11-22 dots-3-note stayed listed while its only provider
+    was gone, and every call failed. None when OpenRouter is unreachable,
+    which says nothing about the model."""
+    try:
+        response = httpx.get(
+            f"https://openrouter.ai/api/v1/models/{model}/endpoints",
+            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            timeout=20,
+        )
+    except httpx.HTTPError:
+        return None
+    if response.status_code == 404:
+        return False
+    if response.status_code != 200:
+        return None
+    endpoints = (response.json().get("data") or {}).get("endpoints") or []
+    return bool(endpoints)
+
+
+def configured_models() -> dict[str, str]:
+    """Role -> model for every OpenRouter model the app may call."""
+    from runtime_config import get_runtime_config
+
+    config = get_runtime_config()
+    if not openrouter_in_use(config):
+        return {}
+    roles = {
+        "answer model": config.openrouter_model,
+        "fallback model": config.openrouter_fallback_model,
+        "router model": settings.openrouter_router_model,
+    }
+    return {role: model for role, model in roles.items() if model}
+
+
 def env_model_lines(env_path: Path = Path(".env")) -> list[str]:
     if not env_path.exists():
         return []

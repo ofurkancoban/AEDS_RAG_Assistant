@@ -86,3 +86,36 @@ def test_an_env_model_line_is_reported(monkeypatch):
     problems, _ = checker.check(fix=False, models=set())
 
     assert len(problems) == 1 and problems[0].startswith(".env")
+
+
+class _Response:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (_Response(200, {"data": {"endpoints": [{"provider_name": "AtlasCloud"}]}}), True),
+        (_Response(200, {"data": {"endpoints": []}}), False),
+        (_Response(404), False),
+        (_Response(502), None),
+    ],
+)
+def test_served_reads_the_endpoint_list(monkeypatch, response, expected):
+    monkeypatch.setattr(checker.httpx, "get", lambda *a, **k: response)
+    assert checker.served("dots/x:free") is expected
+
+
+def test_configured_models_lists_each_role(monkeypatch):
+    update_runtime_config(llm_provider="openrouter", openrouter_model=None, openrouter_fallback_model="b/fallback:free")
+    monkeypatch.setattr(settings, "openrouter_router_model", "")
+
+    assert checker.configured_models() == {
+        "answer model": settings.openrouter_model,
+        "fallback model": "b/fallback:free",
+    }

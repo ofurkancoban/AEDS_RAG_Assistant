@@ -45,8 +45,9 @@ def test_other_calls_keep_their_fallback(monkeypatch):
     assert _fallback_model(wrapped) == "second/s"
 
 
-def test_workers_ai_comes_after_the_openrouter_fallback(monkeypatch):
+def test_workers_ai_comes_after_the_openrouter_fallback_unless_set_otherwise(monkeypatch):
     _models(monkeypatch, main="main/m", fallback="second/s", router="")
+    monkeypatch.setattr(settings, "openrouter_fallback_after_workers_ai", False)
     monkeypatch.setattr(settings, "cloudflare_account_id", "acct")
     monkeypatch.setattr(settings, "cloudflare_api_token", "token")
     nodes._get_workers_ai_llm_cached.cache_clear()

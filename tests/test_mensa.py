@@ -63,6 +63,7 @@ def test_legend_codes_have_labels_and_kinds(legend):
 @pytest.mark.parametrize("question", [
     "What's in the Mensa today?", "Was gibt es morgen in der Mensa?", "Is there something vegan for lunch on Friday?",
     "gluten-free options in the canteen tomorrow?", "Speiseplan Wechloy", "Laktosefreie Gerichte heute?",
+    "How much is the pizza in the Mensa today?", "Was kostet das Essen am Freitag in der Mensa?",
 ])
 def test_menu_questions_are_recognised(question):
     assert menu_q.is_menu_question(question)
@@ -71,6 +72,7 @@ def test_menu_questions_are_recognised(question):
 @pytest.mark.parametrize("question", [
     "What are the opening hours of the Mensa?", "Will canteen prices go up in 2026?",
     "How do I register for exams?", "Can I get a job in the Mensa?",
+    "How much does a pizza cost in the Mensa?", "Was kostet eine Pizza in der Mensa?",
 ])
 def test_other_questions_are_not(question):
     assert not menu_q.is_menu_question(question)

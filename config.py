@@ -121,10 +121,26 @@ class Settings(BaseSettings):
     # in the same measurement (15/15 on the subset, 45-46/47 on the full
     # golden set) but slower (12s median), which suits a fallback that only
     # runs when the primary is failing.
-    # Empty since 2026-10-15: no other free OpenRouter model passed both the
-    # data policy and the golden set. The fallback after it is Workers AI
-    # (workers_ai_model below), tried whenever this one is unset or fails.
-    openrouter_fallback_model: str = ""
+    # Empty from 2026-10-15 to 2026-11-24: no other free OpenRouter model
+    # passed both the data policy and the golden set.
+    # ERNIE since 2026-11-24, as the last resort after Workers AI (see
+    # openrouter_fallback_after_workers_ai). On 30 golden cases with no
+    # fallback behind any of them: dots 28, ERNIE 26 (one invented closing
+    # date, 11 upstream 429s, median 10.6s), Flint 27 but a median of 44s.
+    # It runs only when dots and Workers AI both fail, for example dots
+    # withdrawn (2026-11-22) on a day the shared Cloudflare allocation is
+    # used up (2026-10-20), when the alternative is no answer at all.
+    openrouter_fallback_model: str = "baidu/ernie-5.5-flash-preview:free"
+    # True: Workers AI is tried before openrouter_fallback_model. Set for a
+    # fallback model that is weaker than Workers AI and kept only so that
+    # some model is left when Cloudflare's daily allocation is gone.
+    openrouter_fallback_after_workers_ai: bool = True
+    # Models whose endpoint refuses a request with reasoning turned off
+    # ("Reasoning is mandatory for this endpoint", 400). Answers on them use
+    # low effort instead of none (see graph/nodes.py's _openrouter_extra_body);
+    # without this they fail on every answer and the next fallback takes over
+    # unseen. Comma-separated. Both checked on 2026-11-24.
+    openrouter_reasoning_required_models: str = "baidu/ernie-5.5-flash-preview:free,recursive/flint-v1.0:free"
     # Ask OpenRouter to use only provider endpoints that do not store or
     # train on prompts (provider.data_collection = "deny"). Checked working
     # with both models above on 2026-10-10.

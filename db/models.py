@@ -358,7 +358,8 @@ class BudgetFallbackEvent(Base):
 
 class SystemHealthAlertState(Base):
     """One row per host-level check (disk/memory/load - see
-    scripts/system_health_check.py), tracking whether it is currently
+    scripts/system_health_check.py) and per OpenRouter model it watches
+    ("model:<id>"), tracking whether it is currently
     breached and when it was last alerted on. Persisted rather than kept in
     memory so a cron-run process (a fresh Python interpreter every 15
     minutes) still knows not to re-alert on an ongoing problem it already

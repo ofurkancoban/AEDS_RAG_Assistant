@@ -61,3 +61,34 @@ def test_exactly_at_threshold_counts_as_breached():
     message, state = decide_action("memory", 90.0, 90.0, None, NOW)
     assert message is not None
     assert state["is_breached"] is True
+
+
+def _served(monkeypatch, value):
+    from scripts import check_llm_models
+
+    monkeypatch.setattr(check_llm_models, "served", lambda model: value)
+
+
+def test_model_without_a_provider_alerts_once_then_recovers(monkeypatch):
+    from scripts.system_health_check import model_message
+
+    _served(monkeypatch, False)
+    message, state = model_message("answer model", "dots/x:free", None, NOW)
+    assert "no provider serves the answer model dots/x:free" in message
+    assert state["is_breached"] is True
+
+    message, state = model_message("answer model", "dots/x:free", state, NOW + timedelta(minutes=15))
+    assert message is None
+
+    _served(monkeypatch, True)
+    message, state = model_message("answer model", "dots/x:free", state, NOW + timedelta(minutes=30))
+    assert message == "OpenRouter: the answer model dots/x:free is served again."
+    assert state["is_breached"] is False
+
+
+def test_unreachable_openrouter_keeps_the_last_state(monkeypatch):
+    from scripts.system_health_check import model_message
+
+    _served(monkeypatch, None)
+    prior = {"is_breached": True, "last_alerted_at": NOW}
+    assert model_message("answer model", "dots/x:free", prior, NOW) == (None, prior)

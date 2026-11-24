@@ -66,3 +66,33 @@ def test_rejected_personal_or_small_talk_answers_are_not_drafted():
     assert build_case(row) is None
     row = CachedAnswer(id=2, question="hi", question_normalized="hi", answer="Hi!", status=AnswerStatus.REJECTED, sources_json="[]")
     assert build_case(row) is None
+
+
+def test_an_expired_route_row_is_replaced_without_an_error(caplog):
+    from datetime import datetime, timedelta, timezone
+
+    from db.models import RouteDecision, SessionLocal
+    from graph import nodes
+
+    question = "pytest expired route question"
+    key = nodes._route_key(question)
+    session = SessionLocal()
+    try:
+        session.merge(RouteDecision(key=key, tool_calls_json="[]", created_at=datetime.now(timezone.utc) - timedelta(days=3)))
+        session.commit()
+    finally:
+        session.close()
+
+    with caplog.at_level("WARNING", logger="graph.nodes"):
+        nodes._remember_route(question, [{"name": "lookup_course", "args": {}}])
+
+    assert "Could not store the route decision" not in caplog.text
+    session = SessionLocal()
+    try:
+        row = session.get(RouteDecision, key)
+        assert row is not None and "lookup_course" in row.tool_calls_json
+        session.delete(row)
+        session.commit()
+    finally:
+        session.close()
+    nodes._ROUTE_CACHE.pop(key, None)

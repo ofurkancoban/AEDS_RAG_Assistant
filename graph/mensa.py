@@ -43,6 +43,15 @@ _WEEKDAYS = {
     0: ("monday", "montag"), 1: ("tuesday", "dienstag"), 2: ("wednesday", "mittwoch"),
     3: ("thursday", "donnerstag"), 4: ("friday", "freitag"), 5: ("saturday", "samstag"), 6: ("sunday", "sonntag"),
 }
+# "How much does a pizza cost in the Mensa?" asks for the standard price in
+# the 2026 price list, not for one day's menu, which may have no pizza at all.
+_PRICE = re.compile(r"how much|\bcosts?\b|\bprices?\b|\bkostet|\bkosten\b|\bpreis(e)?\b|wie teuer", re.I)
+_DAY = re.compile(
+    r"\b(today|tomorrow|heute|morgen|übermorgen|this week|diese woche|"
+    + "|".join(name for names in _WEEKDAYS.values() for name in names)
+    + r")\b",
+    re.I,
+)
 
 # Diet wishes: (pattern, pictograms a meal must have one of, pictograms it must not have, codes it must not have)
 # What a filter is called in the answer and on the cards, by language.
@@ -105,6 +114,8 @@ class MenuRequest:
 
 def is_menu_question(question: str) -> bool:
     if _NOT_MENU.search(question):
+        return False
+    if _PRICE.search(question) and not _DAY.search(question):
         return False
     if _MENU_CUE.search(question):
         return True

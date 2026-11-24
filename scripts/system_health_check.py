@@ -143,6 +143,47 @@ def _save_state(session, check_name: str, state: dict) -> None:
     row.last_alerted_at = state["last_alerted_at"]
 
 
+def model_message(role: str, model: str, prior_state: dict | None, now: datetime) -> tuple[str | None, dict]:
+    """Alert when no provider serves `model`, again after the cooldown, and
+    once when it is back - the same rhythm as the host checks."""
+    from scripts.check_llm_models import served
+
+    is_served = served(model)
+    if is_served is None:
+        return None, prior_state or {"is_breached": False, "last_alerted_at": None}
+    message, state = decide_action(role, 0.0 if is_served else 1.0, 1.0, prior_state, now)
+    if message is None:
+        return None, state
+    if state["is_breached"]:
+        return (
+            f"OpenRouter: no provider serves the {role} {model}. Answers use the next fallback "
+            "until it returns; switch the model in the admin panel if it stays away.",
+            state,
+        )
+    return f"OpenRouter: the {role} {model} is served again.", state
+
+
+def check_models(session, now: datetime, notify) -> None:
+    from scripts.check_llm_models import configured_models
+
+    try:
+        models = configured_models()
+    except Exception as exc:  # noqa: BLE001 - the host checks above must still count
+        print(f"models: could not read the configuration: {exc}")
+        return
+    for role, model in models.items():
+        check_name = f"model:{model}"
+        message, state = model_message(role, model, _load_state(session, check_name), now)
+        _save_state(session, check_name, state)
+        session.commit()
+        print(f"{role}: {model} {'unserved' if state['is_breached'] else 'served'}")
+        if message:
+            try:
+                notify(message)
+            except Exception:
+                pass
+
+
 def main() -> int:
     from api.telegram_bot import _notify_admins
 
@@ -166,6 +207,7 @@ def main() -> int:
                     _notify_admins(f"VPS health - {message}")
                 except Exception:
                     pass
+        check_models(session, now, _notify_admins)
     finally:
         session.close()
     return 0
